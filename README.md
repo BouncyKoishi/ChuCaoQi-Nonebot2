@@ -1,69 +1,76 @@
-# 生草系统 Web 项目
+# 除草器Bot (NoneBot2 重构版)
 
-这是一个用于复刻除草器Bot生草系统功能的Web项目，可以在除草器被封号时临时访问生草系统并进行基础操作。
+[原项目 (NoneBot1)](https://github.com/BouncyKoishi/ChuCaoQi-Bot) 
+
+这是除草器Bot 的 NoneBot2 重构版本，在保留原有功能的基础上，新增了 Web 管理界面，提供更好的用户体验。
+
+## 项目简介
+
+名为"除草器"的QQBot，采用Python编写，基于 NoneBot2 构建。
+
+除草器发源于中山大学东方Project交流群，现主要运营一个模拟经营类游戏（生草系统），并为SYSU/SCUT系东方相关群聊提供特色服务。重构版本为生草系统新增了web游玩入口。
+
+除草器的主群为：738721109，本群同时也是生草系统玩家交流/贸易用群聊。
+
+## 功能列表
+
+### Bot 功能
+
+- **生草系统**：一个使用"草"作为货币的模拟经营&挂机游戏
+
+* **对话模块**：与大模型进行对话，支持自定义角色配置（当前主要使用 Deepseek API）
+* **抽奖模块**：由群友通过指令自行添加奖品，并提供抽奖功能
+* **图库模块**：由群友上传图片到各个图库，支持随机获取图片
+* **随机化模块**：提供各种模式的roll点、roll群友、选择、判断等指令
+* **说点怪话**：基于用户发言，在过往群聊信息中随机/智能挑选一句话发送
+* **算卦模块**：提供基于铜钱起卦法的在线算卦、解卦功能
+* **台风查询**：查询当前正在活跃的台风信息（目前仅限西tai'p'y）
+* **雷达回波**：查询中国境内部分雷达站的最新雷达回波图
+* **图片搜索**：通过聚合搜图引擎搜索图片来源
+* **音乐搜索**：根据名字从网易云音乐搜索相关音乐信息
+
+### Web 管理界面
+
+- 用户登录（Token认证）
+- 仓库查看（草、草之精华、财产、道具）
+- 生草功能（种植、收获）
+- 商店系统（购买物品）
+- G市查看与交易
+- 能力系统（查看和使用生草能力）
+- 抽奖系统（参与抽奖活动）
+- 统计系统（查看生草统计数据）
 
 ## 项目结构
 
 ```
 ChuCaoQi-Web/
-├── backend/              # 后端API服务
-│   ├── backup_old_api/   # 旧API备份
-│   ├── bot_api_gateway.py  # API网关
-│   ├── bot_api_server.py   # FastAPI主程序
-│   └── config.json        # 配置文件
-├── bot/                  # 除草器Bot核心代码
+├── backend/              # Web 后端 (FastAPI)
+│   ├── middleware/       # 中间件（限流、认证等）
+│   ├── routers/          # API 路由
+│   ├── common.py         # 共享配置
+│   ├── main.py           # FastAPI 入口
+│   └── websocket_manager.py  # WebSocket 管理
+├── bot/                  # Bot 主目录 (NoneBot2)
 │   ├── config/           # 配置文件
-│   ├── database/         # 数据库文件
-│   ├── dbConnection/      # 数据库连接
-│   ├── plugins/           # 插件系统
-│   ├── services/          # 业务逻辑服务
-│   ├── bot.py             # Bot主程序
-│   ├── config.py          # 配置文件
-│   ├── kusa_base.py       # 生草系统基础
-│   └── requirements.txt   # Bot依赖配置
-├── src/                  # 前端Vue项目
-│   ├── api/              # API接口封装
+│   ├── dbConnection/     # 数据库连接与模型
+│   ├── plugins/          # 插件目录
+│   ├── services/         # 服务层（业务逻辑）
+│   ├── text/             # 文本资源
+│   ├── bot.py            # Bot 入口
+│   └── config.py         # NoneBot2 配置
+├── src/                  # Web 前端 (Vue 3 + TypeScript)
+│   ├── api/              # API 接口封装
 │   ├── router/           # 路由配置
-│   ├── stores/           # Pinia状态管理
-│   ├── types/            # TypeScript类型定义
+│   ├── stores/           # Pinia 状态管理
+│   ├── types/            # TypeScript 类型定义
 │   ├── views/            # 页面组件
-│   ├── App.vue           # 根组件
 │   └── main.ts           # 入口文件
-├── dist/                 # 前端构建输出
-├── package.json          # 前端依赖配置
-├── requirements.txt      # 后端依赖配置
-├── vite.config.ts        # Vite配置
-├── start.bat             # 启动脚本
-├── stop.bat              # 停止脚本
-└── README.md            # 项目说明
+├── package.json          # 前端依赖
+├── vite.config.ts        # Vite 配置
+└── tsconfig.json         # TypeScript 配置
 ```
 
-## 功能特性
-
-- ✅ 用户登录（使用QQ号）
-- ✅ 仓库查看（草、草之精华、财产、道具）
-- ✅ 生草功能（种植、收获）
-- ✅ 商店系统（购买物品）
-- ✅ G市查看（查看G值、交易）
-- ✅ 数据库共享（与除草器Bot使用同一数据库）
-- ✅ 能力系统（查看和使用能力）
-- ✅ 抽奖系统（参与抽奖活动）
-- ✅ 统计系统（查看生草统计数据）
-
-## 技术栈
-
-### 前端
-- Vue 3 + TypeScript
-- Vite
-- Element Plus UI
-- Pinia (状态管理)
-- Vue Router
-- Axios
-
-### 后端
-- FastAPI
-- SQLite (共享除草器Bot数据库)
-- 除草器Bot核心模块
+<br />
 
 ## 安装与运行
 
@@ -71,176 +78,109 @@ ChuCaoQi-Web/
 
 - Node.js 16+
 - Python 3.8+
+- NapCatQQ（用于连接QQ）
 
-### 前端安装
+### 配置文件
+
+1. **Bot 配置文件**
+
+   复制示例配置并修改：
+   ```bash
+   cp bot/config/plugin_config.example.yaml bot/config/plugin_config.yaml
+   ```
+   编辑 `bot/config/plugin_config.yaml`，填入必要的配置：
+   - QQ号、群号等基础信息
+   - 各API密钥（OpenAI、Deepseek、Gemini等，按需填写）
+   - 代理设置（如需要）
+2. **数据库初始化**
+
+   在 `bot/database/` 目录下创建 SQLite 数据库：
+   ```bash
+   # 创建数据库目录
+   mkdir -p bot/database
+
+   # 导入初始化数据
+   sqlite3 bot/database/chuchu.sqlite < bot/config/initialize.sql
+   ```
+
+### 安装依赖
+
+**Bot 端依赖：**
 
 ```bash
-# 进入项目目录
-cd ChuCaoQi-Web
-
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-
-# 构建生产版本
-npm run build
-```
-
-前端开发服务器默认运行在 `http://localhost:3000`
-
-### 后端安装
-
-```bash
-# 进入项目目录
-cd ChuCaoQi-Web
-
-# 安装依赖
+cd bot
 pip install -r requirements.txt
-
-# 运行后端服务
-python backend/bot_api_server.py
 ```
 
-后端API服务默认运行在 `http://localhost:8000`
-
-### 一键启动
-
-项目提供了一键启动脚本：
+**Web 后端依赖：**
 
 ```bash
-# 启动前端和后端服务
-./start.bat
-
-# 停止服务
-./stop.bat
+cd backend
+npm install
 ```
 
-## 数据库配置
+**Web 前端依赖：**
 
-后端会自动连接到除草器Bot的SQLite数据库：
-- 路径：`bot/database/chuchu.sqlite`
+```bash
+npm install
+```
 
-确保数据库文件存在且可访问。
+### 运行服务
 
-## API接口说明
+**启动 Bot：**
 
-### 认证接口
+```bash
+cd bot
+python bot.py
+# 或使用虚拟环境
+.\venv\Scripts\python.exe bot.py
+```
 
-- `POST /api/auth/login` - 用户登录
-  - 参数：`{ "qq": "QQ号" }`
-  - 返回：用户信息
+**启动 Web 后端：**
 
-### 用户接口
+```bash
+cd backend
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
 
-- `GET /api/user/info?qq=QQ号` - 获取用户信息
+**启动 Web 前端：**
 
-### 仓库接口
+```bash
+npm run dev
+```
 
-- `GET /api/warehouse?qq=QQ号` - 获取仓库信息
+**一键启动（Windows）：**
 
-### 生草接口
+```bash
+./start.bat
+```
 
-- `GET /api/farm?qq=QQ号` - 获取生草地信息
-- `POST /api/farm/plant?qq=QQ号` - 开始生草
-  - 参数：`{ "kusaType": "草种类型" }`
-- `POST /api/farm/harvest?qq=QQ号` - 收获草
+### 访问地址
 
-### 商店接口
+- Web 前端：`http://localhost:5173`（开发模式）
+- Web 后端 API：`http://localhost:8000`
+- API 文档：`http://localhost:8000/docs`
 
-- `GET /api/shop/items` - 获取商店物品列表
-- `POST /api/shop/buy?qq=QQ号` - 购买物品
-  - 参数：`{ "itemName": "物品名称", "amount": 数量, "useAdvKusa": false }`
+## Web 端登录
 
-### G市接口
+Web 端使用 Token 认证，获取方式：
 
-- `GET /api/gmarket` - 获取G市信息
-- `POST /api/gmarket/buy?qq=QQ号` - 买入G
-  - 参数：`{ "gType": "G类型", "amount": 数量 }`
-- `POST /api/gmarket/sell?qq=QQ号` - 卖出G
-  - 参数：`{ "gType": "G类型", "amount": 数量 }`
-
-### 能力接口
-
-- `GET /api/ability?qq=QQ号` - 获取能力信息
-
-### 抽奖接口
-
-- `GET /api/lottery?qq=QQ号` - 获取抽奖信息
-- `POST /api/lottery/draw?qq=QQ号` - 参与抽奖
-  - 参数：`{ "times": 抽奖次数 }`
-
-### 统计接口
-
-- `GET /api/statistics?qq=QQ号` - 获取生草统计数据
+1. 在 Bot 中私聊发送 `!生成token`
+2. Bot 会返回一个 Token
+3. 在 Web 登录页面输入 QQ号 和 Token 即可登录
 
 ## 注意事项
 
-1. **数据库共享**：本项目与除草器Bot共享同一个数据库，所有操作都会直接影响除草器Bot的数据，请谨慎操作。
+1. **数据库共享**：Web 端与 Bot 端共享同一个数据库，所有操作会实时同步
+2. **端口占用**：确保以下端口未被占用
+   - 5173（前端开发服务器）
+   - 8000（后端 API）
+   - 8080（NoneBot2 默认端口）
 
-2. **路径要求**：项目默认使用相对路径连接数据库，确保项目结构完整。
+## 声明
 
-3. **依赖要求**：后端需要导入除草器Bot的模块，确保Bot代码完整且可访问。
+本项目仅供学习交流使用，不得用于非法用途。
 
-4. **端口占用**：确保3000端口（前端）和8000端口（后端）没有被占用。
+## 支持开发
 
-5. **生草时间**：生草时间根据草种类型而定，具体时间请参考生草页面说明。
-
-6. **权限控制**：当前版本使用QQ号作为唯一标识，没有额外的密码验证。在生产环境中建议添加身份验证机制。
-
-## 开发说明
-
-该项目为除草器Bot的Web界面复刻版本，主要用于在Bot被封号时提供临时访问。所有操作都会直接修改除草器Bot的数据库，因此请谨慎操作。
-
-### 前端开发
-
-前端使用Vue 3 + TypeScript开发，使用Element Plus作为UI框架。主要页面包括：
-
-- **登录页**：用户使用QQ号登录
-- **仓库页**：查看用户的草、草之精华、财产和道具
-- **生草页**：进行生草操作（种植、收获）
-- **商店页**：购买各种物品
-- **G市页**：查看G值并进行G交易
-- **能力页**：查看和使用能力
-- **抽奖页**：参与抽奖活动
-- **统计页**：查看生草统计数据
-
-### 后端开发
-
-后端使用FastAPI开发，直接调用除草器Bot的核心模块进行业务逻辑处理。主要功能包括：
-
-- 用户认证和管理
-- 仓库信息查询
-- 生草操作（种植、收获）
-- 商店物品购买
-- G市交易
-- 能力系统
-- 抽奖系统
-- 统计系统
-
-## 常见问题
-
-### Q: 后端启动失败，提示找不到模块？
-
-A: 确保所有依赖都已安装，并且Bot代码结构完整。
-
-### Q: 前端无法连接后端？
-
-A: 检查后端服务是否正常运行在8000端口，前端配置中的代理设置是否正确。
-
-### Q: 数据库连接失败？
-
-A: 确保数据库文件存在于`bot/database/chuchu.sqlite`路径，并且有读取权限。
-
-### Q: 生草操作失败？
-
-A: 检查是否有足够的承载力和草地，以及当前是否有草正在生长。
-
-### Q: 抽奖失败？
-
-A: 检查是否有足够的抽奖次数或道具。
-
-## 许可证
-
-本项目遵循除草器Bot的许可证。
+[爱发电](https://afdian.com/a/chu-chu)
