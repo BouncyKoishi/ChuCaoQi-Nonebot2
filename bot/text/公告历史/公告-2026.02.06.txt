@@ -1,0 +1,19 @@
+公告（2026/02/06）
+
+本期更新内容
+1. 新增 #说点怪话 指令，可用群友的话作为参数快速触发怪话
+2. 大模型模块新增存读档功能(!chat_save，!chat_load)，新增自动存档
+3. 新增三个图库：251图库（!roll251）西八兔图库（!rollxb）怪猫图库（!rollgm）
+
+近期其它更新内容
+1. 总草精喜报触发条件改为大于120
+2. #nsfw 和 #nailong 指令已设置三小时冷却时间
+3. 黑暗决斗和奶龙决斗无法禁言对象时会改为给对方一拳
+4. 一些细节优化
+
+生草系统/除草器主群：738721109
+生草系统简明攻略：https://www.bilibili.com/opus/1029642903728685075
+除草器指令文档(杂项)：https://rinkastone.com/2024/05/13/archives/409
+除草器指令文档(抽奖)：https://rinkastone.com/2024/11/27/archives/429
+除草器代码仓库：https://github.com/BouncyKoishi/ChuCaoQi-Bot
+生草系统完整攻略见主群群文件，非常感谢作者ScarMoon！

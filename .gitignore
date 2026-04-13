@@ -1,0 +1,51 @@
+# 依赖目录
+node_modules/
+bot/venv/
+
+# 编译输出
+dist/
+build/
+
+# 日志文件
+*.log
+backend/*.log
+bot/*.log
+
+# 数据库文件
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+db.sqlite3
+chuchu_backup.sqlite
+
+# 配置文件
+config.json
+.env
+bot/config/plugin_config.yaml
+
+# 临时文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE相关
+.vscode/
+.idea/
+.trae/
+*.swp
+*.swo
+
+# 操作系统相关
+Thumbs.db
+.DS_Store
+
+# 备份文件
+*.bak
+*~
+
+# bot工作文件
+bot/chatHistory/
+bot/cache/
+bot/database/
+bot/plugins/hidden.py

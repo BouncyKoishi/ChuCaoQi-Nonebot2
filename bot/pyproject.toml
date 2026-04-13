@@ -1,0 +1,31 @@
+[project]
+name = "chucaoqi-bot"
+version = "2.0.0"
+description = "生草系统 Bot - NoneBot2 版本"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Chucaoqi Team"}
+]
+dependencies = [
+    "nonebot2[fastapi]>=2.4.0",
+    "nonebot-adapter-onebot>=2.4.0",
+    "nonebot-adapter-qq>=1.4.0",
+    "nonebot-plugin-apscheduler>=0.5.0",
+    "tortoise-orm>=0.20.0",
+    "aiosqlite>=0.19.0",
+    "httpx>=0.25.0",
+    "aiohttp>=3.9.0",
+    "pyyaml>=6.0.1",
+    "pillow>=10.0.0",
+]
+
+[tool.nonebot]
+adapters = [
+    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
+    { name = "QQ", module_name = "nonebot.adapters.qq" }
+]
+plugins = []
+plugin_dirs = ["plugins"]
+builtin_plugins = ["echo"]

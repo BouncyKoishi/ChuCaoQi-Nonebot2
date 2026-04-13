@@ -1,0 +1,80 @@
+basePath: '' # 根目录地址
+env: 'dev'
+
+qq:
+  bot: 0 # NapCat Bot QQ号
+  # official_bot: 0 # 官方 Bot QQ号 [已禁用] 官方QQ Bot未连接时无需配置，auto_bind 插件已移至 _disabled 目录
+  ban:
+    - 10000
+
+group:
+  main: 0 # 主群号
+  log: 0 # 日志群号
+  sysu: 0
+  adminAuthGroup:
+    - 0
+  allow:
+    - 0 # 允许使用Bot的群号列表
+
+guaihua:
+  notRecordWords:
+    - 'CQ:at'
+    - 'CQ:rich'
+    - 'CQ:face'
+    - 'CQ:xml'
+    - 'CQ:reply'
+    - 'CQ:json'
+    - 'CQ:file'
+    - '\n'
+    - '闪照'
+    - '视频'
+    - '红包'
+  notRecordMembers:
+    - 0 # 不记录的成员QQ号
+  recordGroups:
+    - 0 # 记录消息的群号
+  pokeTriggerGroups:
+    - 0 # 触发戳一戳的群号
+
+drawItem:
+  banRisk: 0.5
+  itemHideAmount: 25
+  groupAllowItem:
+    - 0
+  groupAllowDraw:
+    - 0
+  userPool: {}
+
+sendNews:
+  group:
+    - 0
+
+web:
+  proxy: "" # 代理地址，如 "http://127.0.0.1:7897"
+  userAgent: "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Mobile Safari/537.36"
+  neteaseMusic:
+    cookie: "" # 网易云音乐 Cookie
+  saucenao:
+    key: "" # Saucenao API Key
+  openai:
+    key: "" # OpenAI API Key
+  deepseek:
+    key: "" # Deepseek API Key
+  gemini:
+    key: "" # Gemini API Key
+  moderateContent:
+    key: "" # ModerateContent API Key
+
+sensitiveWords: []
+
+# napcat_interceptor:  # [已禁用] 官方QQ Bot未连接时无需配置，napcat_interceptor 插件已移至 _disabled 目录
+#   enabled: false
+#   command_prefixes:
+#     - "!"
+#     - "/"
+#   whitelist_commands:
+#     - "!napcat"
+#     - "!nc"
+
+backend:
+  internalApiToken: "" # 内部 API 令牌，用于 Bot 调用后端接口

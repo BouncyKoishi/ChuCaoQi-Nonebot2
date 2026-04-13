@@ -1,0 +1,8 @@
+{
+  "watch": ["."],
+  "ext": "py",
+  "ignore": ["__pycache__", "*.pyc", ".git", "venv", "env"],
+  "delay": "2",
+  "exec": "python -m uvicorn bot_api_server:app --host 127.0.0.1 --port 8000",
+  "signal": "SIGTERM"
+}
