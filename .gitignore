@@ -49,3 +49,4 @@ bot/chatHistory/
 bot/cache/
 bot/database/
 bot/plugins/hidden.py
+bot/scripts/
