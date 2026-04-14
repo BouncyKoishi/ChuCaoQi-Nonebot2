@@ -236,7 +236,7 @@ async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg(
         )
 
 
-查看token_cmd = on_command('查看token', priority=5, block=True, aliases=['查询token'])
+查看token_cmd = on_command('查看token', priority=5, block=True, aliases={'查询token'})
 
 @查看token_cmd.handle()
 async def handle_查看token(bot: Bot, event: Event):

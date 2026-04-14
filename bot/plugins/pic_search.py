@@ -195,7 +195,7 @@ def drawTextToImage(text: str):
     img = Image.new('RGB', (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
     try:
-        font = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Regular.ttf'), fontSize)
+        font = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Medium.ttf'), fontSize)
     except:
         font = ImageFont.load_default()
     for i, line in enumerate(splitText):
@@ -219,7 +219,7 @@ class ImgExploration:
     def setFont(self, big_size: int, normal_size: int, small_size: int):
         self.__font_b_size = big_size
         try:
-            self.__font_b = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Regular.ttf'), big_size)
+            self.__font_b = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Medium.ttf'), big_size)
             self.__font_n = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Bold.ttf'), normal_size)
             self.__font_s = ImageFont.truetype(os.path.join(fontPath, 'HarmonyOS_Sans_SC_Light.ttf'), small_size)
         except:

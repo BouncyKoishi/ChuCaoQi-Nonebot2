@@ -305,7 +305,7 @@ class FarmService:
             await itemDB.changeItemAmount(userId, '金坷垃', -field_amount)
         
         grow_time = math.ceil(grow_time * KUSA_TYPE_TIME_MULTIPLIER_MAP.get(actual_type, 1))
-        grow_time = random.randint(1, 5) * 60 if actual_type == "速速草" else grow_time
+        grow_time = random.randint(1, 5) if actual_type == "速速草" else grow_time
         
         plant_costing = PLANT_COSTING_MAP.get(actual_type, 1)
         
@@ -316,7 +316,7 @@ class FarmService:
         weed_costing = 2 if (junior_prescient and junior_prescient.allowUse and 
                              not (senior_prescient and senior_prescient.allowUse)) else 0
         
-        kusa_finish_ts = datetime.timestamp(datetime.now() + timedelta(seconds=grow_time))
+        kusa_finish_ts = datetime.timestamp(datetime.now() + timedelta(minutes=grow_time))
         
         soil_capacity_before = field.soilCapacity
         
@@ -349,9 +349,9 @@ class FarmService:
             'success': True,
             'data': {
                 'kusaType': actual_type,
-                'growTimeMinutes': math.ceil(grow_time / 60),
-                'growTime': math.ceil(grow_time / 60),
-                'predictFinishTime': (datetime.now() + timedelta(seconds=grow_time + 60)).isoformat(),
+                'growTimeMinutes': grow_time,
+                'growTime': grow_time,
+                'predictFinishTime': (datetime.now() + timedelta(minutes=grow_time + 1)).isoformat(),
                 'soilCapacity': new_field.soilCapacity,
                 **predict_info,
                 'isMirroring': False,

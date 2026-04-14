@@ -19,21 +19,21 @@ from multi_platform import send_reply, send_finish, get_user_id, is_group_messag
 from utils import extractImgUrls, imgLocalPathToBase64, nameDetailSplit
 
 
-BASE_PIC_PATH = plugin_config.get('basePath', '') + r'\picArchive'
-SAVE_PATH = BASE_PIC_PATH + r'\私藏'
-EXAMINE_PATH = BASE_PIC_PATH + r'\待分类'
+BASE_PIC_PATH = os.path.join(plugin_config.get('basePath', ''), 'picArchive')
+SAVE_PATH = os.path.join(BASE_PIC_PATH, '私藏')
+EXAMINE_PATH = os.path.join(BASE_PIC_PATH, '待分类')
 
 archiveInfo = {
-    "jun": {"onlinePath": BASE_PIC_PATH + r'\jun\online', "displayName": "罗俊"},
-    "junOrigin": {"onlinePath": BASE_PIC_PATH + r'\jun\origin', "displayName": "纯净罗俊"},
-    "xhb": {"onlinePath": BASE_PIC_PATH + r'\xhb', "displayName": "xhb"},
-    "tudou": {"onlinePath": BASE_PIC_PATH + r'\土豆泥', "displayName": "土豆"},
-    "zundamon": {"onlinePath": BASE_PIC_PATH + r'\豆包2.0', "displayName": "俊达萌"},
-    "zundamon2": {"onlinePath": BASE_PIC_PATH + r'\豆包', "displayName": "俊达萌美图"},
-    "pusheen": {"onlinePath": BASE_PIC_PATH + r'\libmmc', "displayName": "猫猫虫"},
-    "cat": {"onlinePath": BASE_PIC_PATH + r'\cat', "displayName": "怪猫"},
-    "251": {"onlinePath": BASE_PIC_PATH + r'\251图库', "displayName": "251"},
-    "xiba": {"onlinePath": BASE_PIC_PATH + r'\西八兔子图库', "displayName": "西八兔"},
+    "jun": {"onlinePath": os.path.join(BASE_PIC_PATH, 'jun', 'online'), "displayName": "罗俊"},
+    "junOrigin": {"onlinePath": os.path.join(BASE_PIC_PATH, 'jun', 'origin'), "displayName": "纯净罗俊"},
+    "xhb": {"onlinePath": os.path.join(BASE_PIC_PATH, 'xhb'), "displayName": "xhb"},
+    "tudou": {"onlinePath": os.path.join(BASE_PIC_PATH, '土豆泥'), "displayName": "土豆"},
+    "zundamon": {"onlinePath": os.path.join(BASE_PIC_PATH, '豆包2.0'), "displayName": "俊达萌"},
+    "zundamon2": {"onlinePath": os.path.join(BASE_PIC_PATH, '豆包'), "displayName": "俊达萌美图"},
+    "pusheen": {"onlinePath": os.path.join(BASE_PIC_PATH, 'libmmc'), "displayName": "猫猫虫"},
+    "cat": {"onlinePath": os.path.join(BASE_PIC_PATH, 'cat'), "displayName": "怪猫"},
+    "251": {"onlinePath": os.path.join(BASE_PIC_PATH, '251图库'), "displayName": "251"},
+    "xiba": {"onlinePath": os.path.join(BASE_PIC_PATH, '西八兔子图库'), "displayName": "西八兔"},
 }
 
 for value in archiveInfo.values():

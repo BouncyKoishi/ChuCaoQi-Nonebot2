@@ -61,13 +61,15 @@ async def getUnifiedUserByPlatform(platform: str, platform_id: str) -> Optional[
 # ===== 创建类函数 =====
 
 async def createUnifiedUserForOnebot(realQQ: str) -> UnifiedUser:
-    """为OneBot平台创建UnifiedUser"""
-    return await UnifiedUser.create(realQQ=realQQ)
+    """为OneBot平台创建UnifiedUser（如果已存在则返回现有用户）"""
+    user, _ = await UnifiedUser.get_or_create(realQQ=realQQ)
+    return user
 
 
 async def createUnifiedUserForQQBot(openid: str) -> UnifiedUser:
-    """为QQBot平台创建UnifiedUser"""
-    return await UnifiedUser.create(qqbotOpenid=openid)
+    """为QQBot平台创建UnifiedUser（如果已存在则返回现有用户）"""
+    user, _ = await UnifiedUser.get_or_create(qqbotOpenid=openid)
+    return user
 
 
 # ===== 更新类函数 =====

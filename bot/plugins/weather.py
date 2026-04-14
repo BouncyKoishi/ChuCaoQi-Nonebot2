@@ -17,8 +17,7 @@ from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-from kusa_base import plugin_config, send_group_msg, is_super_admin
-from multi_platform import get_user_id
+from kusa_base import plugin_config, send_group_msg
 
 try:
     from nonebot_plugin_apscheduler import scheduler
@@ -58,11 +57,6 @@ SYSU_CAMPUSES = {
     '深圳校区': (22.7997, 113.9598),
 }
 
-MY_LOCATIONS = {
-    '脑创中心': (22.752, 113.931),
-    '红花山公园': (22.743, 113.924),
-}
-
 RADAR_NAME_DICT = {
     '全国': 'chinaall.html', '华北': 'huabei.html', '东北': 'dongbei.html', '华东': 'huadong.html',
     '华中': 'huazhong.html', '华南': 'huanan.html', '西南': 'xinan.html', '西北': 'xibei.html',
@@ -87,11 +81,19 @@ RADAR_NAME_DICT = {
 
 GIF_FLAG = '-gif'
 
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "font")
+
+def _load_font(name: str, size: int) -> ImageFont.FreeTypeFont:
+    font_path = os.path.join(_FONT_DIR, name)
+    if os.path.exists(font_path):
+        return ImageFont.truetype(font_path, size)
+    return ImageFont.load_default()
+
 try:
-    _FONT = ImageFont.truetype("msyh.ttc", 13)
-    _FONT_BOLD = ImageFont.truetype("msyh.ttc", 14)
-    _FONT_SMALL = ImageFont.truetype("msyh.ttc", 11)
-    _FONT_TITLE = ImageFont.truetype("msyh.ttc", 16)
+    _FONT = _load_font("HarmonyOS_Sans_SC_Medium.ttf", 13)
+    _FONT_BOLD = _load_font("HarmonyOS_Sans_SC_Bold.ttf", 14)
+    _FONT_SMALL = _load_font("HarmonyOS_Sans_SC_Light.ttf", 11)
+    _FONT_TITLE = _load_font("HarmonyOS_Sans_SC_Bold.ttf", 16)
 except Exception:
     _FONT = ImageFont.load_default()
     _FONT_BOLD = _FONT
@@ -588,16 +590,6 @@ async def _get_precipitation_forecast(lat: float, lon: float) -> Optional[dict]:
 
 @precip_cmd.handle()
 async def handle_precipitation(event, args: Message = CommandArg()):
-    user_id = await get_user_id(event, auto_create=True)
-    is_admin = await is_super_admin(user_id)
-
-    is_private = getattr(event, 'message_type', '') == 'private'
-
-    if is_admin and is_private:
-        target_locations = MY_LOCATIONS
-    else:
-        target_locations = SYSU_CAMPUSES
-
     now = datetime.now()
     cache_hour_key = now.strftime("%Y%m%d%H")
 
@@ -605,7 +597,7 @@ async def handle_precipitation(event, args: Message = CommandArg()):
     all_cached = True
     need_fetch_keys = []
 
-    for loc_name, (lat, lon) in target_locations.items():
+    for loc_name, (lat, lon) in SYSU_CAMPUSES.items():
         cache_key = f"{lat:.4f}_{lon:.4f}"
         cached_data = _PRECIP_CACHE.get(cache_key)
         if cached_data and cached_data[1] == cache_hour_key:
