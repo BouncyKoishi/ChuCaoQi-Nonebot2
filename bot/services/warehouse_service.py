@@ -550,7 +550,11 @@ class WarehouseService:
         unified_user_map = {u.id: u for u in unified_users}
         
         filtered_users = []
+        seen_user_ids = set()
         for user in user_list:
+            if user.user_id in seen_user_ids:
+                continue
+            seen_user_ids.add(user.user_id)
             if str(user.user_id) == 'bot':
                 continue
             if user.vipLevel > level_max:

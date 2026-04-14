@@ -19,16 +19,22 @@ def get_now():
 
 async def createKusaUser(userId):
     """创建生草系统用户"""
-    existUser = await getKusaUser(userId)
-    if not existUser:
+    unifiedUser = await user_db.getUnifiedUser(userId)
+    if not unifiedUser:
+        return
+    
+    kusaBase, created = await KusaBase.get_or_create(
+        user=unifiedUser,
+        defaults={'kusa': 10000, 'lastUseTime': get_now()}
+    )
+    
+    if created:
+        await KusaField.get_or_create(user=unifiedUser)
         from .kusa_item import changeItemAmount
-        unifiedUser = await user_db.getUnifiedUser(userId)
-        await KusaBase.create(user=unifiedUser, kusa=10000, lastUseTime=get_now())
-        await KusaField.create(user=unifiedUser)
         await changeItemAmount(userId, "草地", 1)
     else:
-        existUser.lastUseTime = get_now()
-        await existUser.save()
+        kusaBase.lastUseTime = get_now()
+        await kusaBase.save()
 
 
 async def getNameListByKusaUserId(userIdList):

@@ -137,8 +137,8 @@ export const lotteryApi = {
 }
 
 export const vipApi = {
-  upgrade: () => api.post<{ success: boolean; message: string; newLevel: number; costKusa: number }>('/vip/upgrade'),
-  advancedUpgrade: () => api.post<{ success: boolean; message: string; newLevel: number; costAdvPoint: number }>('/vip/advanced-upgrade')
+  upgrade: () => api.post<{ success: boolean; message: string; newLevel: number; costKusa: number }>('/warehouse/vip/upgrade'),
+  advancedUpgrade: () => api.post<{ success: boolean; message: string; newLevel: number; costAdvPoint: number }>('/warehouse/vip/advanced-upgrade')
 }
 
 export const donateApi = {

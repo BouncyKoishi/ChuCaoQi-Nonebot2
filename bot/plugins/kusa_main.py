@@ -24,7 +24,7 @@ import dbConnection.kusa_item as item_db
 import dbConnection.kusa_field as field_db
 from utils import convertNumStrToInt
 from kusa_base import (
-    plugin_config, send_private_msg, send_group_msg
+    plugin_config, send_private_msg, send_group_msg, get_bot_qq
 )
 from services import WarehouseService
 from multi_platform import (

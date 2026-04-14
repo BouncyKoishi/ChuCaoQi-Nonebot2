@@ -193,6 +193,9 @@ async def handle_confirm_duel(bot: Bot, event: GroupMessageEvent):
         return
 
     message_text = str(event.get_message()).strip().lower()
+    if message_text.startswith('#'):
+        return
+
     if message_text != 'y':
         del_duel_confirmations(user_qq)
         await bot.send(event=event, message="已取消决斗。")

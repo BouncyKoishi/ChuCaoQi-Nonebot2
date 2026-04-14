@@ -207,7 +207,11 @@ async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: boo
     unified_user_map = {u.id: u for u in unified_users}
     
     userAdvKusaDict = {}
+    seen_user_ids = set()
     for user in userList:
+        if user.user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user.user_id)
         if user.vipLevel > levelMax:
             continue
         unified_user = unified_user_map.get(user.user_id)
@@ -223,25 +227,24 @@ async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: boo
         titleKusaAdv = sum(10 ** (i - 4) for i in range(5, user.vipLevel + 1)) if user.vipLevel > 4 else 0
         itemKusaAdv = user_trade_amount.get(user.user_id, 0)
         total = nowKusaAdv + titleKusaAdv + itemKusaAdv
-        userAdvKusaDict[user] = total
+        userAdvKusaDict[user.user_id] = (user, total)
     
-    userAdvKusaDict = sorted(userAdvKusaDict.items(), key=lambda x: x[1], reverse=True)
+    userAdvKusaDict = sorted(userAdvKusaDict.items(), key=lambda x: x[1][1], reverse=True)
     outputStr = "\n"
 
     for i in range(min(len(userAdvKusaDict), 25)):
-        user = userAdvKusaDict[i][0]
+        user = userAdvKusaDict[i][1][0]
         userName = user.name if user.name else str(user.user_id)
-        outputStr += f'{i + 1}. {userName}: {userAdvKusaDict[i][1]}\n'
+        outputStr += f'{i + 1}. {userName}: {userAdvKusaDict[i][1][1]}\n'
     if userId:
-        # 获取个人排名，上一名及草精差距，下一名及草精差距
         userRank, userKusaAdv, prevInfo, nextInfo = -1, 0, None, None
-        for i, (user, kusaAdv) in enumerate(userAdvKusaDict):
+        for i, (uid, (user, kusaAdv)) in enumerate(userAdvKusaDict):
             if user.user_id == userId:
                 userRank, userKusaAdv = i + 1, kusaAdv
                 if i > 0:
-                    prevInfo = (userAdvKusaDict[i - 1][0], userAdvKusaDict[i - 1][1])
+                    prevInfo = (userAdvKusaDict[i - 1][1][0], userAdvKusaDict[i - 1][1][1])
                 if i < len(userAdvKusaDict) - 1:
-                    nextInfo = (userAdvKusaDict[i + 1][0], userAdvKusaDict[i + 1][1])
+                    nextInfo = (userAdvKusaDict[i + 1][1][0], userAdvKusaDict[i + 1][1][1])
                 break
 
         if userRank != -1:

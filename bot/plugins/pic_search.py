@@ -22,7 +22,8 @@ from .reply_commands import reply_command, ReplyCommandResult, store_result, get
 
 proxy = plugin_config.get('web', {}).get('proxy', None)
 saucenaoApiKey = plugin_config.get('web', {}).get('saucenao', {}).get('key', '')
-fontPath = plugin_config.get('basePath', '') + r'\font' if plugin_config.get('basePath') else r'.\font'
+_basePath = plugin_config.get('basePath', '')
+fontPath = os.path.join(_basePath, 'font') if _basePath else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'font')
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 generalHeader = {

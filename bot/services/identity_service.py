@@ -28,20 +28,28 @@ async def get_unified_user_by_id(userId: int) -> Optional[UnifiedUser]:
 
 
 async def create_unified_user_for_onebot(realQQ: str) -> UnifiedUser:
-    unified_user = await user_db.createUnifiedUserForOnebot(realQQ)
-    await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
-    await KusaField.create(user=unified_user)
-    from dbConnection.kusa_item import changeItemAmount
-    await changeItemAmount(unified_user.id, "草地", 1)
+    unified_user, created = await UnifiedUser.get_or_create(realQQ=realQQ)
+    
+    existing_kusa_base = await KusaBase.filter(user_id=unified_user.id).first()
+    if not existing_kusa_base:
+        await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
+        await KusaField.create(user=unified_user)
+        from dbConnection.kusa_item import changeItemAmount
+        await changeItemAmount(unified_user.id, "草地", 1)
+    
     return unified_user
 
 
 async def create_unified_user_for_qqbot(openid: str) -> UnifiedUser:
-    unified_user = await user_db.createUnifiedUserForQQBot(openid)
-    await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
-    await KusaField.create(user=unified_user)
-    from dbConnection.kusa_item import changeItemAmount
-    await changeItemAmount(unified_user.id, "草地", 1)
+    unified_user, created = await UnifiedUser.get_or_create(qqbotOpenid=openid)
+    
+    existing_kusa_base = await KusaBase.filter(user_id=unified_user.id).first()
+    if not existing_kusa_base:
+        await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
+        await KusaField.create(user=unified_user)
+        from dbConnection.kusa_item import changeItemAmount
+        await changeItemAmount(unified_user.id, "草地", 1)
+    
     return unified_user
 
 
