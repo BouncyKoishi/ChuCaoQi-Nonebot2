@@ -127,7 +127,7 @@ const links = [
   { 
     title: '代码仓库', 
     desc: 'GitHub 开源仓库，查看源码和提交 Issue',
-    url: 'https://github.com/BouncyKoishi/ChuCaoQi-Bot',
+    url: 'https://github.com/BouncyKoishi/ChuCaoQi-Nonebot2',
     icon: Connection,
     color: '#333'
   },
