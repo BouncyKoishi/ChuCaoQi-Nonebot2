@@ -5,7 +5,7 @@
 """
 
 import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from .models import UnifiedUser  # GroupMapping 已禁用
 
 
@@ -36,6 +36,20 @@ async def getUnifiedUsersByIds(userIds: List[int]) -> List[UnifiedUser]:
     if not userIds:
         return []
     return await UnifiedUser.filter(id__in=userIds).all()
+
+
+async def getRealQQByUserId(userId: int) -> Optional[str]:
+    """通过用户ID获取真实QQ号"""
+    unified_user = await UnifiedUser.filter(id=userId).first()
+    return unified_user.realQQ if unified_user else None
+
+
+async def getRealQQsByUserIds(userIds: List[int]) -> Dict[int, Optional[str]]:
+    """批量通过用户ID获取真实QQ号"""
+    if not userIds:
+        return {}
+    unified_users = await UnifiedUser.filter(id__in=userIds).all()
+    return {u.id: u.realQQ for u in unified_users}
 
 
 async def getAllRobotUsers() -> List[UnifiedUser]:

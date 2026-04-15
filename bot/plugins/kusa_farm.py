@@ -23,7 +23,7 @@ from nonebot.adapters import Message
 import dbConnection.kusa_system as base_db
 import dbConnection.kusa_field as field_db
 import dbConnection.kusa_item as item_db
-from dbConnection.user import getUnifiedUser
+from dbConnection.user import getUnifiedUser, getRealQQByUserId
 from kusa_base import plugin_config, send_private_msg, send_group_msg
 from utils import intToRomanNum
 from services import FarmService
@@ -745,7 +745,8 @@ async def get_overload_hour(field):
 async def send_report_msg(field, report_type, sad_news_count=0, chain_str=""):
     """发送喜报/悲报"""
     user = await base_db.getKusaUser(field.user_id)
-    user_name = user.name if user and user.name else str(field.user_id)
+    user_qq = await getRealQQByUserId(field.user_id)
+    user_name = user.name if user and user.name else (user_qq or str(field.user_id))
     report_str = ""
     
     if report_type == '悲报':

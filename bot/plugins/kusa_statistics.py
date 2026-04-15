@@ -1,6 +1,7 @@
 import dbConnection.kusa_system as baseDB
 import dbConnection.kusa_item as itemDB
 import dbConnection.kusa_field as fieldDB
+import dbConnection.user as userDB
 from datetime import datetime
 from reloader import kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
@@ -87,13 +88,13 @@ factory_rank_cmd = on_command('FACTORY_RANK', priority=5, block=True)
 @factory_rank_cmd.handle()
 @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_factory_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    factory_list = await itemDB.getStoragesOrderByAmountDesc("生草工厂")
-    
+    rank_list = await itemDB.getItemsByType("工厂")
     output = "工厂数排行榜：\n"
-    for i, info in enumerate(factory_list[:25]):
+    for i, info in enumerate(rank_list):
         user = await baseDB.getKusaUser(info.user_id)
-        user_name = user.name if user.name else str(user.user_id)
-        output += f'{i + 1}. {user_name}: {info.amount}\n'
+        user_qq = await userDB.getRealQQByUserId(info.user_id)
+        user_display = user.name if user.name else (user_qq or str(user.user_id))
+        output += f'{i + 1}. {user_display}: {info.amount}\n'
     
     await send_finish(factory_rank_cmd, output[:-1])
 
@@ -234,8 +235,9 @@ async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: boo
 
     for i in range(min(len(userAdvKusaDict), 25)):
         user = userAdvKusaDict[i][1][0]
-        userName = user.name if user.name else str(user.user_id)
-        outputStr += f'{i + 1}. {userName}: {userAdvKusaDict[i][1][1]}\n'
+        unified_user = unified_user_map.get(user.user_id)
+        user_display = user.name if user.name else (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id))
+        outputStr += f'{i + 1}. {user_display}: {userAdvKusaDict[i][1][1]}\n'
     if userId:
         userRank, userKusaAdv, prevInfo, nextInfo = -1, 0, None, None
         for i, (uid, (user, kusaAdv)) in enumerate(userAdvKusaDict):
@@ -250,11 +252,13 @@ async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: boo
         if userRank != -1:
             outputStr += f"\n您的排名：{userRank}\n"
             if prevInfo:
-                prevName = prevInfo[0].name if prevInfo[0].name else str(prevInfo[0].user_id)
-                outputStr += f"距上一名 {prevName} 还差 {prevInfo[1] - userKusaAdv}草精\n"
+                prev_unified = unified_user_map.get(prevInfo[0].user_id)
+                prev_display = prevInfo[0].name if prevInfo[0].name else (prev_unified.realQQ if prev_unified and prev_unified.realQQ else str(prevInfo[0].user_id))
+                outputStr += f"距上一名 {prev_display} 还差 {prevInfo[1] - userKusaAdv}草精\n"
             if nextInfo:
-                nextName = nextInfo[0].name if nextInfo[0].name else str(nextInfo[0].user_id)
-                outputStr += f"下一名 {nextName} 距您 {userKusaAdv - nextInfo[1]}草精\n"
+                next_unified = unified_user_map.get(nextInfo[0].user_id)
+                next_display = nextInfo[0].name if nextInfo[0].name else (next_unified.realQQ if next_unified and next_unified.realQQ else str(nextInfo[0].user_id))
+                outputStr += f"下一名 {next_display} 距您 {userKusaAdv - nextInfo[1]}草精\n"
         else:
             outputStr += "\n您不在这个排行榜上^ ^\n"
     return outputStr[:-1]
@@ -279,8 +283,9 @@ async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
     if self_mode:
         rank_list = await fieldDB.kusaOnceRanking(userId=userId)
         user = await baseDB.getKusaUser(userId)
-        user_name = user.name if user.name else str(user.user_id)
-        output = f"生草打分榜({user_name})：\n"
+        user_qq = await userDB.getRealQQByUserId(userId)
+        user_display = user.name if user.name else (user_qq or str(user.user_id))
+        output = f"生草打分榜({user_display})：\n"
     else:
         rank_list = await fieldDB.kusaOnceRanking()
         output = "生草打分榜：\n"
@@ -292,8 +297,9 @@ async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
             output += f"{i + 1}. {rank.kusaResult}草({time_str})\n"
         else:
             rank_user = await baseDB.getKusaUser(rank.user_id)
-            user_name = rank_user.name if rank_user.name else str(rank_user.user_id)
-            output += f"{i + 1}. {user_name}：{rank.kusaResult}草({time_str})\n"
+            rank_qq = await userDB.getRealQQByUserId(rank.user_id)
+            user_display = rank_user.name if rank_user.name else (rank_qq or str(rank_user.user_id))
+            output += f"{i + 1}. {user_display}：{rank.kusaResult}草({time_str})\n"
     
     await send_finish(生草打分榜_cmd, output[:-1])
 
@@ -309,8 +315,9 @@ async def handle_草精打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
     if self_mode:
         rank_list = await fieldDB.kusaAdvOnceRanking(userId=userId)
         user = await baseDB.getKusaUser(userId)
-        user_name = user.name if user.name else str(user.user_id)
-        output = f"草精打分榜({user_name})：\n"
+        user_qq = await userDB.getRealQQByUserId(userId)
+        user_display = user.name if user.name else (user_qq or str(user.user_id))
+        output = f"草精打分榜({user_display})：\n"
     else:
         rank_list = await fieldDB.kusaAdvOnceRanking()
         output = "草精打分榜：\n"
@@ -322,8 +329,9 @@ async def handle_草精打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
             output += f"{i + 1}. {rank.advKusaResult}草精({time_str})\n"
         else:
             rank_user = await baseDB.getKusaUser(rank.user_id)
-            user_name = rank_user.name if rank_user.name else str(rank_user.user_id)
-            output += f"{i + 1}. {user_name}：{rank.advKusaResult}草精({time_str})\n"
+            rank_qq = await userDB.getRealQQByUserId(rank.user_id)
+            user_display = rank_user.name if rank_user.name else (rank_qq or str(rank_user.user_id))
+            output += f"{i + 1}. {user_display}：{rank.advKusaResult}草精({time_str})\n"
     
     await send_finish(草精打分榜_cmd, output[:-1])
 

@@ -39,8 +39,11 @@ async def createKusaUser(userId):
 
 async def getNameListByKusaUserId(userIdList):
     """批量获取用户名称列表"""
+    from .user import getRealQQsByUserIds
     users = await KusaBase.filter(user_id__in=userIdList).values('user_id', 'name')
-    return {user['user_id']: (user['name'] if user['name'] else str(user['user_id'])) for user in users}
+    user_ids = [user['user_id'] for user in users]
+    qq_map = await getRealQQsByUserIds(user_ids)
+    return {user['user_id']: (user['name'] if user['name'] else (qq_map.get(user['user_id']) or str(user['user_id']))) for user in users}
 
 
 async def getKusaUser(userId) -> KusaBase:

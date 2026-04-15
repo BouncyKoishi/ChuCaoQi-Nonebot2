@@ -22,6 +22,7 @@ from nonebot.adapters import Message
 import dbConnection.kusa_system as base_db
 import dbConnection.kusa_item as item_db
 import dbConnection.kusa_field as field_db
+import dbConnection.user as user_db
 from utils import convertNumStrToInt
 from kusa_base import (
     plugin_config, send_private_msg, send_group_msg, get_bot_qq
@@ -130,11 +131,13 @@ async def stop_envelope(envelope_id: str):
 
     envelope_info = kusa_envelope_dict.pop(envelope_id)
     user = await base_db.getKusaUser(envelope_info.userId)
-    user_name = user.name if user and user.name else str(envelope_info.userId)
+    user_qq = await user_db.getRealQQByUserId(envelope_info.userId)
+    user_name = user.name if user and user.name else (user_qq or str(envelope_info.userId))
 
     if envelope_info.userLimit == 0:
         max_user = await base_db.getKusaUser(envelope_info.maxUserId)
-        max_user_name = max_user.name if max_user and max_user.name else str(envelope_info.maxUserId)
+        max_user_qq = await user_db.getRealQQByUserId(envelope_info.maxUserId)
+        max_user_name = max_user.name if max_user and max_user.name else (max_user_qq or str(envelope_info.maxUserId))
         d_time = datetime.now() - envelope_info.startTime
         s_total = int(d_time.total_seconds())
         await send_group_msg(
@@ -219,7 +222,8 @@ async def handle_warehouse(
         output += f"Lv{user['vipLevel']} " if user['vipLevel'] else ''
         output += f"{user['title']} " if user['title'] else f"{vip_title_names[user['vipLevel']]} "
         user_name = user['name'] if user['name'] else get_nickname_from_event(event)
-        output += f"{user_name}({user_id})\n"
+        user_qq = await user_db.getRealQQByUserId(user_id)
+        output += f"{user_name}({user_qq or user_id})\n"
         output += await get_warehouse_info_str(result)
         await send_finish(warehouse_cmd, output)
 
@@ -496,7 +500,8 @@ async def handle_transfer_kusa(
         return
 
     nickname = get_nickname_from_event(event)
-    announce = f'{nickname}({user_id})转让了{transfer_kusa}个草给你！'
+    user_qq = await user_db.getRealQQByUserId(user_id)
+    announce = f'{nickname}({user_qq or user_id})转让了{transfer_kusa}个草给你！'
     has_send_private = await send_private_msg(target_user.id, announce) if transfer_kusa >= 10000 else False
     status_msg = '转让成功！' if has_send_private else '转让成功！(未私聊通知被转让者)'
 

@@ -13,6 +13,7 @@ from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 import dbConnection.kusa_system as base_db
 import dbConnection.kusa_item as item_db
 import dbConnection.kusa_field as field_db
+import dbConnection.user as user_db
 from kusa_base import send_log, is_super_admin, plugin_config, send_group_msg
 from services import IndustrialService
 from . import scheduler
@@ -44,7 +45,8 @@ async def handle_daily_output(event: Union[OneBotV11MessageEvent, QQMessageEvent
     """处理每日产量命令"""
     user_id = await get_user_id(event, auto_create=True)
     user = await base_db.getKusaUser(user_id)
-    user_name = user.name if user.name else str(user.user_id)
+    user_qq = await user_db.getRealQQByUserId(user_id)
+    user_name = user.name if user.name else (user_qq or str(user.user_id))
 
     # 使用 Service 层计算每日产量
     production = await IndustrialService.calculate_daily_production(userId=user_id)

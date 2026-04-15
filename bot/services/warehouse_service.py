@@ -354,7 +354,7 @@ class WarehouseService:
                 'rank': i + 1,
                 'qq': unified_user.realQQ if unified_user else None,
                 'userId': user.user_id,
-                'name': user.name or str(user.user_id),
+                'name': user.name or (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id)),
                 'kusa': user.kusa
             })
         return result
@@ -446,7 +446,7 @@ class WarehouseService:
                 'rank': i + 1,
                 'qq': unified_user.realQQ if unified_user else None,
                 'userId': user.user_id,
-                'name': user.name or str(user.user_id),
+                'name': user.name or (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id)),
                 'kusa': user.kusa,
                 'advKusa': user.advKusa
             })
@@ -589,7 +589,7 @@ class WarehouseService:
             user_total_adv.append({
                 'userId': user.user_id,
                 'qq': real_qq,
-                'name': user.name or str(user.user_id),
+                'name': user.name or (real_qq if real_qq else str(user.user_id)),
                 'vipLevel': user.vipLevel,
                 'totalAdvKusa': total_adv,
                 'nowAdvKusa': now_adv,
