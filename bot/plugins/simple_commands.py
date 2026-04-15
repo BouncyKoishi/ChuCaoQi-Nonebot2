@@ -104,7 +104,7 @@ def sleepTimeCalculation(base, summa, size):
     x = np.random.uniform(size=size)
     y = np.random.uniform(size=size)
     z = np.sqrt(-2 * np.log(x)) * np.cos(2 * np.pi * y)
-    dur_time_min = base + float(z) * summa
+    dur_time_min = base + float(z[0]) * summa
     return int(dur_time_min * 60)
 
 

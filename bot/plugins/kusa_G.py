@@ -196,7 +196,7 @@ async def handle_trade_record(event: Union[OneBotV11MessageEvent, QQMessageEvent
         return
     
     if records_result['total_pages'] > 1:
-        set_pagination_state(user_id, 'trade_record', {
+        set_pagination_state(str(user_id), 'trade_record', {
             'user_id': user_id,
             'current_page': 1,
             'total_pages': records_result['total_pages'],

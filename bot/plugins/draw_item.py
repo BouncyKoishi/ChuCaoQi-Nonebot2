@@ -147,37 +147,37 @@ async def _getItem(groupNum, userId, strippedArg):
 
 @添加_easy_cmd.handle()
 async def handle_add_easy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 0)
+    await _addItem(event, args, 0, 添加_easy_cmd)
 
 
 添加_normal_cmd = on_command('添加-Normal', aliases={'物品添加-Normal'}, priority=5, block=True)
 
 @添加_normal_cmd.handle()
 async def handle_add_normal(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 1)
+    await _addItem(event, args, 1, 添加_normal_cmd)
 
 
 添加_hard_cmd = on_command('添加-Hard', aliases={'物品添加-Hard'}, priority=5, block=True)
 
 @添加_hard_cmd.handle()
 async def handle_add_hard(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 2)
+    await _addItem(event, args, 2, 添加_hard_cmd)
 
 
 添加_lunatic_cmd = on_command('添加-Lunatic', aliases={'物品添加-Lunatic'}, priority=5, block=True)
 
 @添加_lunatic_cmd.handle()
 async def handle_add_lunatic(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 3)
+    await _addItem(event, args, 3, 添加_lunatic_cmd)
 
 
-async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, rare):
+async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, rare, matcher):
     """添加物品（内部辅助函数）"""
     stripped_arg = args.extract_plain_text().strip()
     userId = await get_user_id(event, auto_create=True)
     itemName, itemDetail = nameDetailSplit(stripped_arg)
     if not itemName:
-        await send_private_msg(userId, '需要物品名!')
+        await send_finish(matcher, '需要物品名!')
         return
     if '祝福' in itemName:
         return
@@ -185,14 +185,14 @@ async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Me
     itemName = itemName.strip()
     itemName = itemName.replace('\n', '')
     if len(itemName) > 32:
-        await send_private_msg(userId, '物品名太长啦!最多32字')
+        await send_finish(matcher, '物品名太长啦!最多32字')
         return
     if itemDetail and len(itemDetail) > 1024:
-        await send_private_msg(userId, '物品简介太长啦!最多1024字')
+        await send_finish(matcher, '物品简介太长啦!最多1024字')
         return
     for word in sensitiveWords:
         if word in itemName or (itemDetail and word in itemDetail):
-            await send_private_msg(userId, '物品名或简介中包含敏感词汇^_^')
+            await send_finish(matcher, '物品名或简介中包含敏感词汇^_^')
             return
     
     realQQ = await get_real_qq_by_event(event)
@@ -210,18 +210,18 @@ async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Me
     if result['success']:
         output = "添加成功！"
         output += "注意：你添加的物品没有简介。" if not itemDetail else ""
-        await send_private_msg(userId, output)
+        await send_finish(matcher, output)
     else:
         if result['error'] == 'EXIST':
-            await send_private_msg(userId, '此物品名已经存在!')
+            await send_finish(matcher, '此物品名已经存在!')
         elif result['error'] == 'INSUFFICIENT_KUSA':
-            await send_private_msg(userId, '你不够草^_^')
+            await send_finish(matcher, '你不够草^_^')
         elif result['error'] == 'MODERATION_FAILED':
-            await send_private_msg(userId, '内容审核未通过，请修改后重试')
+            await send_finish(matcher, '内容审核未通过，请修改后重试')
         elif result['error'] == 'MODERATION_API_ERROR':
-            await send_private_msg(userId, '内容审核功能异常，暂时无法新增物品')
+            await send_finish(matcher, '内容审核功能异常，暂时无法新增物品')
         else:
-            await send_private_msg(userId, f'添加失败：{result.get("message", "未知错误")}')
+            await send_finish(matcher, f'添加失败：{result.get("message", "未知错误")}')
 
 
 物品仓库_cmd = on_command('物品仓库', priority=5, block=True)
@@ -258,7 +258,7 @@ async def handle_物品仓库(event: Union[OneBotV11MessageEvent, QQMessageEvent
             totalPages = (len(ownItem) + pageSize - 1) // pageSize
             
             if len(ownItem) > pageSize:
-                set_pagination_state(userId, 'warehouse', {
+                set_pagination_state(str(userId), 'warehouse', {
                     'level': level,
                     'poolName': poolName,
                     'items': [{'name': item.name, 'amount': item.storage[0].amount} for item in ownItem],
@@ -292,7 +292,7 @@ async def handle_物品详情(event: Union[OneBotV11MessageEvent, QQMessageEvent
         return
     item = await drawItemDB.getItemByName(stripped_arg)
     if not item:
-        await _itemSearch(event, args)
+        await _itemSearch(event, args, 物品详情_cmd)
         return
     itemStorage = await drawItemDB.getSingleItemStorage(userId, item.id)
 
@@ -313,28 +313,28 @@ async def handle_物品详情(event: Union[OneBotV11MessageEvent, QQMessageEvent
 
 @物品搜索_cmd.handle()
 async def handle_物品搜索(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _itemSearch(event, args)
+    await _itemSearch(event, args, 物品搜索_cmd)
 
 
-async def _itemSearch(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message):
+async def _itemSearch(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, matcher):
     """搜索物品（内部辅助函数）"""
     userId = await get_user_id(event, auto_create=True)
     strippedArg = args.extract_plain_text().strip()
     if not strippedArg:
-        await send_private_msg(userId, '没有搜索关键词呢^ ^')
+        await send_finish(matcher, '没有搜索关键词呢^ ^')
         return
     
     pageSize = 12
     result = await LotteryService.search_item(keyword=strippedArg, page_size=pageSize)
     
     if result['count'] == 0:
-        await send_private_msg(userId, '没有找到该物品^ ^（如果需要查看生草系统道具信息，请使用!查询）')
+        await send_finish(matcher, '没有找到该物品^ ^（如果需要查看生草系统道具信息，请使用!查询）')
         return
     
     totalPages = (result['count'] + pageSize - 1) // pageSize
     
     if result['count'] > pageSize:
-        set_pagination_state(userId, 'search', {
+        set_pagination_state(str(userId), 'search', {
             'keyword': strippedArg,
             'current_page': 1,
             'total_pages': totalPages,
@@ -349,7 +349,7 @@ async def _itemSearch(event: Union[OneBotV11MessageEvent, QQMessageEvent], args:
     else:
         output += f'\n(共{result["count"]}件物品)'
     
-    await send_private_msg(userId, output)
+    await send_finish(matcher, output)
 
 
 # 注册物品仓库翻页处理器

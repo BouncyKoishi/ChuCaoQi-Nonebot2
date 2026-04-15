@@ -115,10 +115,10 @@ def get_group_id(event: Event) -> Optional[str]:
 def is_group_message(event: Event) -> bool:
     """判断是否为群聊消息"""
     if is_onebot_v11_event(event):
-        # OneBot V11 检查是否有 group_id
+        if hasattr(event, 'message_type') and getattr(event, 'message_type') == 'private':
+            return False
         return hasattr(event, 'group_id') and getattr(event, 'group_id') is not None
     elif is_qq_event(event):
-        # QQ 官方 Bot
         if QQ_AVAILABLE:
             if GroupAtMessageCreateEvent and isinstance(event, GroupAtMessageCreateEvent):
                 return True
