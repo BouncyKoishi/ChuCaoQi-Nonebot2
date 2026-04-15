@@ -3,16 +3,20 @@ import os
 import glob
 import random
 import pytz
+import shutil
 from datetime import datetime
 from urllib.request import urlretrieve
 from typing import Optional
 
-from nonebot import on_command, get_bot
+from nonebot import on_command, get_bot, logger
 from nonebot.adapters import Bot, Event
-from nonebot.params import CommandArg
+from nonebot.params import CommandArg, Arg, ArgPlainText
 from nonebot.adapters import Message
 from nonebot_plugin_apscheduler import scheduler
 from nonebot.adapters.onebot.v11 import MessageSegment as ms
+from nonebot.exception import FinishedException
+from nonebot.typing import T_State
+from nonebot.matcher import Matcher
 
 from kusa_base import plugin_config, is_super_admin
 from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event, build_at_message
@@ -46,7 +50,7 @@ for value in archiveInfo.values():
 
 def getExamineFiles():
     if os.path.exists(EXAMINE_PATH):
-        return glob.glob(os.path.join(EXAMINE_PATH, '*.*'))
+        return glob.glob(os.path.join(EXAMINE_PATH, '*'))
     return []
 
 
@@ -110,7 +114,7 @@ async def handle_rollpurelj(bot: Bot, event: Event):
         await send_finish(rollpurelj_cmd, result)
 
 
-rollxhb_cmd = on_command('rollxhb', priority=5, block=True)
+rollxhb_cmd = on_command('rollxhb', priority=5, block=True, aliases={"rollzh5"})
 
 
 @rollxhb_cmd.handle()
@@ -194,21 +198,14 @@ commitpic_cmd = on_command("commitpic", aliases={'commitlj', 'commitpurelj', 'co
 
 
 @commitpic_cmd.handle()
-async def handle_commitpic(bot: Bot, event: Event, args: Message = CommandArg()):
+async def handle_commitpic(event: Event, args: Message = CommandArg()):
     if not is_onebot_v11_event(event):
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
     
-    user_id = event.user_id
-    await send_reply(commitpic_cmd, await build_at_message(event, user_id, '请上传图片'))
-    
-    stripped_arg = args.extract_plain_text().strip()
-    if stripped_arg:
-        imgUrls = extractImgUrls(stripped_arg)
-        if not imgUrls:
-            await send_finish(commitpic_cmd, "非图片，取消本次上传")
-            return
-        
+    imgUrls = extractImgUrls(args)
+    if imgUrls:
+        user_id = event.user_id
         os.makedirs(EXAMINE_PATH, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         for i, url in enumerate(imgUrls):
@@ -221,11 +218,42 @@ async def handle_commitpic(bot: Bot, event: Event, args: Message = CommandArg())
         await send_finish(commitpic_cmd, '上传成功，等待加入图库')
 
 
+@commitpic_cmd.got("image", prompt="请上传图片")
+async def handle_commitpic_got(event: Event, image: Message = Arg()):
+    """接收用户发送的图片"""
+    try:
+        user_id = event.user_id
+        
+        imgUrls = extractImgUrls(image)
+        
+        if not imgUrls:
+            await send_finish(commitpic_cmd, "非图片，取消本次上传")
+            return
+        
+        os.makedirs(EXAMINE_PATH, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        for i, url in enumerate(imgUrls):
+            safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}")
+            newFilename = f'{user_id}-{timestamp}-{safeFilename}'
+            try:
+                urlretrieve(url, os.path.join(EXAMINE_PATH, newFilename))
+            except Exception as e:
+                logger.error(f'下载图片失败: {e}')
+        await send_finish(commitpic_cmd, '上传成功，等待加入图库')
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.error(f'handle_commitpic_got error: {e}')
+        import traceback
+        traceback.print_exc()
+
+
+
 examinepic_cmd = on_command("examinepic", priority=5, block=True)
 
 
 @examinepic_cmd.handle()
-async def handle_examinepic(bot: Bot, event: Event):
+async def handle_examinepic(event: Event, state: T_State):
     user_id = await get_user_id(event)
     
     if not await is_super_admin(user_id):
@@ -237,34 +265,98 @@ async def handle_examinepic(bot: Bot, event: Event):
         return
     
     examineFiles = getExamineFiles()
+    if not examineFiles:
+        await send_finish(examinepic_cmd, '没有待审核图片')
+        return
+    
+    state["examineFiles"] = examineFiles
+    state["index"] = 0
+    state["archive_keys"] = list(archiveInfo.keys())
+    
     await send_reply(examinepic_cmd, f'开始审核，共有 {len(examineFiles)} 张待审核图片')
+    
+    await _send_current_pic(state)
 
-    archiveMenu = "请进行图库分类：\n"
-    archive_keys = list(archiveInfo.keys())
-    for i, key in enumerate(archive_keys, 1):
-        archiveMenu += f"{i}. {archiveInfo[key]['displayName']}\n"
-    archiveMenu += "0. 跳过此图片\n"
-    archiveMenu += "d. 删除此图片\n"
-    archiveMenu += "s. 移动到保存目录\n"
-    archiveMenu += "q. 退出审核"
 
-    index = 0
-    while index < len(examineFiles):
-        currentFile = examineFiles[index]
+async def _send_current_pic(state: T_State):
+    """发送当前待审核的图片和提示"""
+    examineFiles = state["examineFiles"]
+    index = state["index"]
+    archive_keys = state["archive_keys"]
+    
+    if index >= len(examineFiles):
+        remainingCount = len(getExamineFiles())
+        await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
+        return
+    
+    await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
+    fileName = os.path.basename(examineFiles[index])
+    archiveMenu = _build_archive_menu(archive_keys)
+    await examinepic_cmd.pause(f'文件名: {fileName}\n{archiveMenu}\n请输入选择')
 
-        await send_reply(examinepic_cmd, imgLocalPathToBase64(currentFile))
 
-        try:
-            fileName = os.path.basename(currentFile)
-            prompt = f'文件名: {fileName}\n{archiveMenu}\n请输入选择'
-            
-            await send_reply(examinepic_cmd, prompt)
+@examinepic_cmd.handle()
+async def handle_examinepic_receive(event: Event, state: T_State):
+    """处理用户输入"""
+    try:
+        examineFiles = state["examineFiles"]
+        index = state["index"]
+        archive_keys = state["archive_keys"]
+        
+        if index >= len(examineFiles):
+            remainingCount = len(getExamineFiles())
+            await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
             return
+        
+        currentFile = examineFiles[index]
+        
+        message = event.get_message()
+        choice = message.extract_plain_text().strip().lower()
+        
+        if choice == 'q':
+            remainingCount = len(getExamineFiles())
+            await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
+            return
+        
+        if choice == 'd':
+            os.remove(currentFile)
+            logger.info(f'已删除图片: {currentFile}')
+        elif choice == 's':
+            os.makedirs(SAVE_PATH, exist_ok=True)
+            fileName = os.path.basename(currentFile)
+            shutil.move(currentFile, os.path.join(SAVE_PATH, fileName))
+            logger.info(f'已保存图片: {fileName}')
+        elif choice == '0':
+            pass
+        elif choice.isdigit():
+            archiveIndex = int(choice) - 1
+            if 0 <= archiveIndex < len(archive_keys):
+                archiveKey = archive_keys[archiveIndex]
+                targetPath = archiveInfo[archiveKey]['onlinePath']
+                os.makedirs(targetPath, exist_ok=True)
+                fileName = os.path.basename(currentFile)
+                shutil.move(currentFile, os.path.join(targetPath, fileName))
+                logger.info(f'已分类到 {archiveInfo[archiveKey]["displayName"]}: {fileName}')
+        else:
+            await examinepic_cmd.reject("无效选择，请重新输入")
+        
+        state["index"] = index + 1
+        await _send_current_pic(state)
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.error(f'examinepic error: {e}')
+        import traceback
+        traceback.print_exc()
+        await send_finish(examinepic_cmd, f'处理出错: {e}')
 
-        except Exception as e:
-            await send_reply(examinepic_cmd, f'处理时出现错误: {e}')
-            index += 1
-            continue
 
-    remainingCount = len(getExamineFiles())
-    await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
+def _build_archive_menu(archive_keys):
+    menu = "请进行图库分类：\n"
+    for i, key in enumerate(archive_keys, 1):
+        menu += f"{i}. {archiveInfo[key]['displayName']}\n"
+    menu += "0. 跳过此图片\n"
+    menu += "d. 删除此图片\n"
+    menu += "s. 移动到保存目录\n"
+    menu += "q. 退出审核"
+    return menu

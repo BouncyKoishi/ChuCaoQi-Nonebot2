@@ -51,3 +51,4 @@ bot/database/
 bot/plugins/hidden.py
 bot/scripts/
 bot/font/
+bot/picArchive/
