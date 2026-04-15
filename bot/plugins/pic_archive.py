@@ -14,7 +14,7 @@ from nonebot.params import CommandArg, Arg, ArgPlainText
 from nonebot.adapters import Message
 from nonebot_plugin_apscheduler import scheduler
 from nonebot.adapters.onebot.v11 import MessageSegment as ms
-from nonebot.exception import FinishedException
+from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.typing import T_State
 from nonebot.matcher import Matcher
 
@@ -240,7 +240,7 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
             except Exception as e:
                 logger.error(f'下载图片失败: {e}')
         await send_finish(commitpic_cmd, '上传成功，等待加入图库')
-    except FinishedException:
+    except (FinishedException, PausedException, RejectedException):
         raise
     except Exception as e:
         logger.error(f'handle_commitpic_got error: {e}')
@@ -254,50 +254,29 @@ examinepic_cmd = on_command("examinepic", priority=5, block=True)
 
 @examinepic_cmd.handle()
 async def handle_examinepic(event: Event, state: T_State):
-    user_id = await get_user_id(event)
+    if "examine_init" not in state:
+        user_id = await get_user_id(event)
+        
+        if not await is_super_admin(user_id):
+            await send_finish(examinepic_cmd, '该账号没有对应权限')
+            return
+        
+        if not is_onebot_v11_event(event):
+            await send_finish(examinepic_cmd, "该功能目前仅支持OneBot平台")
+            return
+        
+        examineFiles = getExamineFiles()
+        if not examineFiles:
+            await send_finish(examinepic_cmd, '没有待审核图片')
+            return
+        
+        state["examineFiles"] = examineFiles
+        state["index"] = 0
+        state["archive_keys"] = list(archiveInfo.keys())
+        state["examine_init"] = True
+        
+        await send_reply(examinepic_cmd, f'开始审核，共有 {len(examineFiles)} 张待审核图片')
     
-    if not await is_super_admin(user_id):
-        await send_finish(examinepic_cmd, '该账号没有对应权限')
-        return
-    
-    if not is_onebot_v11_event(event):
-        await send_finish(examinepic_cmd, "该功能目前仅支持OneBot平台")
-        return
-    
-    examineFiles = getExamineFiles()
-    if not examineFiles:
-        await send_finish(examinepic_cmd, '没有待审核图片')
-        return
-    
-    state["examineFiles"] = examineFiles
-    state["index"] = 0
-    state["archive_keys"] = list(archiveInfo.keys())
-    
-    await send_reply(examinepic_cmd, f'开始审核，共有 {len(examineFiles)} 张待审核图片')
-    
-    await _send_current_pic(state)
-
-
-async def _send_current_pic(state: T_State):
-    """发送当前待审核的图片和提示"""
-    examineFiles = state["examineFiles"]
-    index = state["index"]
-    archive_keys = state["archive_keys"]
-    
-    if index >= len(examineFiles):
-        remainingCount = len(getExamineFiles())
-        await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
-        return
-    
-    await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
-    fileName = os.path.basename(examineFiles[index])
-    archiveMenu = _build_archive_menu(archive_keys)
-    await examinepic_cmd.pause(f'文件名: {fileName}\n{archiveMenu}\n请输入选择')
-
-
-@examinepic_cmd.handle()
-async def handle_examinepic_receive(event: Event, state: T_State):
-    """处理用户输入"""
     try:
         examineFiles = state["examineFiles"]
         index = state["index"]
@@ -310,39 +289,52 @@ async def handle_examinepic_receive(event: Event, state: T_State):
         
         currentFile = examineFiles[index]
         
-        message = event.get_message()
-        choice = message.extract_plain_text().strip().lower()
+        if "examine_init" in state and state.get("_processed"):
+            message = event.get_message()
+            choice = message.extract_plain_text().strip().lower()
+            
+            if choice == 'q':
+                remainingCount = len(getExamineFiles())
+                await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
+                return
+            
+            if choice == 'd':
+                os.remove(currentFile)
+                logger.info(f'已删除图片: {currentFile}')
+            elif choice == 's':
+                os.makedirs(SAVE_PATH, exist_ok=True)
+                fileName = os.path.basename(currentFile)
+                shutil.move(currentFile, os.path.join(SAVE_PATH, fileName))
+                logger.info(f'已保存图片: {fileName}')
+            elif choice == '0':
+                pass
+            elif choice.isdigit():
+                archiveIndex = int(choice) - 1
+                if 0 <= archiveIndex < len(archive_keys):
+                    archiveKey = archive_keys[archiveIndex]
+                    targetPath = archiveInfo[archiveKey]['onlinePath']
+                    os.makedirs(targetPath, exist_ok=True)
+                    fileName = os.path.basename(currentFile)
+                    shutil.move(currentFile, os.path.join(targetPath, fileName))
+                    logger.info(f'已分类到 {archiveInfo[archiveKey]["displayName"]}: {fileName}')
+            else:
+                await examinepic_cmd.reject("无效选择，请重新输入")
+            
+            state["index"] = index + 1
+            index = state["index"]
         
-        if choice == 'q':
+        state["_processed"] = True
+        
+        if index >= len(examineFiles):
             remainingCount = len(getExamineFiles())
             await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
             return
         
-        if choice == 'd':
-            os.remove(currentFile)
-            logger.info(f'已删除图片: {currentFile}')
-        elif choice == 's':
-            os.makedirs(SAVE_PATH, exist_ok=True)
-            fileName = os.path.basename(currentFile)
-            shutil.move(currentFile, os.path.join(SAVE_PATH, fileName))
-            logger.info(f'已保存图片: {fileName}')
-        elif choice == '0':
-            pass
-        elif choice.isdigit():
-            archiveIndex = int(choice) - 1
-            if 0 <= archiveIndex < len(archive_keys):
-                archiveKey = archive_keys[archiveIndex]
-                targetPath = archiveInfo[archiveKey]['onlinePath']
-                os.makedirs(targetPath, exist_ok=True)
-                fileName = os.path.basename(currentFile)
-                shutil.move(currentFile, os.path.join(targetPath, fileName))
-                logger.info(f'已分类到 {archiveInfo[archiveKey]["displayName"]}: {fileName}')
-        else:
-            await examinepic_cmd.reject("无效选择，请重新输入")
-        
-        state["index"] = index + 1
-        await _send_current_pic(state)
-    except FinishedException:
+        await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
+        fileName = os.path.basename(examineFiles[index])
+        archiveMenu = _build_archive_menu(archive_keys)
+        await examinepic_cmd.reject(f'文件名: {fileName}\n{archiveMenu}\n请输入选择')
+    except (FinishedException, PausedException, RejectedException):
         raise
     except Exception as e:
         logger.error(f'examinepic error: {e}')
