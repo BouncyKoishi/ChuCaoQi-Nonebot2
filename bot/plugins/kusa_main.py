@@ -13,7 +13,7 @@ from typing import Dict, Union
 from datetime import datetime
 
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent
 from nonebot.adapters.onebot.v11 import MessageSegment as OneBotMS
 from nonebot.params import CommandArg
@@ -398,6 +398,7 @@ kusa_ban_cmd = on_command("口球", priority=5, block=True)
 
 @kusa_ban_cmd.handle()
 async def handle_kusa_ban(
+    bot: OneBotV11Bot,
     event: Union[OneBotV11MessageEvent, QQMessageEvent],
     args: Message = CommandArg()
 ):
@@ -407,7 +408,11 @@ async def handle_kusa_ban(
         return
 
     group_id = event.group_id
-    user_id = event.user_id
+    user_id = await get_user_id(event, auto_create=False)
+
+    if not user_id:
+        await send_finish(kusa_ban_cmd, '获取用户信息失败')
+        return
 
     status_msg = '已经送出^ ^'
     stripped_arg = args.extract_plain_text().strip()
@@ -420,18 +425,18 @@ async def handle_kusa_ban(
 
         if seconds > 0:
             user = await base_db.getKusaUser(user_id)
+            if not user:
+                await send_finish(kusa_ban_cmd, '用户信息不存在')
+                return
+            
             cost_kusa = seconds
             if user.kusa >= cost_kusa:
-                from nonebot import get_bot
-                bot = get_bot()
                 await bot.set_group_ban(group_id=group_id, user_id=receiver_qq, duration=seconds)
                 await base_db.changeKusa(user_id, -cost_kusa)
                 await base_db.changeKusa(await get_bot_qq(), cost_kusa)
             else:
                 status_msg = '你不够草^ ^'
         else:
-            from nonebot import get_bot
-            bot = get_bot()
             await bot.set_group_ban(group_id=group_id, user_id=receiver_qq, duration=seconds)
             status_msg = '已解除相关人员的口球(如果有的话)'
     else:
