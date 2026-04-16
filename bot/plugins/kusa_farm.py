@@ -117,9 +117,23 @@ def format_plant_result(data: dict, prefix: str = "开始") -> str:
     grow_time = data['growTimeMinutes']
     predict_time = datetime.fromisoformat(data['predictFinishTime'])
     
-    output_str = f"{prefix}生{kusa_type}。\n"
-    output_str += f'剩余时间：{grow_time}min\n'
-    output_str += f'预计生草完成时间：{predict_time.hour:02d}:{predict_time.minute:02d}\n'
+    output_str = f"{prefix}生{kusa_type}。"
+    
+    magic_immediate = data.get('magicImmediate', False)
+    magic_quick = data.get('magicQuick', False)
+    spiritless_immediate = data.get('spiritlessImmediate', False)
+    
+    if magic_immediate:
+        output_str += '\n时光魔法吟唱中……\n(ﾉ≧∀≦)ﾉ ‥…━━━★\n'
+    elif spiritless_immediate:
+        output_str += '\n不灵草速生模块生效中，你的不灵草将在一分钟内长成！\n'
+    elif magic_quick:
+        output_str += f'\n剩余时间：{grow_time}min(-77.7%)\n'
+    else:
+        output_str += f'\n剩余时间：{grow_time}min\n'
+    
+    if not magic_immediate and not spiritless_immediate:
+        output_str += f'预计生草完成时间：{predict_time.hour:02d}:{predict_time.minute:02d}\n'
     
     if data.get('isPrescient'):
         output_str += f"预知：生草量为{data.get('kusaResult')}"

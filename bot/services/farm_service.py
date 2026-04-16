@@ -307,6 +307,28 @@ class FarmService:
         grow_time = math.ceil(grow_time * KUSA_TYPE_TIME_MULTIPLIER_MAP.get(actual_type, 1))
         grow_time = random.randint(1, 5) if actual_type == "速速草" else grow_time
         
+        magic_immediate = False
+        magic_quick = False
+        spiritless_immediate = False
+        
+        kusa_speed_magic = await itemDB.getItemAmount(userId, '奈奈的时光魔法')
+        if kusa_speed_magic:
+            nana_title = await itemDB.getItemAmount(userId, '祝福之色赠予结缘之人')
+            immediate_percent = 0.07 if nana_title else 0.007
+            magic_immediate = random.random() < immediate_percent
+            magic_quick = not magic_immediate and random.random() < 0.07
+            
+            if magic_immediate:
+                grow_time = 0
+                await itemDB.updateTimeLimitedItem(userId, '时光胶囊标记', 60)
+            elif magic_quick:
+                grow_time = math.ceil(grow_time * (1 - 0.777))
+        
+        spiritless_immediate_plugin = await itemDB.getItemAmount(userId, '不灵草速生模块')
+        if spiritless_immediate_plugin and actual_type == "不灵草" and random.random() < 0.5:
+            spiritless_immediate = True
+            grow_time = 0
+        
         plant_costing = PLANT_COSTING_MAP.get(actual_type, 1)
         
         junior_prescient = await itemDB.getItemStorageInfo(userId, '初级生草预知')
@@ -358,7 +380,10 @@ class FarmService:
                 'isUsingKela': is_using_kela,
                 'biogasEffect': bio_gas_effect,
                 'overload': overload,
-                'autoAssigned': auto_assigned
+                'autoAssigned': auto_assigned,
+                'magicImmediate': magic_immediate,
+                'magicQuick': magic_quick,
+                'spiritlessImmediate': spiritless_immediate
             }
         }
     
