@@ -460,8 +460,15 @@ if scheduler:
                          f"{summary_result['min_user_name']}在G市盈利{summary_result['min_profit']:,}草\n")
             
             output_str += '\n上周期各G的收盘价为：\n'
+            area_value_key_map = {
+                '东': 'east_value',
+                '南': 'south_value', 
+                '北': 'north_value',
+                '珠': 'zhuhai_value',
+                '深': 'shenzhen_value'
+            }
             for area in ['东', '南', '北', '珠', '深']:
-                end_value = summary_result['end_values'][f'{area}_value']
+                end_value = summary_result['end_values'][area_value_key_map[area]]
                 start_value = GMarketService.START_VALUE_MAP[area]
                 campus_name = GMarketService.AREA_MAP[area][0].replace('G(', '').replace(')', '')
                 output_str += GMarketService.format_g_value(end_value, start_value, area.replace('珠', '珠海').replace('深', '深圳'))
