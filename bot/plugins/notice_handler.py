@@ -2,31 +2,29 @@ import nonebot
 from nonebot import on_request, get_bot, on_notice
 from nonebot.adapters.onebot.v11 import (
     FriendRequestEvent, GroupRequestEvent,
-    LifecycleMetaEvent
+    LifecycleMetaEvent, Bot
 )
-from kusa_base import config, send_log, is_super_admin, append_friend_list
+from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
 
 friendHandleTimestamp = 0
 
 
-# 处理加群请求
 group_add_request = on_request(priority=5, block=True)
 
 @group_add_request.handle()
-async def handle_group_request(event: GroupRequestEvent):
+async def handle_group_request(bot: Bot, event: GroupRequestEvent):
     groupNum = event.group_id
-    availableList = config['group']['adminAuthGroup']
+    availableList = plugin_config['group']['adminAuthGroup']
     if groupNum not in availableList:
         return
 
     adder_qq = event.user_id
-    bot = get_bot()
-    st = f"{adder_qq}申请进群。加群备注为：\n" + event.comment
+    st = f"{adder_qq}申请进群。加群备注为：" + event.comment
     await bot.send_group_msg(group_id=groupNum, message=st)
     await send_log(f'群聊{groupNum}:' + st)
 
     # 目前只对SYSU主群开启自动入群管理，其它群聊仅提示
-    isSysu = groupNum == config['group']['sysu']
+    isSysu = groupNum == plugin_config['group']['sysu']
     if not isSysu:
         return
 
