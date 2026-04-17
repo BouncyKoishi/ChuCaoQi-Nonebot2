@@ -95,8 +95,8 @@ def get_platform_user_id(event: Event) -> Optional[str]:
 def get_group_id(event: Event) -> Optional[str]:
     """获取群ID（统一格式）"""
     if is_onebot_v11_event(event):
-        # OneBot V11 使用 group_id
-        return str(getattr(event, 'group_id', None))
+        group_id = getattr(event, 'group_id', None)
+        return str(group_id) if group_id is not None else None
     elif is_qq_event(event):
         # QQ 官方 Bot
         # GroupAtMessageCreateEvent 使用 group_openid 或 group_id
