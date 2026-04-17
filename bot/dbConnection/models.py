@@ -29,7 +29,7 @@ class UnifiedUser(Model):
 
 class KusaBase(Model):
     id = IntField(pk=True)
-    user = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="kusa_bases", null=True, source_field="userId")
+    user = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="kusa_bases", null=True, source_field="userId", unique=True)
     name = CharField(max_length=32, null=True)
     title = CharField(max_length=32, null=True)
     kusa = IntField(default=0)
@@ -43,7 +43,7 @@ class KusaBase(Model):
 
 class KusaField(Model):
     id = IntField(pk=True)
-    user = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="kusa_fields", null=True, source_field="userId")
+    user = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="kusa_fields", null=True, source_field="userId", unique=True)
     kusaFinishTs = IntField(default=None, null=True)
     isUsingKela = BooleanField(default=False)
     isPrescient = BooleanField(default=False)
@@ -105,6 +105,9 @@ class KusaItemStorage(Model):
     amount = IntField()
     allowUse = BooleanField(default=True)
     timeLimitTs = IntField(null=True)
+
+    class Meta:
+        unique_together = (("user", "item"),)
 
 
 class GValue(Model):
