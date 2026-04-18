@@ -23,38 +23,36 @@ class LotteryService:
     RARE_DESCRIBE = ['Easy', 'Normal', 'Hard', 'Lunatic']
     
     @staticmethod
-    async def draw_with_redraw(userId: int, pool_name: Optional[str] = None, max_redraw: int = 50) -> Dict[str, Any]:
+    async def draw_with_redraw(userId: int, pool_name: Optional[str] = None, ban_risk: float = 0) -> Dict[str, Any]:
         """
         抽奖（支持重抽逻辑）
         
         Args:
             userId: 用户ID
             pool_name: 奖池名称
-            max_redraw: 最大重抽次数（默认50次，受骰子碎片数量限制）
+            ban_risk: 禁言概率（0表示不检查禁言）
             
         Returns:
-            {'banned': False, 'item': {...}, 'isNew': True/False, 'redrawCount': 重抽次数}
-            或
-            {'banned': True, 'disabledSeconds': 禁言秒数}
+            如果被禁言: {'banned': True, 'disabledSeconds': 禁言秒数}
+            如果正常抽奖: {'banned': False, 'item': {...}, 'isNew': True/False, 'redrawCount': 重抽次数}
         """
-        ban_risk = 0.5
-        ban_shield_info = await itemDB.getItemStorageInfo(userId, '量子护盾')
-        if ban_shield_info and ban_shield_info.allowUse and ban_shield_info.amount > 0:
-            await itemDB.changeItemAmount(userId, '量子护盾', -1)
-            ban_risk = 0.05
-        
-        import random
-        if random.random() < ban_risk:
+        if ban_risk > 0:
+            ban_shield_info = await itemDB.getItemStorageInfo(userId, '量子护盾')
+            if ban_shield_info and ban_shield_info.allowUse and ban_shield_info.amount > 0:
+                await itemDB.changeItemAmount(userId, '量子护盾', -1)
+                ban_risk = ban_risk / 10
+            
             import math
-            disabled_seconds = int(math.pow(1.1, 5 + random.random() * 70))
-            return {
-                'banned': True,
-                'disabledSeconds': disabled_seconds
-            }
+            if random.random() < ban_risk:
+                disabled_seconds = int(math.pow(1.1, 5 + random.random() * 70))
+                return {
+                    'banned': True,
+                    'disabledSeconds': disabled_seconds
+                }
         
         dice_fragment_info = await itemDB.getItemStorageInfo(userId, '骰子碎片')
-        dice_fragment_amount = dice_fragment_info.amount if dice_fragment_info else 0
-        max_redraw = min(max_redraw, dice_fragment_amount) + 1
+        dice_fragment_amount = dice_fragment_info.amount if (dice_fragment_info and dice_fragment_info.allowUse) else 0
+        max_redraw = min(dice_fragment_amount, 50) + 1
         
         redraw_count = 0
         item = None
@@ -65,8 +63,9 @@ class LotteryService:
             exist_storage = await drawItemDB.getSingleItemStorage(userId, item.id)
             if not exist_storage:
                 break
-            if i > 0:
-                await itemDB.changeItemAmount(userId, '骰子碎片', -1)
+        
+        if redraw_count > 0:
+            await itemDB.changeItemAmount(userId, '骰子碎片', -redraw_count)
         
         is_new = not await drawItemDB.getSingleItemStorage(userId, item.id)
         
@@ -77,56 +76,6 @@ class LotteryService:
             'item': item,
             'isNew': is_new,
             'redrawCount': redraw_count
-        }
-    
-    @staticmethod
-    async def check_and_apply_ban(userId: int, group_id: int) -> Dict[str, Any]:
-        """
-        检查并执行禁言
-        
-        Returns:
-            {'duration': 禁言秒数, 'isRandomBan': True/False}
-        """
-        import math
-        import random
-        dur_time = int(math.pow(1.1, 5 + random.random() * 70))
-        return {'duration': dur_time, 'isRandomBan': False}
-    
-    @staticmethod
-    async def draw_item(userId: int, pool_name: Optional[str] = None) -> Dict[str, Any]:
-        """抽奖"""
-        ban_risk = 0.5
-        
-        ban_shield_info = await itemDB.getItemStorageInfo(userId, '量子护盾')
-        if ban_shield_info and ban_shield_info.allowUse and ban_shield_info.amount > 0:
-            await itemDB.changeItemAmount(userId, '量子护盾', -1)
-            ban_risk = 0.05
-        
-        import random
-        if random.random() < ban_risk:
-            import math
-            disabled_seconds = int(math.pow(1.1, 5 + random.random() * 70))
-            return {
-                'banned': True,
-                'disabledSeconds': disabled_seconds
-            }
-        
-        item = await LotteryService._get_random_item(pool_name=pool_name)
-        
-        exist_storage = await drawItemDB.getSingleItemStorage(userId, item.id)
-        is_new = not exist_storage
-        
-        await drawItemDB.setItemStorage(userId, item.id)
-        
-        return {
-            'banned': False,
-            'item': {
-                'id': item.id,
-                'name': item.name,
-                'rare': LotteryService.RARE_DESCRIBE[item.rareRank],
-                'detail': item.detail
-            },
-            'isNew': is_new
         }
     
     @staticmethod

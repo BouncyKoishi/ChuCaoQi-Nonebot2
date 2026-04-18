@@ -49,25 +49,8 @@ async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], arg
         return
 
     banRisk = drawConfig['banRisk']
-    banShieldInfo = await usefulItemDB.getItemStorageInfo(userId, '量子护盾')
-    if banShieldInfo and banShieldInfo.allowUse:
-        await usefulItemDB.changeItemAmount(userId, '量子护盾', -1)
-        banRisk = banRisk / 10
-    
-    if random.random() < banRisk:
-        ban_result = await LotteryService.check_and_apply_ban(userId, groupId)
-        msg = f'获得了：口球({ban_result["duration"]}s)！'
-        msg += '\n注：本群抽奖只能抽到禁言！' if ban_result.get('isRandomBan') else ''
-        if is_onebot_v11_event(event):
-            bot = get_bot()
-            await bot.set_group_ban(group_id=groupId, user_id=int(realQQ), duration=ban_result['duration'])
-            await bot.send_group_msg(group_id=groupId, message=msg)
-        else:
-            await send_finish(抽奖_cmd, msg)
-        return
-
     strippedArg = args.extract_plain_text().strip()
-    await _getItem(groupId, userId, strippedArg)
+    await _getItem(groupId, userId, strippedArg, banRisk, realQQ)
 
 
 十连抽_cmd = on_command('十连抽', priority=5, block=True)
@@ -111,21 +94,25 @@ async def handle_十连抽(event: Union[OneBotV11MessageEvent, QQMessageEvent], 
     await send_finish(十连抽_cmd, output[:-1])
 
 
-async def _getItem(groupNum, userId, strippedArg):
+async def _getItem(groupNum, userId, strippedArg, banRisk=0, realQQ=None):
     """获取抽奖物品（内部辅助函数）"""
     _, poolName = await _getLevelAndPoolName(strippedArg)
-    
-    redrawDice = await usefulItemDB.getItemStorageInfo(userId, '骰子碎片')
-    if not redrawDice or not redrawDice.allowUse:
-        drawLimit = 1
-    else:
-        drawLimit = min(51, redrawDice.amount + 1)
 
-    result = await LotteryService.draw_with_redraw(userId, pool_name=poolName, max_redraw=drawLimit)
+    result = await LotteryService.draw_with_redraw(userId, pool_name=poolName, ban_risk=banRisk)
+    
+    if result.get('banned', False):
+        bot = get_bot()
+        msg = f'获得了：口球({result["disabledSeconds"]}s)！'
+        try:
+            await bot.send_group_msg(group_id=groupNum, message=msg)
+            if realQQ:
+                await bot.set_group_ban(group_id=groupNum, user_id=int(realQQ), duration=result['disabledSeconds'])
+        except Exception as e:
+            print(f'发送群消息失败: {e}')
+        return
     
     msg = ''
     if result['redrawCount'] > 0:
-        await usefulItemDB.changeItemAmount(userId, '骰子碎片', -result['redrawCount'])
         msg += f'消耗了骰子碎片*{result["redrawCount"]}，'
 
     item = result['item']
@@ -140,7 +127,6 @@ async def _getItem(groupNum, userId, strippedArg):
         await bot.send_group_msg(group_id=groupNum, message=msg)
     except Exception as e:
         print(f'发送群消息失败: {e}')
-    await drawItemDB.setItemStorage(userId, item.id)
 
 
 添加_easy_cmd = on_command('添加-Easy', aliases={'物品添加-Easy'}, priority=5, block=True)

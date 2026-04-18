@@ -19,11 +19,11 @@ else:
 
 INTERNAL_API_TOKEN = _plugin_config.get('backend', {}).get('internalApiToken', 'default_token')
 
-# 是否允许无token登录（兼容模式，过渡期使用）
-# 生产环境建议设置为 false，强制使用 token 验证
-ALLOW_LEGACY_LOGIN = os.getenv('ALLOW_LEGACY_LOGIN', 'true').lower() == 'true'
+ALLOW_LEGACY_LOGIN = os.getenv('ALLOW_LEGACY_LOGIN', 'false').lower() == 'true'
 
-# 禁用用户字典: {userId: 解禁时间戳(毫秒)}
+draw_config = _plugin_config.get('drawItem', {})
+BAN_RISK = draw_config.get('banRisk', 0)
+
 disabled_users: Dict[str, int] = {}
 
 
@@ -48,6 +48,11 @@ def check_user_disabled(userId: str) -> Tuple[bool, int]:
         remaining = int((until - now) / 1000)
         return True, remaining
     else:
-        # 解禁时间已过，移除禁用记录
         del disabled_users[userId_str]
         return False, 0
+
+
+def set_user_disabled(userId, disabled_seconds: int):
+    """设置用户禁用状态"""
+    until = int((datetime.now().timestamp() + disabled_seconds) * 1000)
+    disabled_users[str(userId)] = until

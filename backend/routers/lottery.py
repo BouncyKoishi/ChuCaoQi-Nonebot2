@@ -15,7 +15,7 @@ import dbConnection.draw_item as drawItemDB
 import dbConnection.user as userDB
 
 sys.path.insert(0, os.path.dirname(__file__) + '/..')
-from common import check_user_disabled
+from common import check_user_disabled, set_user_disabled, BAN_RISK
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
 
@@ -106,9 +106,10 @@ async def lottery_draw(request: Request):
         return {"success": False, "error": "DISABLED", "data": {"remaining": remaining}}
     
     try:
-        result = await LotteryService.draw_with_redraw(userId=userId, pool_name=pool)
+        result = await LotteryService.draw_with_redraw(userId=userId, pool_name=pool, ban_risk=BAN_RISK)
         
         if result.get('banned'):
+            set_user_disabled(userId, result['disabledSeconds'])
             return {
                 "success": True,
                 "data": {
