@@ -10,8 +10,10 @@ from utils import convertNumStrToInt
 from reloader import kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
-from nonebot.params import CommandArg
+from nonebot.params import CommandArg, ArgPlainText
 from nonebot.adapters import Message, Bot
+from nonebot.typing import T_State
+from nonebot.exception import FinishedException, PausedException, RejectedException
 
 from kusa_base import send_private_msg
 import dbConnection.kusa_system as base_db
@@ -24,6 +26,7 @@ from multi_platform import (
     is_onebot_v11_event,
     is_qq_event,
     send_finish,
+    send_reply,
 )
 
 
@@ -163,7 +166,7 @@ async def handle_query(event: Union[OneBotV11MessageEvent, QQMessageEvent], args
 buy_cmd = on_command("购买", priority=5, block=True)
 
 @buy_cmd.handle()
-async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State, args: Message = CommandArg()):
     """处理购买命令"""
     user_id = await get_user_id(event, auto_create=True)
     arg_text = args.extract_plain_text().strip()
@@ -173,27 +176,159 @@ async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: 
         await send_finish(buy_cmd, '需要物品名！')
         return
     
+    if item_name == '生草工厂':
+        await handle_buy_factory(event, state, user_id, buying_amount, '生草工厂')
+        return
+    if item_name == '草精炼厂':
+        await handle_buy_factory(event, state, user_id, buying_amount, '草精炼厂')
+        return
+    
     item = await item_db.getItem(item_name)
     if not item:
         await send_finish(buy_cmd, '此物品不存在!')
         return
+    if item.shopPrice is None:
+        await send_finish(buy_cmd, '此物品不能通过商店购买!')
+        return
     
-    result = await ItemService.buy_item(userId=user_id, item_name=item_name, amount=buying_amount)
-    
-    if result['success']:
-        await send_finish(buy_cmd, result['message'])
-    else:
-        error_code = result.get('error', 'UNKNOWN')
-        if error_code == 'PREREQ_NOT_MET':
-            await send_finish(buy_cmd, '你不满足购买此物品的前置条件！')
-        elif error_code == 'MAX_AMOUNT':
+    now_amount = await item_db.getItemAmount(user_id, item_name)
+    if item.amountLimit:
+        if now_amount >= item.amountLimit:
             await send_finish(buy_cmd, '你已达到此物品的最大数量限制!')
-        elif error_code == 'INSUFFICIENT_KUSA':
-            await send_finish(buy_cmd, f'你不够{result.get("totalPrice", item.shopPrice)}草^ ^')
-        elif error_code == 'INSUFFICIENT_ADV_KUSA':
-            await send_finish(buy_cmd, '你的草之精华不足^ ^')
+            return
+        buying_amount = min(buying_amount, item.amountLimit - now_amount)
+    
+    if item.priceRate and buying_amount > 2000:
+        await send_finish(buy_cmd, '暂不支持大量购买浮动价格物品!')
+        return
+    
+    if not await pre_item_check(item, user_id):
+        await send_finish(buy_cmd, f'你不满足购买此物品的前置条件！\n购买此物品需要：{get_pre_item_str(item)}')
+        return
+    
+    total_price = get_multi_item_price(item, now_amount, buying_amount)
+    price_type = item.priceType
+    is_floating_price = bool(item.priceRate)
+    
+    user = await base_db.getKusaUser(user_id)
+    can_afford = False
+    if price_type == '草':
+        can_afford = user.kusa >= total_price
+    elif price_type == '草之精华':
+        can_afford = user.advKusa >= total_price
+    elif price_type == '自动化核心':
+        core_amount = await item_db.getItemAmount(user_id, '自动化核心')
+        can_afford = core_amount >= total_price
+    
+    state['item_name'] = item_name
+    state['buying_amount'] = buying_amount
+    state['need_confirm'] = False
+    
+    if is_floating_price:
+        if can_afford:
+            state['need_confirm'] = True
+            price_info = f'本物品价格随购买数量上升，购买{buying_amount}个{item_name}共计消耗{total_price}{price_type}。是否继续购买？(y/n)'
+            await buy_cmd.pause(price_info)
+        else:
+            await send_finish(buy_cmd, f'购买{buying_amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^')
+    else:
+        if can_afford:
+            result = await ItemService.buy_item(userId=user_id, item_name=item_name, amount=buying_amount)
+            if result['success']:
+                await send_finish(buy_cmd, result['message'])
+            else:
+                await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
+        else:
+            await send_finish(buy_cmd, f'购买{buying_amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^')
+
+
+async def handle_buy_factory(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State, user_id: int, buying_amount: int, factory_type: str):
+    """处理工厂购买"""
+    from services import IndustrialService
+    
+    if factory_type == '生草工厂':
+        if buying_amount > 100:
+            await send_finish(buy_cmd, '一次最多新建100个工厂')
+            return
+        
+        cheap_level = await IndustrialService._get_factory_vip_level(user_id)
+        factory_amount = await item_db.getItemAmount(user_id, '生草工厂')
+        core_amount = await item_db.getItemAmount(user_id, '自动化核心')
+        total_price = IndustrialService._calculate_cost(cheap_level, factory_amount, buying_amount)
+        can_afford = core_amount >= total_price
+        
+        if can_afford:
+            state['need_confirm'] = True
+            state['item_name'] = '生草工厂'
+            state['buying_amount'] = buying_amount
+            price_info = f'本物品价格随购买数量上升，购买{buying_amount}个生草工厂共计消耗{total_price}自动化核心。是否继续购买？(y/n)'
+            await buy_cmd.pause(price_info)
+        else:
+            await send_finish(buy_cmd, f'购买{buying_amount}个生草工厂需要{total_price}自动化核心，你不够自动化核心^ ^')
+    
+    elif factory_type == '草精炼厂':
+        blueprint = await item_db.getItemAmount(user_id, '生草工业园区蓝图')
+        if blueprint == 0:
+            await send_finish(buy_cmd, '你没有工业园区蓝图，无法建设草精炼厂^ ^')
+            return
+        
+        base_factory_amount = await item_db.getItemAmount(user_id, '生草工厂')
+        mobile_factory_amount = await item_db.getItemAmount(user_id, '流动生草工厂')
+        total_base_amount = base_factory_amount + mobile_factory_amount
+        
+        limit_improved = await item_db.getItemAmount(user_id, '产业链优化')
+        adv_factory_limit = total_base_amount // 8 if limit_improved else total_base_amount // 10
+        
+        old_adv_amount = await item_db.getItemAmount(user_id, '草精炼厂')
+        if old_adv_amount >= adv_factory_limit:
+            await send_finish(buy_cmd, '你的草精炼厂数量已到达上限！')
+            return
+        
+        buying_amount = min(buying_amount, adv_factory_limit - old_adv_amount)
+        total_price = buying_amount * 500
+        core_amount = await item_db.getItemAmount(user_id, '自动化核心')
+        can_afford = core_amount >= total_price
+        
+        if can_afford:
+            result = await IndustrialService.buy_adv_factory(user_id, buying_amount)
+            if result['success']:
+                await send_finish(buy_cmd, result['message'])
+            else:
+                await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
+        else:
+            await send_finish(buy_cmd, f'购买{buying_amount}个草精炼厂需要{total_price}自动化核心，你不够自动化核心^ ^')
+
+
+@buy_cmd.handle()
+async def handle_buy_confirm(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State):
+    """处理购买确认"""
+    if not state.get('need_confirm'):
+        return
+    
+    try:
+        user_id = await get_user_id(event, auto_create=True)
+        message = event.get_message()
+        confirm = message.extract_plain_text().strip().lower()
+        
+        if confirm != 'y':
+            await send_finish(buy_cmd, '已取消购买')
+            return
+        
+        item_name = state.get('item_name')
+        buying_amount = state.get('buying_amount')
+        
+        result = await ItemService.buy_item(userId=user_id, item_name=item_name, amount=buying_amount)
+        
+        if result['success']:
+            await send_finish(buy_cmd, result['message'])
         else:
             await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
+    except (FinishedException, PausedException, RejectedException):
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await send_finish(buy_cmd, f'购买处理出错: {e}')
 
 
 # 出售命令
