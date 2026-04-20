@@ -238,7 +238,7 @@ async def handle_harvest(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
             auto_result = await FarmService.start_planting(userId=user_id)
             if auto_result['success']:
                 output_str = format_plant_result(auto_result['data'], "自动开始")
-                await send_private_msg(user_id, output_str)
+                await send_reply(harvest_cmd, output_str)
     except Exception as e:
         print(f'除草后自动生草失败: {e}')
 
