@@ -1,12 +1,11 @@
 import random
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, cast
 from reloader import kusa_command as on_command
-from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, GroupMessageEvent, Bot as OneBotV11Bot
+from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message, Bot
-from kusa_base import plugin_config, send_private_msg
+from kusa_base import plugin_config
 from utils import nameDetailSplit
 from itertools import groupby
 import dbConnection.kusa_system as baseDB
@@ -18,7 +17,7 @@ from .pagination_helper import register_pagination_handler, set_pagination_state
 from multi_platform import (
     get_user_id,
     get_real_qq_by_event,
-    is_onebot_v11_event,
+    is_onebot_v11_bot,
     get_group_id,
     send_finish,
 )
@@ -32,7 +31,7 @@ sensitiveWords = plugin_config.get('sensitiveWords', [])
 抽奖_cmd = on_command('抽奖', priority=5, block=True)
 
 @抽奖_cmd.handle()
-async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], bot: Bot, args: Message = CommandArg()):
     groupId = get_group_id(event)
     userId = await get_user_id(event, auto_create=True)
     realQQ = await get_real_qq_by_event(event)
@@ -50,7 +49,7 @@ async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], arg
 
     banRisk = drawConfig['banRisk']
     strippedArg = args.extract_plain_text().strip()
-    await _getItem(groupId, userId, strippedArg, banRisk, realQQ)
+    await _getItem(抽奖_cmd, bot, groupId, userId, strippedArg, banRisk, realQQ)
 
 
 十连抽_cmd = on_command('十连抽', priority=5, block=True)
@@ -94,22 +93,21 @@ async def handle_十连抽(event: Union[OneBotV11MessageEvent, QQMessageEvent], 
     await send_finish(十连抽_cmd, output[:-1])
 
 
-async def _getItem(groupNum, userId, strippedArg, banRisk=0, realQQ=None):
+async def _getItem(matcher, bot: Bot, groupNum, userId, strippedArg, banRisk=0, realQQ=None):
     """获取抽奖物品（内部辅助函数）"""
     _, poolName = await _getLevelAndPoolName(strippedArg)
 
     result = await LotteryService.draw_with_redraw(userId, pool_name=poolName, ban_risk=banRisk)
     
     if result.get('banned', False):
-        bot = get_bot()
         msg = f'获得了：口球({result["disabledSeconds"]}s)！'
-        try:
-            await bot.send_group_msg(group_id=groupNum, message=msg)
-            if realQQ:
-                await bot.set_group_ban(group_id=groupNum, user_id=int(realQQ), duration=result['disabledSeconds'])
-        except Exception as e:
-            print(f'发送群消息失败: {e}')
-        return
+        if is_onebot_v11_bot(bot) and realQQ:
+            onebot_bot = cast(OneBotV11Bot, bot)
+            try:
+                await onebot_bot.set_group_ban(group_id=int(groupNum), user_id=int(realQQ), duration=result['disabledSeconds'])
+            except Exception as e:
+                print(f'禁言失败: {e}')
+        await send_finish(matcher, msg)
     
     msg = ''
     if result['redrawCount'] > 0:
@@ -122,11 +120,7 @@ async def _getItem(groupNum, userId, strippedArg, banRisk=0, realQQ=None):
     if item.detail:
         msg += f'\n物品说明：{item.detail}'
     
-    bot = get_bot()
-    try:
-        await bot.send_group_msg(group_id=groupNum, message=msg)
-    except Exception as e:
-        print(f'发送群消息失败: {e}')
+    await send_finish(matcher, msg)
 
 
 添加_easy_cmd = on_command('添加-Easy', aliases={'物品添加-Easy'}, priority=5, block=True)

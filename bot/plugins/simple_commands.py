@@ -10,7 +10,6 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import plugin_config
 from urllib import request
-from services import WarehouseService
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
     get_user_id,
@@ -54,7 +53,7 @@ async def handle_晚安(bot: Bot, event: Event):
         await send_finish(晚安_cmd, '该指令只能在群聊中使用^ ^')
         return
     msg = f'晚安！你获得的睡眠时间：'
-    await sleep(bot, event, msg, 400, 50, 1)
+    await sleep(晚安_cmd, bot, event, msg, 400, 50, 1)
 
 
 午睡_cmd = on_command('午睡', priority=5, block=True)
@@ -65,7 +64,7 @@ async def handle_午睡(bot: Bot, event: Event):
         await send_finish(午睡_cmd, '该指令只能在群聊中使用^ ^')
         return
     msg = f'午安！你获得的睡眠时间：'
-    await sleep(bot, event, msg, 60, 10, 1)
+    await sleep(午睡_cmd, bot, event, msg, 60, 10, 1)
 
 
 醒了_cmd = on_command('醒了', priority=5, block=True)
@@ -76,10 +75,10 @@ async def handle_醒了(bot: Bot, event: Event):
         await send_finish(醒了_cmd, '该指令只能在群聊中使用^ ^')
         return
     msg = f'你可以睡个回笼觉。你获得的睡眠时间：'
-    await sleep(bot, event, msg, 60, 10, 1)
+    await sleep(醒了_cmd, bot, event, msg, 60, 10, 1)
 
 
-async def sleep(bot: Bot, event: Event, msg, base, summa, size):
+async def sleep(matcher, bot: Bot, event: Event, msg, base, summa, size):
     allow_list = plugin_config.get('group', {}).get('adminAuthGroup', [])
     group_id = get_group_id(event)
     user_qq = await get_real_qq_by_event(event)
@@ -93,11 +92,14 @@ async def sleep(bot: Bot, event: Event, msg, base, summa, size):
         msg += f'{durTime}sec！'
         from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
         onebot_bot = cast(OneBotV11Bot, bot)
-        await onebot_bot.set_group_ban(group_id=group_id_int, user_id=int(user_qq), duration=durTime)
-        await onebot_bot.send_group_msg(group_id=group_id_int, message=msg)
+        try:
+            await onebot_bot.set_group_ban(group_id=group_id_int, user_id=int(user_qq), duration=durTime)
+        except Exception as e:
+            print(f'禁言失败: {e}')
+        await send_finish(matcher, msg)
     elif not is_onebot_v11_bot(bot):
         msg += '该功能仅在OneBot平台可用'
-        await send_finish(晚安_cmd, msg)
+        await send_finish(matcher, msg)
 
 
 def sleepTimeCalculation(base, summa, size):
