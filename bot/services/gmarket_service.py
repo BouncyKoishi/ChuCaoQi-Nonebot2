@@ -34,6 +34,8 @@ class GMarketService:
 
     START_VALUE_MAP = {'东': 9.8, '南': 9.8, '北': 6.67, '珠': 32.0, '深': 120.0}
 
+    AREA_DISPLAY_MAP = {'东': '东', '南': '南', '北': '北', '珠': '珠海', '深': '深圳'}
+
     @staticmethod
     def area_translate_value(area_name: str) -> str:
         """校区名称转G值字段"""

@@ -67,7 +67,7 @@ async def handle_check_g(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
             value_key = value_field.replace('Value', '_value').lower()
             current = status['values'][value_key]
             last = status['values'][f"{value_key}_last"]
-            st += GMarketService.format_g_value(current, last, area)
+            st += GMarketService.format_g_value(current, last, GMarketService.AREA_DISPLAY_MAP[area])
         st += f'当前为本周期第{status["turn"]}期数值。\n\n'
     else:
         st += f'当前为本周期的第一期数值！\n当前G值为：\n'
