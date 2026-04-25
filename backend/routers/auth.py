@@ -87,10 +87,10 @@ async def login(request: Request):
         # 无token的情况
         if unified_user.webToken:
             # 用户已设置TOKEN，必须验证
-            return {"success": False, "error": "该账号已设置Token，请输入Token登录。Token可在Bot中通过 /查看token 获取"}
+            return {"success": False, "error": "该账号已设置Token，请输入Token登录。Token可在Bot中通过 !查看token 获取"}
         elif not ALLOW_LEGACY_LOGIN:
             # 用户未设置TOKEN，但兼容模式关闭
-            return {"success": False, "error": "请使用Token登录，Token可在Bot中通过 /生成token 获取"}
+            return {"success": False, "error": "请使用Token登录，Token可在Bot中通过 !生成token 获取"}
         # 用户未设置TOKEN且兼容模式开启，允许登录
     
     # 生成 sessionToken

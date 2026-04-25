@@ -31,7 +31,7 @@
       </el-form>
       <div class="login-tip">
         <el-text type="info" size="small">
-          Token获取方式：在Bot中发送 /生成token
+          Token获取方式：在Bot中发送 !生成token
         </el-text>
       </div>
     </el-card>
