@@ -4,6 +4,7 @@ import glob
 import random
 import pytz
 import shutil
+import hashlib
 from datetime import datetime
 from urllib.request import urlretrieve
 from typing import Optional
@@ -46,6 +47,33 @@ for value in archiveInfo.values():
         value['onlineFilePaths'].sort()
     else:
         value['onlineFilePaths'] = []
+
+_pic_md5_set: set[str] = set()
+
+def _compute_md5(file_path: str) -> str:
+    md5 = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            md5.update(chunk)
+    return md5.hexdigest()
+
+def _build_md5_index():
+    global _pic_md5_set
+    _pic_md5_set = set()
+    all_dirs = [EXAMINE_PATH, SAVE_PATH] + [v['onlinePath'] for v in archiveInfo.values()]
+    total = 0
+    for dir_path in all_dirs:
+        if not os.path.exists(dir_path):
+            continue
+        for file_path in glob.glob(os.path.join(dir_path, '*.*')):
+            try:
+                _pic_md5_set.add(_compute_md5(file_path))
+                total += 1
+            except Exception as e:
+                logger.warning(f'计算MD5失败: {file_path}, {e}')
+    logger.info(f'图库MD5索引构建完成，共 {total} 张图片，{len(_pic_md5_set)} 个唯一MD5')
+
+_build_md5_index()
 
 
 def getExamineFiles():
@@ -208,19 +236,33 @@ async def handle_commitpic(event: Event, args: Message = CommandArg()):
         user_id = event.user_id
         os.makedirs(EXAMINE_PATH, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        success_count = 0
+        duplicate_count = 0
         for i, url in enumerate(imgUrls):
             safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}")
             newFilename = f'{user_id}-{timestamp}-{safeFilename}'
+            file_path = os.path.join(EXAMINE_PATH, newFilename)
             try:
-                urlretrieve(url, os.path.join(EXAMINE_PATH, newFilename))
+                urlretrieve(url, file_path)
+                file_md5 = _compute_md5(file_path)
+                if file_md5 in _pic_md5_set:
+                    os.remove(file_path)
+                    duplicate_count += 1
+                    logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
+                else:
+                    _pic_md5_set.add(file_md5)
+                    success_count += 1
             except Exception as e:
-                print(f'下载图片失败: {e}')
-        await send_finish(commitpic_cmd, '上传成功，等待加入图库')
+                logger.error(f'下载图片失败: {e}')
+        
+        msg = f'上传完成：{success_count} 张成功'
+        if duplicate_count > 0:
+            msg += f'，{duplicate_count} 张重复已拦截'
+        await send_finish(commitpic_cmd, msg)
 
 
 @commitpic_cmd.got("image", prompt="请上传图片")
 async def handle_commitpic_got(event: Event, image: Message = Arg()):
-    """接收用户发送的图片"""
     try:
         user_id = event.user_id
         
@@ -232,14 +274,29 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
         
         os.makedirs(EXAMINE_PATH, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        success_count = 0
+        duplicate_count = 0
         for i, url in enumerate(imgUrls):
             safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}")
             newFilename = f'{user_id}-{timestamp}-{safeFilename}'
+            file_path = os.path.join(EXAMINE_PATH, newFilename)
             try:
-                urlretrieve(url, os.path.join(EXAMINE_PATH, newFilename))
+                urlretrieve(url, file_path)
+                file_md5 = _compute_md5(file_path)
+                if file_md5 in _pic_md5_set:
+                    os.remove(file_path)
+                    duplicate_count += 1
+                    logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
+                else:
+                    _pic_md5_set.add(file_md5)
+                    success_count += 1
             except Exception as e:
                 logger.error(f'下载图片失败: {e}')
-        await send_finish(commitpic_cmd, '上传成功，等待加入图库')
+        
+        msg = f'上传完成：{success_count} 张成功'
+        if duplicate_count > 0:
+            msg += f'，{duplicate_count} 张重复已拦截'
+        await send_finish(commitpic_cmd, msg)
     except (FinishedException, PausedException, RejectedException):
         raise
     except Exception as e:
