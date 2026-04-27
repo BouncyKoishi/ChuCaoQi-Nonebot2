@@ -7,21 +7,19 @@ import shutil
 import hashlib
 from datetime import datetime
 from urllib.request import urlretrieve
-from typing import Optional
 
 from nonebot import on_command, get_bot, logger
 from nonebot.adapters import Bot, Event
-from nonebot.params import CommandArg, Arg, ArgPlainText
+from nonebot.params import CommandArg, Arg
 from nonebot.adapters import Message
 from nonebot_plugin_apscheduler import scheduler
 from nonebot.adapters.onebot.v11 import MessageSegment as ms
 from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.typing import T_State
-from nonebot.matcher import Matcher
 
 from kusa_base import plugin_config, is_super_admin
-from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event, build_at_message
-from utils import extractImgUrls, imgLocalPathToBase64, nameDetailSplit
+from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
+from utils import extractImgUrls, imgLocalPathToBase64
 
 
 BASE_PIC_PATH = os.path.join(plugin_config.get('basePath', ''), 'picArchive')
@@ -43,12 +41,13 @@ archiveInfo = {
 
 for value in archiveInfo.values():
     if os.path.exists(value['onlinePath']):
-        value['onlineFilePaths'] = glob.glob(os.path.join(value['onlinePath'], '*.*'))
+        value['onlineFilePaths'] = [f for f in glob.glob(os.path.join(value['onlinePath'], '*')) if os.path.isfile(f)]
         value['onlineFilePaths'].sort()
     else:
         value['onlineFilePaths'] = []
 
 _pic_md5_set: set[str] = set()
+
 
 def _compute_md5(file_path: str) -> str:
     md5 = hashlib.md5()
@@ -56,6 +55,7 @@ def _compute_md5(file_path: str) -> str:
         for chunk in iter(lambda: f.read(8192), b''):
             md5.update(chunk)
     return md5.hexdigest()
+
 
 def _build_md5_index():
     global _pic_md5_set
@@ -65,13 +65,56 @@ def _build_md5_index():
     for dir_path in all_dirs:
         if not os.path.exists(dir_path):
             continue
-        for file_path in glob.glob(os.path.join(dir_path, '*.*')):
+        for file_path in glob.glob(os.path.join(dir_path, '*')):
+            if not os.path.isfile(file_path):
+                continue
             try:
                 _pic_md5_set.add(_compute_md5(file_path))
                 total += 1
             except Exception as e:
                 logger.warning(f'计算MD5失败: {file_path}, {e}')
     logger.info(f'图库MD5索引构建完成，共 {total} 张图片，{len(_pic_md5_set)} 个唯一MD5')
+
+
+def _add_to_archive_paths(archive_key: str, file_path: str):
+    if file_path not in archiveInfo[archive_key]['onlineFilePaths']:
+        archiveInfo[archive_key]['onlineFilePaths'].append(file_path)
+        archiveInfo[archive_key]['onlineFilePaths'].sort()
+
+
+def _extract_ext_from_url(url: str) -> str:
+    from urllib.parse import urlparse
+    path = urlparse(url).path
+    _, ext = os.path.splitext(path)
+    if ext and len(ext) <= 5 and ext.lstrip('.').isalnum():
+        return ext
+    return '.jpg'
+
+
+def _download_and_check_dup(imgUrls: list[str], user_id) -> tuple[int, int]:
+    os.makedirs(EXAMINE_PATH, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    success_count = 0
+    duplicate_count = 0
+    for i, url in enumerate(imgUrls):
+        ext = _extract_ext_from_url(url)
+        safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}") + ext
+        newFilename = f'{user_id}-{timestamp}-{safeFilename}'
+        file_path = os.path.join(EXAMINE_PATH, newFilename)
+        try:
+            urlretrieve(url, file_path)
+            file_md5 = _compute_md5(file_path)
+            if file_md5 in _pic_md5_set:
+                os.remove(file_path)
+                duplicate_count += 1
+                logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
+            else:
+                _pic_md5_set.add(file_md5)
+                success_count += 1
+        except Exception as e:
+            logger.error(f'下载图片失败: {e}')
+    return success_count, duplicate_count
+
 
 _build_md5_index()
 
@@ -90,9 +133,9 @@ if scheduler:
         paths = archiveInfo['jun']['onlineFilePaths']
         if not paths:
             return
-        picPath = paths[int(random.random() * len(paths))]
+        picPath = random.choice(paths)
         st = f'新的一天！今天是{now.year}年{now.month}月{now.day}日！今天的精选罗俊是——'
-        
+
         sysu_group = plugin_config.get('group', {}).get('sysu')
         if sysu_group:
             from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
@@ -105,121 +148,47 @@ if scheduler:
 async def rollPic(event: Event, imageArchiveName: str):
     if not is_group_message(event):
         return None
-    
+
     if not is_onebot_v11_event(event):
         return "该功能目前仅支持OneBot平台"
-    
+
     imageArchive = archiveInfo.get(imageArchiveName)
     if not imageArchive:
         return None
-    
+
     paths = imageArchive['onlineFilePaths']
     if not paths:
         return f'{imageArchive["displayName"]} 图库为空'
-    
-    picPath = paths[int(random.random() * len(paths))]
+
+    picPath = random.choice(paths)
     print(f'本次发送的图片：{picPath}')
     return imgLocalPathToBase64(picPath)
 
 
-rolllj_cmd = on_command('rolllj', priority=5, block=True)
+_ROLL_COMMANDS = [
+    ('rolllj',       [],            'jun'),
+    ('rollpurelj',   [],            'junOrigin'),
+    ('rollxhb',      ['rollzh5'],   'xhb'),
+    ('rolltd',       [],            'tudou'),
+    ('rolljdm',      ['rollzdm', 'rollmd'], 'zundamon'),
+    ('rollpurejdm',  ['rollpurezdm', 'rollpuremd'], 'zundamon2'),
+    ('rollmmc',      ['rolllg'],    'pusheen'),
+    ('rollgm',       [],            'cat'),
+    ('roll251',      [],            '251'),
+    ('rollxb',       [],            'xiba'),
+]
 
+_roll_matchers = {}
+for _cmd_name, _aliases, _archive_key in _ROLL_COMMANDS:
+    _matcher = on_command(_cmd_name, aliases=set(_aliases) if _aliases else None, priority=5, block=True)
 
-@rolllj_cmd.handle()
-async def handle_rolllj(bot: Bot, event: Event):
-    result = await rollPic(event, "jun")
-    if result:
-        await send_finish(rolllj_cmd, result)
+    @_matcher.handle()
+    async def _roll_handler(bot: Bot, event: Event, _archive=_archive_key, _m=_matcher):
+        result = await rollPic(event, _archive)
+        if result:
+            await send_finish(_m, result)
 
-
-rollpurelj_cmd = on_command('rollpurelj', priority=5, block=True)
-
-
-@rollpurelj_cmd.handle()
-async def handle_rollpurelj(bot: Bot, event: Event):
-    result = await rollPic(event, "junOrigin")
-    if result:
-        await send_finish(rollpurelj_cmd, result)
-
-
-rollxhb_cmd = on_command('rollxhb', priority=5, block=True, aliases={"rollzh5"})
-
-
-@rollxhb_cmd.handle()
-async def handle_rollxhb(bot: Bot, event: Event):
-    result = await rollPic(event, "xhb")
-    if result:
-        await send_finish(rollxhb_cmd, result)
-
-
-rolltd_cmd = on_command('rolltd', priority=5, block=True)
-
-
-@rolltd_cmd.handle()
-async def handle_rolltd(bot: Bot, event: Event):
-    result = await rollPic(event, "tudou")
-    if result:
-        await send_finish(rolltd_cmd, result)
-
-
-rolljdm_cmd = on_command('rolljdm', aliases={'rollzdm', 'rollmd'}, priority=5, block=True)
-
-
-@rolljdm_cmd.handle()
-async def handle_rolljdm(bot: Bot, event: Event):
-    result = await rollPic(event, "zundamon")
-    if result:
-        await send_finish(rolljdm_cmd, result)
-
-
-rollpurejdm_cmd = on_command('rollpurejdm', aliases={'rollpurezdm', 'rollpuremd'}, priority=5, block=True)
-
-
-@rollpurejdm_cmd.handle()
-async def handle_rollpurejdm(bot: Bot, event: Event):
-    result = await rollPic(event, "zundamon2")
-    if result:
-        await send_finish(rollpurejdm_cmd, result)
-
-
-rollmmc_cmd = on_command('rollmmc', aliases={'rolllg',}, priority=5, block=True)
-
-
-@rollmmc_cmd.handle()
-async def handle_rollmmc(bot: Bot, event: Event):
-    result = await rollPic(event, "pusheen")
-    if result:
-        await send_finish(rollmmc_cmd, result)
-
-
-rollgm_cmd = on_command('rollgm', priority=5, block=True)
-
-
-@rollgm_cmd.handle()
-async def handle_rollgm(bot: Bot, event: Event):
-    result = await rollPic(event, "cat")
-    if result:
-        await send_finish(rollgm_cmd, result)
-
-
-roll251_cmd = on_command('roll251', priority=5, block=True)
-
-
-@roll251_cmd.handle()
-async def handle_roll251(bot: Bot, event: Event):
-    result = await rollPic(event, "251")
-    if result:
-        await send_finish(roll251_cmd, result)
-
-
-rollxb_cmd = on_command('rollxb', priority=5, block=True)
-
-
-@rollxb_cmd.handle()
-async def handle_rollxb(bot: Bot, event: Event):
-    result = await rollPic(event, "xiba")
-    if result:
-        await send_finish(rollxb_cmd, result)
+    _roll_matchers[_cmd_name] = _matcher
 
 
 commitpic_cmd = on_command("commitpic", aliases={'commitlj', 'commitpurelj', 'commitxhb'}, priority=5, block=True)
@@ -230,31 +199,10 @@ async def handle_commitpic(event: Event, args: Message = CommandArg()):
     if not is_onebot_v11_event(event):
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
-    
+
     imgUrls = extractImgUrls(args)
     if imgUrls:
-        user_id = event.user_id
-        os.makedirs(EXAMINE_PATH, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        success_count = 0
-        duplicate_count = 0
-        for i, url in enumerate(imgUrls):
-            safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}")
-            newFilename = f'{user_id}-{timestamp}-{safeFilename}'
-            file_path = os.path.join(EXAMINE_PATH, newFilename)
-            try:
-                urlretrieve(url, file_path)
-                file_md5 = _compute_md5(file_path)
-                if file_md5 in _pic_md5_set:
-                    os.remove(file_path)
-                    duplicate_count += 1
-                    logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
-                else:
-                    _pic_md5_set.add(file_md5)
-                    success_count += 1
-            except Exception as e:
-                logger.error(f'下载图片失败: {e}')
-        
+        success_count, duplicate_count = _download_and_check_dup(imgUrls, event.user_id)
         msg = f'上传完成：{success_count} 张成功'
         if duplicate_count > 0:
             msg += f'，{duplicate_count} 张重复已拦截'
@@ -264,35 +212,12 @@ async def handle_commitpic(event: Event, args: Message = CommandArg()):
 @commitpic_cmd.got("image", prompt="请上传图片")
 async def handle_commitpic_got(event: Event, image: Message = Arg()):
     try:
-        user_id = event.user_id
-        
         imgUrls = extractImgUrls(image)
-        
         if not imgUrls:
             await send_finish(commitpic_cmd, "非图片，取消本次上传")
             return
-        
-        os.makedirs(EXAMINE_PATH, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        success_count = 0
-        duplicate_count = 0
-        for i, url in enumerate(imgUrls):
-            safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}")
-            newFilename = f'{user_id}-{timestamp}-{safeFilename}'
-            file_path = os.path.join(EXAMINE_PATH, newFilename)
-            try:
-                urlretrieve(url, file_path)
-                file_md5 = _compute_md5(file_path)
-                if file_md5 in _pic_md5_set:
-                    os.remove(file_path)
-                    duplicate_count += 1
-                    logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
-                else:
-                    _pic_md5_set.add(file_md5)
-                    success_count += 1
-            except Exception as e:
-                logger.error(f'下载图片失败: {e}')
-        
+
+        success_count, duplicate_count = _download_and_check_dup(imgUrls, event.user_id)
         msg = f'上传完成：{success_count} 张成功'
         if duplicate_count > 0:
             msg += f'，{duplicate_count} 张重复已拦截'
@@ -305,7 +230,6 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
         traceback.print_exc()
 
 
-
 examinepic_cmd = on_command("examinepic", priority=5, block=True)
 
 
@@ -313,55 +237,61 @@ examinepic_cmd = on_command("examinepic", priority=5, block=True)
 async def handle_examinepic(event: Event, state: T_State):
     if "examine_init" not in state:
         user_id = await get_user_id(event)
-        
+
         if not await is_super_admin(user_id):
             await send_finish(examinepic_cmd, '该账号没有对应权限')
             return
-        
+
         if not is_onebot_v11_event(event):
             await send_finish(examinepic_cmd, "该功能目前仅支持OneBot平台")
             return
-        
+
         examineFiles = getExamineFiles()
         if not examineFiles:
             await send_finish(examinepic_cmd, '没有待审核图片')
             return
-        
+
         state["examineFiles"] = examineFiles
         state["index"] = 0
         state["archive_keys"] = list(archiveInfo.keys())
         state["examine_init"] = True
-        
+
         await send_reply(examinepic_cmd, f'开始审核，共有 {len(examineFiles)} 张待审核图片')
-    
+
     try:
         examineFiles = state["examineFiles"]
         index = state["index"]
         archive_keys = state["archive_keys"]
-        
+
         if index >= len(examineFiles):
             remainingCount = len(getExamineFiles())
             await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
             return
-        
+
         currentFile = examineFiles[index]
-        
+
         if "examine_init" in state and state.get("_processed"):
             message = event.get_message()
             choice = message.extract_plain_text().strip().lower()
-            
+
             if choice == 'q':
                 remainingCount = len(getExamineFiles())
                 await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
                 return
-            
+
             if choice == 'd':
+                try:
+                    file_md5 = _compute_md5(currentFile)
+                    _pic_md5_set.discard(file_md5)
+                except Exception:
+                    pass
                 os.remove(currentFile)
                 logger.info(f'已删除图片: {currentFile}')
             elif choice == 's':
                 os.makedirs(SAVE_PATH, exist_ok=True)
                 fileName = os.path.basename(currentFile)
-                shutil.move(currentFile, os.path.join(SAVE_PATH, fileName))
+                new_path = os.path.join(SAVE_PATH, fileName)
+                shutil.move(currentFile, new_path)
                 logger.info(f'已保存图片: {fileName}')
             elif choice == '0':
                 pass
@@ -372,21 +302,23 @@ async def handle_examinepic(event: Event, state: T_State):
                     targetPath = archiveInfo[archiveKey]['onlinePath']
                     os.makedirs(targetPath, exist_ok=True)
                     fileName = os.path.basename(currentFile)
-                    shutil.move(currentFile, os.path.join(targetPath, fileName))
+                    new_path = os.path.join(targetPath, fileName)
+                    shutil.move(currentFile, new_path)
+                    _add_to_archive_paths(archiveKey, new_path)
                     logger.info(f'已分类到 {archiveInfo[archiveKey]["displayName"]}: {fileName}')
             else:
                 await examinepic_cmd.reject("无效选择，请重新输入")
-            
+
             state["index"] = index + 1
             index = state["index"]
-        
+
         state["_processed"] = True
-        
+
         if index >= len(examineFiles):
             remainingCount = len(getExamineFiles())
             await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
             return
-        
+
         await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
         fileName = os.path.basename(examineFiles[index])
         archiveMenu = _build_archive_menu(archive_keys)
