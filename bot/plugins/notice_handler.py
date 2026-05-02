@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import (
     LifecycleMetaEvent, Bot
 )
 from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
+from multi_platform import get_user_id
 
 friendHandleTimestamp = 0
 
@@ -144,14 +145,16 @@ async def handle_meta_event(event: LifecycleMetaEvent):
 # 导入所需的模块
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
+from nonebot.adapters.qq import MessageEvent as QQMessageEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
+from typing import Union
 
 friend_code_cmd = on_command('friend_code', priority=5, block=True)
 
 @friend_code_cmd.handle()
-async def handle_friend_code(event: OneBotV11MessageEvent, args: Message = CommandArg()):
-    userId = event.user_id
+async def handle_friend_code(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+    userId = await get_user_id(event)
     if not await is_super_admin(userId):
         return
     qq_num = args.extract_plain_text().strip()
