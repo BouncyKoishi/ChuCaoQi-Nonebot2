@@ -28,33 +28,33 @@
       <div class="holdings-section">
         <h3>持仓信息</h3>
         <el-table :data="holdingData" style="width: 100%" border>
-          <el-table-column prop="name" label="校区" width="80" />
-          <el-table-column prop="lastPrice" label="上期" width="80" class-name="hide-on-mobile">
+          <el-table-column prop="name" label="校区" min-width="80" />
+          <el-table-column prop="lastPrice" label="上期" min-width="100" class-name="hide-on-mobile">
             <template #default="{ row }">
               {{ formatNumber(row.lastPrice) }}
             </template>
           </el-table-column>
-          <el-table-column prop="currentPrice" label="本期" width="80">
+          <el-table-column prop="currentPrice" label="本期" min-width="100">
             <template #default="{ row }">
               {{ formatNumber(row.currentPrice) }}
             </template>
           </el-table-column>
-          <el-table-column prop="volatility" label="波动" width="70" class-name="hide-on-mobile">
+          <el-table-column prop="volatility" label="波动" min-width="90" class-name="hide-on-mobile">
             <template #default="{ row }">
               {{ row.volatility > 0 ? '+' : '' }}{{ formatNumber(row.volatility) }}%
             </template>
           </el-table-column>
-          <el-table-column prop="amount" label="持仓" width="80">
+          <el-table-column prop="amount" label="持仓" min-width="100">
             <template #default="{ row }">
               {{ formatNumber(row.amount) }}
             </template>
           </el-table-column>
-          <el-table-column prop="value" label="价值" width="80" class-name="hide-on-mobile">
+          <el-table-column prop="value" label="价值" min-width="120" class-name="hide-on-mobile">
             <template #default="{ row }">
               {{ formatNumber(row.value) }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" min-width="140">
+          <el-table-column label="操作" min-width="160" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="handleBuyPopup(row.name)" :disabled="!gValue.isTradingTime">买入</el-button>
               <el-button type="danger" size="small" @click="handleSellPopup(row.name)" :disabled="!gValue.isTradingTime">卖出</el-button>
