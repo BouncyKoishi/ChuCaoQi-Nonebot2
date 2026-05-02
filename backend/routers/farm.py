@@ -5,7 +5,6 @@
 from fastapi import APIRouter, Query, Request
 import sys
 import os
-import yaml
 
 sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
 os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
@@ -18,14 +17,9 @@ sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from websocket_manager import manager
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
+from common import ENV
 
-_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'bot', 'config', 'plugin_config.yaml')
-if os.path.exists(_config_path):
-    with open(_config_path, 'r', encoding='utf-8') as f:
-        _plugin_config = yaml.safe_load(f) or {}
-else:
-    _plugin_config = {}
-ENV_PROD = _plugin_config.get('env', 'dev') == 'prod'
+ENV_PROD = ENV == 'prod'
 
 router = APIRouter()
 

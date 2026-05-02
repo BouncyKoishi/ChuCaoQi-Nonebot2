@@ -13,9 +13,6 @@ os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 
 from services import FarmService
 
-# 从 backend 模块导入，避免与 bot 模块冲突
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from websocket_manager import manager
 from common import INTERNAL_API_TOKEN

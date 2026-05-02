@@ -92,7 +92,19 @@ ChuCaoQi-Web/
    - QQ号、群号等基础信息
    - 各API密钥（OpenAI、Deepseek、Gemini等，按需填写）
    - 代理设置（如需要）
-2. **数据库初始化**
+
+2. **Web 后端配置文件**
+
+   复制示例配置并修改：
+   ```bash
+   cp backend/config.example.yaml backend/config.yaml
+   ```
+   编辑 `backend/config.yaml`，填入必要的配置：
+   - `env`：环境标识（`dev` / `prod`）
+   - `internalApiToken`：内部 API 令牌，用于 Bot 调用后端接口
+   - `allowLegacyLogin`：是否允许未设置 webToken 的用户免 Token 登录（测试时设为 `true`，生产环境应为 `false`）
+
+3. **数据库初始化**
 
    在 `bot/database/` 目录下创建 SQLite 数据库：
    ```bash

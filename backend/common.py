@@ -10,16 +10,34 @@ import yaml
 from datetime import datetime
 from typing import Dict, Tuple
 
-_config_path = os.path.join(os.path.dirname(__file__), '..', 'bot', 'config', 'plugin_config.yaml')
-if os.path.exists(_config_path):
-    with open(_config_path, 'r', encoding='utf-8') as f:
-        _plugin_config: Dict = yaml.safe_load(f) or {}
-else:
-    _plugin_config = {}
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+BOT_DIR = os.path.join(BACKEND_DIR, '..', 'bot')
 
-INTERNAL_API_TOKEN = _plugin_config.get('backend', {}).get('internalApiToken', 'default_token')
 
-ALLOW_LEGACY_LOGIN = os.getenv('ALLOW_LEGACY_LOGIN', 'false').lower() == 'true'
+def _load_yaml(path: str) -> Dict:
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
+_backend_config_path = os.path.join(BACKEND_DIR, 'config.yaml')
+_backend_config = _load_yaml(_backend_config_path)
+
+_plugin_config_path = os.path.join(BOT_DIR, 'config', 'plugin_config.yaml')
+_plugin_config = _load_yaml(_plugin_config_path)
+
+ENV = _backend_config.get('env', _plugin_config.get('env', 'dev'))
+
+INTERNAL_API_TOKEN = os.getenv(
+    'INTERNAL_API_TOKEN',
+    _backend_config.get('internalApiToken', 'default_token')
+)
+
+ALLOW_LEGACY_LOGIN = os.getenv(
+    'ALLOW_LEGACY_LOGIN',
+    str(_backend_config.get('allowLegacyLogin', False))
+).lower() == 'true'
 
 draw_config = _plugin_config.get('drawItem', {})
 BAN_RISK = draw_config.get('banRisk', 0)
@@ -30,20 +48,20 @@ disabled_users: Dict[str, int] = {}
 def check_user_disabled(userId: str) -> Tuple[bool, int]:
     """
     检查用户是否被禁用
-    
+
     Args:
         userId: 用户ID
-        
+
     Returns:
         (是否被禁用, 剩余秒数)
     """
     userId_str = str(userId)
     if userId_str not in disabled_users:
         return False, 0
-    
+
     until = disabled_users[userId_str]
     now = int(datetime.now().timestamp() * 1000)
-    
+
     if until > now:
         remaining = int((until - now) / 1000)
         return True, remaining

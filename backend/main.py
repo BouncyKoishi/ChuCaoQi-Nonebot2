@@ -106,16 +106,10 @@ async def health():
 @app.get("/api/config")
 async def get_config():
     """获取前端配置"""
-    import yaml
-    _config_path = os.path.join(BOT_DIR, 'config', 'plugin_config.yaml')
-    if os.path.exists(_config_path):
-        with open(_config_path, 'r', encoding='utf-8') as f:
-            _plugin_config = yaml.safe_load(f) or {}
-    else:
-        _plugin_config = {}
+    from common import ENV
     return {
-        "env": _plugin_config.get('env', 'dev'),
-        "isDev": _plugin_config.get('env', 'dev') != 'prod'
+        "env": ENV,
+        "isDev": ENV != 'prod'
     }
 
 

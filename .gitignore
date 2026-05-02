@@ -22,6 +22,7 @@ chuchu_backup.sqlite
 config.json
 .env
 bot/config/plugin_config.yaml
+backend/config.yaml
 
 # 临时文件
 __pycache__/

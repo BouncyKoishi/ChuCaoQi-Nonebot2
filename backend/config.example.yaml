@@ -1,0 +1,8 @@
+# Web 后端配置文件模板
+# 复制此文件为 config.yaml 并填入实际值
+
+env: 'dev'  # 环境标识: dev / prod
+
+internalApiToken: ''  # 内部 API 令牌，用于 Bot 调用后端接口
+
+allowLegacyLogin: false  # 是否允许未设置webToken的用户免Token登录（测试时设为true，生产环境应为false）

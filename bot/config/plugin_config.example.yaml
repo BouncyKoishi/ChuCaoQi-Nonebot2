@@ -75,6 +75,3 @@ sensitiveWords: []
 #   whitelist_commands:
 #     - "!napcat"
 #     - "!nc"
-
-backend:
-  internalApiToken: "" # 内部 API 令牌，用于 Bot 调用后端接口
