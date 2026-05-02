@@ -33,6 +33,8 @@ from multi_platform import (
     is_onebot_v11_event,
     send_finish,
     build_at_message,
+    get_group_id,
+    get_nickname_from_event,
 )
 from . import scheduler
 
@@ -59,33 +61,6 @@ vip_title_names = [
 ]
 
 kusa_envelope_dict: Dict[str, KusaEnvelopeInfo] = {}
-
-
-def get_user_id_from_event(event: Union[OneBotV11MessageEvent, QQMessageEvent]) -> int:
-    """从事件中获取用户 ID（返回 userId）"""
-    if is_onebot_v11_event(event):
-        return int(event.user_id)
-    else:
-        if hasattr(event, 'author') and event.author:
-            if hasattr(event.author, 'member_openid'):
-                return int(event.author.member_openid)
-            if hasattr(event.author, 'user_openid'):
-                return int(event.author.user_openid)
-        return int(getattr(event, 'user_id', 0))
-
-
-def get_group_id_from_event(event: Union[OneBotV11MessageEvent, QQMessageEvent]) -> Union[int, None]:
-    """从事件中获取群 ID"""
-    if is_onebot_v11_event(event):
-        return event.group_id
-    return None
-
-
-def get_nickname_from_event(event: Union[OneBotV11MessageEvent, QQMessageEvent]) -> str:
-    """从事件中获取用户昵称"""
-    if is_onebot_v11_event(event):
-        return event.sender.nickname if event.sender else ""
-    return ""
 
 
 async def get_warehouse_info_str(warehouse_data: dict) -> str:
@@ -552,7 +527,7 @@ async def handle_give_envelope(
     global kusa_envelope_dict
 
     user_id = await get_user_id(event, auto_create=True)
-    group_id = get_group_id_from_event(event)
+    group_id = int(get_group_id(event)) if get_group_id(event) else None
     main_group = plugin_config.get('group', {}).get('main')
 
     if group_id != main_group:
@@ -608,7 +583,7 @@ async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEven
     global kusa_envelope_dict
 
     user_id = await get_user_id(event, auto_create=True)
-    group_id = get_group_id_from_event(event)
+    group_id = int(get_group_id(event)) if get_group_id(event) else None
     main_group = plugin_config.get('group', {}).get('main')
 
     if group_id != main_group:

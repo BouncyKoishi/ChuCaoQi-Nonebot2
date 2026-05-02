@@ -92,6 +92,21 @@ def get_platform_user_id(event: Event) -> Optional[str]:
     return None
 
 
+def get_nickname_from_event(event: Event) -> str:
+    """从事件中获取用户昵称"""
+    if is_onebot_v11_event(event):
+        return event.sender.nickname if event.sender else ""
+    elif is_qq_event(event):
+        # QQ官方Bot部分未验证可用性
+        if hasattr(event, 'author') and event.author:
+            if hasattr(event.author, 'member_openid'):
+                return ""
+            if hasattr(event.author, 'user_openid'):
+                return ""
+        return ""
+    return ""
+
+
 def get_group_id(event: Event) -> Optional[str]:
     """获取群ID（统一格式）"""
     if is_onebot_v11_event(event):
