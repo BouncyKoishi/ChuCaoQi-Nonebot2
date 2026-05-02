@@ -132,34 +132,39 @@ async def get_user_stats(request: Request):
     return {"success": True, "data": result}
 
 
-@router.get("/stats/grass")
-async def get_grass_stats(
+@router.get("/stats/grass/personal")
+async def get_grass_stats_personal(
     request: Request,
-    personal_period: str = Query("24小时", description="个人统计周期: 24小时, 每日, 每周"),
-    total_period: str = Query("24小时", description="全服统计周期: 24小时, 每日, 每周")
+    period: str = Query("24小时", description="统计周期: 24小时, 昨日, 上周")
 ):
-    """获取生草统计"""
+    """获取个人生草统计"""
     userId = get_user_id(request)
     if not userId:
         return {"success": False, "error": "未登录或登录已过期"}
-    
+
     try:
-        result = await WarehouseService.get_grass_statistics(
-            userId=userId,
-            personal_period=personal_period,
-            total_period=total_period
-        )
-        return {"success": True, "data": result}
+        from services import FarmService
+        stats = await FarmService.get_grass_stats(userId=userId, period=period)
+        return {"success": True, "data": stats['personal']}
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {
-            "success": True,
-            "data": {
-                "personal": {"count": 0, "sumKusa": 0, "sumAdvKusa": 0, "avgKusa": 0, "avgAdvKusa": 0},
-                "total": {"count": 0, "sumKusa": 0, "sumAdvKusa": 0, "avgKusa": 0, "avgAdvKusa": 0}
-            }
-        }
+        return {"success": True, "data": {"count": 0, "sumKusa": 0, "sumAdvKusa": 0, "avgKusa": 0, "avgAdvKusa": 0}}
+
+
+@router.get("/stats/grass/total")
+async def get_grass_stats_total(
+    period: str = Query("24小时", description="统计周期: 24小时, 昨日, 上周")
+):
+    """获取全服生草统计"""
+    try:
+        from services import FarmService
+        stats = await FarmService.get_grass_stats(period=period)
+        return {"success": True, "data": stats['total']}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": True, "data": {"count": 0, "sumKusa": 0, "sumAdvKusa": 0, "avgKusa": 0, "avgAdvKusa": 0}}
 
 
 @router.get("/stats/gmarket")

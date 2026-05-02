@@ -496,51 +496,57 @@ class FarmService:
         ]
     
     @staticmethod
-    async def get_brief_report(userId: int) -> Dict[str, Any]:
-        """获取生草简报（最近24小时）"""
-        row = await fieldDB.kusaHistoryReport(userId, datetime.now(), 86400)
-        
-        if not row['count']:
-            return {'hasRecord': False, 'message': '最近24小时未生出草！', 'period': '24h'}
-        
-        return {
-            'hasRecord': True,
-            'period': '24h',
-            'totalCount': row['count'],
-            'totalKusa': row['sumKusa'],
-            'avgKusa': round(row['avgKusa'], 2),
-            'totalAdvKusa': row['sumAdvKusa'],
-            'avgAdvKusa': round(row['avgAdvKusa'], 2)
-        }
-    
-    @staticmethod
-    async def get_report(userId: int, period: str = 'daily') -> Dict[str, Any]:
-        """获取生草报告"""
-        from datetime import date, time, timedelta
+    async def get_grass_stats(userId: int = None, period: str = '24小时') -> Dict[str, Any]:
+        """
+        统一生草统计方法
+
+        Args:
+            userId: 用户ID，为None时只返回全服统计
+            period: 统计周期 ('24小时', '昨日', '上周')
+
+        Returns:
+            Dict: 包含 personal（如有userId）和 total 统计信息
+        """
         now = datetime.now()
-        
-        if period == 'daily':
-            query_time = datetime.combine(date.today(), time.min)
-            seconds = 86400
+        today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
+
+        if period == "24小时":
+            end_time = now
+            interval = 86400
+        elif period == "昨日":
+            end_time = today_start
+            interval = 86400
+        elif period == "上周":
+            monday_start = today_start - timedelta(days=now.weekday())
+            end_time = monday_start
+            interval = 604800
         else:
-            query_time = datetime.combine(date.today(), time.min) - timedelta(days=date.today().weekday())
-            seconds = 604800
-        
-        row = await fieldDB.kusaHistoryReport(userId, query_time, seconds)
-        
-        if not row['count']:
-            return {'hasRecord': False, 'message': '该时段未生出草', 'period': period}
-        
-        return {
-            'hasRecord': True,
-            'period': period,
-            'totalCount': row['count'],
-            'totalKusa': row['sumKusa'],
-            'avgKusa': round(row['avgKusa'], 2),
-            'totalAdvKusa': row['sumAdvKusa'],
-            'avgAdvKusa': round(row['avgAdvKusa'], 2)
+            raise ValueError(f"无效的统计周期: {period}")
+
+        result = {}
+
+        if userId is not None:
+            personal_row = await fieldDB.kusaHistoryReport(userId, end_time, interval)
+            result['personal'] = {
+                'count': personal_row.get('count') or 0,
+                'sumKusa': personal_row.get('sumKusa') or 0,
+                'sumAdvKusa': personal_row.get('sumAdvKusa') or 0,
+                'avgKusa': round(personal_row.get('avgKusa') or 0, 2),
+                'avgAdvKusa': round(personal_row.get('avgAdvKusa') or 0, 2)
+            }
+
+        total_row = await fieldDB.kusaHistoryTotalReport(interval, endTime=end_time)
+        total_count = total_row.get('count') or 0
+        result['total'] = {
+            'count': total_count,
+            'sumKusa': total_row.get('sumKusa') or 0,
+            'sumAdvKusa': total_row.get('sumAdvKusa') or 0,
+            'avgKusa': round((total_row.get('sumKusa') or 0) / total_count, 2) if total_count > 0 else 0,
+            'avgAdvKusa': round((total_row.get('sumAdvKusa') or 0) / total_count, 2) if total_count > 0 else 0
         }
-    
+
+        return result
+
     @staticmethod
     async def get_available_types(userId: int) -> List[Dict[str, Any]]:
         """获取可用草种"""

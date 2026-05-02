@@ -405,16 +405,17 @@ kusa_brief_cmd = on_command("生草简报", priority=5, block=True)
 async def handle_kusa_brief(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     """处理生草简报命令"""
     user_id = await get_user_id(event, auto_create=True)
-    result = await FarmService.get_brief_report(userId=user_id)
-    
-    if not result['hasRecord']:
+    stats = await FarmService.get_grass_stats(userId=user_id, period='24小时')
+    p = stats['personal']
+
+    if not p['count']:
         await send_finish(kusa_brief_cmd, '最近24小时未生出草！')
         return
-    
+
     await send_finish(kusa_brief_cmd,
-        f'最近24小时共生草{result["totalCount"]}次\n'
-        f'收获{result["totalKusa"]}草，平均每次{result["avgKusa"]}草\n'
-        f'收获{result["totalAdvKusa"]}草之精华，平均每次{result["avgAdvKusa"]}草之精华'
+        f'最近24小时共生草{p["count"]}次\n'
+        f'收获{p["sumKusa"]}草，平均每次{p["avgKusa"]}草\n'
+        f'收获{p["sumAdvKusa"]}草之精华，平均每次{p["avgAdvKusa"]}草之精华'
     )
 
 
@@ -424,16 +425,17 @@ kusa_daily_cmd = on_command("生草日报", priority=5, block=True)
 async def handle_kusa_daily(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     """处理生草日报命令"""
     user_id = await get_user_id(event, auto_create=True)
-    result = await FarmService.get_report(userId=user_id, period='daily')
-    
-    if not result['hasRecord']:
+    stats = await FarmService.get_grass_stats(userId=user_id, period='昨日')
+    p = stats['personal']
+
+    if not p['count']:
         await send_finish(kusa_daily_cmd, '昨日未生出草！')
         return
-    
+
     await send_finish(kusa_daily_cmd,
-        f'昨日共生草{result["totalCount"]}次\n'
-        f'收获{result["totalKusa"]}草，平均每次{result["avgKusa"]}草\n'
-        f'收获{result["totalAdvKusa"]}草之精华，平均每次{result["avgAdvKusa"]}草之精华'
+        f'昨日共生草{p["count"]}次\n'
+        f'收获{p["sumKusa"]}草，平均每次{p["avgKusa"]}草\n'
+        f'收获{p["sumAdvKusa"]}草之精华，平均每次{p["avgAdvKusa"]}草之精华'
     )
 
 
@@ -443,16 +445,17 @@ kusa_weekly_cmd = on_command("生草周报", priority=5, block=True)
 async def handle_kusa_weekly(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     """处理生草周报命令"""
     user_id = await get_user_id(event, auto_create=True)
-    result = await FarmService.get_report(userId=user_id, period='weekly')
-    
-    if not result['hasRecord']:
+    stats = await FarmService.get_grass_stats(userId=user_id, period='上周')
+    p = stats['personal']
+
+    if not p['count']:
         await send_finish(kusa_weekly_cmd, '上周未生出草！')
         return
-    
+
     await send_finish(kusa_weekly_cmd,
-        f'上周共生草{result["totalCount"]}次\n'
-        f'收获{result["totalKusa"]}草，平均每次{result["avgKusa"]}草\n'
-        f'收获{result["totalAdvKusa"]}草之精华，平均每次{result["avgAdvKusa"]}草之精华'
+        f'上周共生草{p["count"]}次\n'
+        f'收获{p["sumKusa"]}草，平均每次{p["avgKusa"]}草\n'
+        f'收获{p["sumAdvKusa"]}草之精华，平均每次{p["avgAdvKusa"]}草之精华'
     )
 
 

@@ -723,32 +723,37 @@ if scheduler:
     @scheduler.scheduled_job('cron', hour=4, misfire_grace_time=500)
     async def daily_report_runner():
         """生草日报"""
-        row = await field_db.kusaHistoryTotalReport(86400)
-        max_times, max_kusa, max_adv_kusa, max_avg_adv_kusa, max_once_adv_kusa = await field_db.kusaFarmChampion()
+        from services import FarmService
+        from datetime import datetime
+        now = datetime.now()
+        today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
+        stats = await FarmService.get_grass_stats(period='昨日')
+        t = stats['total']
+        max_times, max_kusa, max_adv_kusa, max_avg_adv_kusa, max_once_adv_kusa = await field_db.kusaFarmChampion(endTime=today_start, interval=86400)
 
-        output_str = f"最近24h生草统计:\n" \
-                     f"总生草次数: {row['count']}\n" \
-                     f"总草产量: {round(row['sumKusa'] / 1000000, 2)}m\n" \
-                     f"总草之精华产量: {row['sumAdvKusa']}\n"
+        output_str = f"昨日生草统计:\n" \
+                     f"总生草次数: {t['count']}\n" \
+                     f"总草产量: {round(t['sumKusa'] / 1000000, 2)}m\n" \
+                     f"总草之精华产量: {t['sumAdvKusa']}\n"
 
-        if max_times['count']:
-            user1 = await base_db.getKusaUser(max_times['qq'])
-            user_name1 = user1.name if user1 and user1.name else str(max_times['qq'])
-            user2 = await base_db.getKusaUser(max_kusa['qq'])
-            user_name2 = user2.name if user2 and user2.name else str(max_kusa['qq'])
-            user3 = await base_db.getKusaUser(max_adv_kusa['qq'])
-            user_name3 = user3.name if user3 and user3.name else str(max_adv_kusa['qq'])
-            user4 = await base_db.getKusaUser(max_avg_adv_kusa['qq'])
-            user_name4 = user4.name if user4 and user4.name else str(max_avg_adv_kusa['qq'])
-            user5 = await base_db.getKusaUser(max_once_adv_kusa['qq'])
-            user_name5 = user5.name if user5 and user5.name else str(max_once_adv_kusa['qq'])
+        if max_times and max_times.get('count'):
+            user1 = await base_db.getKusaUser(max_times['userId'])
+            user_name1 = user1.name if user1 and user1.name else str(max_times['userId'])
+            user2 = await base_db.getKusaUser(max_kusa['userId'])
+            user_name2 = user2.name if user2 and user2.name else str(max_kusa['userId'])
+            user3 = await base_db.getKusaUser(max_adv_kusa['userId'])
+            user_name3 = user3.name if user3 and user3.name else str(max_adv_kusa['userId'])
+            user4 = await base_db.getKusaUser(max_avg_adv_kusa['userId'])
+            user_name4 = user4.name if user4 and user4.name else str(max_avg_adv_kusa['userId'])
+            user5 = await base_db.getKusaUser(max_once_adv_kusa['userId'])
+            user_name5 = user5.name if user5 and user5.name else str(max_once_adv_kusa['userId'])
 
             output_str += f"\n" \
                           f"生草次数最多: {user_name1}({max_times['count']}次)\n" \
-                          f"获得草最多: {user_name2}(共{round(max_kusa['sumKusa'] / 1000000, 2)}m草)\n" \
-                          f"获得草之精华最多: {user_name3}(共{max_adv_kusa['sumAdvKusa']}草精)\n" \
-                          f"平均草之精华最多: {user_name4}(平均{round(max_avg_adv_kusa['avgAdvKusa'], 2)}草精)\n" \
-                          f"单次草之精华最多: {user_name5}({max_once_adv_kusa['maxAdvKusa']}草精)"
+                          f"获得草最多: {user_name2}(共{round((max_kusa.get('sumKusa') or 0) / 1000000, 2)}m草)\n" \
+                          f"获得草之精华最多: {user_name3}(共{max_adv_kusa.get('sumAdvKusa') or 0}草精)\n" \
+                          f"平均草之精华最多: {user_name4}(平均{round(max_avg_adv_kusa.get('avgAdvKusa') or 0, 2)}草精)\n" \
+                          f"单次草之精华最多: {user_name5}({max_once_adv_kusa.get('maxAdvKusa') or 0}草精)"
 
         main_group = plugin_config.get('group', {}).get('main')
         await send_group_msg(main_group, output_str)
@@ -756,11 +761,38 @@ if scheduler:
     @scheduler.scheduled_job('cron', hour=4, minute=1, day_of_week='mon', misfire_grace_time=500)
     async def weekly_report_runner():
         """生草周报"""
-        row = await field_db.kusaHistoryTotalReport(604800)
-        output_str = f"最近一周生草统计:\n" \
-                     f"总生草次数: {row['count']}\n" \
-                     f"总草产量: {round(row['sumKusa'] / 1000000)}m\n" \
-                     f"总草之精华产量: {row['sumAdvKusa']}"
+        from services import FarmService
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
+        monday_start = today_start - timedelta(days=now.weekday())
+        stats = await FarmService.get_grass_stats(period='上周')
+        t = stats['total']
+        max_times, max_kusa, max_adv_kusa, max_avg_adv_kusa, max_once_adv_kusa = await field_db.kusaFarmChampion(endTime=monday_start, interval=604800)
+
+        output_str = f"上周生草统计:\n" \
+                     f"总生草次数: {t['count']}\n" \
+                     f"总草产量: {round(t['sumKusa'] / 1000000, 2)}m\n" \
+                     f"总草之精华产量: {t['sumAdvKusa']}\n"
+
+        if max_times and max_times.get('count'):
+            user1 = await base_db.getKusaUser(max_times['userId'])
+            user_name1 = user1.name if user1 and user1.name else str(max_times['userId'])
+            user2 = await base_db.getKusaUser(max_kusa['userId'])
+            user_name2 = user2.name if user2 and user2.name else str(max_kusa['userId'])
+            user3 = await base_db.getKusaUser(max_adv_kusa['userId'])
+            user_name3 = user3.name if user3 and user3.name else str(max_adv_kusa['userId'])
+            user4 = await base_db.getKusaUser(max_avg_adv_kusa['userId'])
+            user_name4 = user4.name if user4 and user4.name else str(max_avg_adv_kusa['userId'])
+            user5 = await base_db.getKusaUser(max_once_adv_kusa['userId'])
+            user_name5 = user5.name if user5 and user5.name else str(max_once_adv_kusa['userId'])
+
+            output_str += f"\n" \
+                          f"生草次数最多: {user_name1}({max_times['count']}次)\n" \
+                          f"获得草最多: {user_name2}(共{round((max_kusa.get('sumKusa') or 0) / 1000000, 2)}m草)\n" \
+                          f"获得草之精华最多: {user_name3}(共{max_adv_kusa.get('sumAdvKusa') or 0}草精)\n" \
+                          f"平均草之精华最多: {user_name4}(平均{round(max_avg_adv_kusa.get('avgAdvKusa') or 0, 2)}草精)\n" \
+                          f"单次草之精华最多: {user_name5}({max_once_adv_kusa.get('maxAdvKusa') or 0}草精)"
 
         main_group = plugin_config.get('group', {}).get('main')
         await send_group_msg(main_group, output_str)

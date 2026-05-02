@@ -94,31 +94,31 @@
                   <h3>个人产量统计</h3>
                   <el-radio-group v-model="grassStatsPeriod" size="small">
                     <el-radio-button label="24小时">24小时</el-radio-button>
-                    <el-radio-button label="每日">每日</el-radio-button>
-                    <el-radio-button label="每周">每周</el-radio-button>
+                    <el-radio-button label="昨日">昨日</el-radio-button>
+                    <el-radio-button label="上周">上周</el-radio-button>
                   </el-radio-group>
                 </div>
               </template>
-              <div v-if="grassStats && grassStats.personal" class="grass-stats-content">
+              <div v-if="personalGrassStats" class="grass-stats-content">
                 <el-descriptions :column="2" border class="responsive-descriptions">
                   <el-descriptions-item label="总生草次数">
-                    <span class="stats-value">{{ grassStats.personal.count || 0 }}</span>
+                    <span class="stats-value">{{ personalGrassStats.count || 0 }}</span>
                   <span class="unit">次</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="总草产量">
-                  <span class="kusa-value">{{ (grassStats.personal.sumKusa || 0).toLocaleString() }}</span>
+                  <span class="kusa-value">{{ (personalGrassStats.sumKusa || 0).toLocaleString() }}</span>
                   <span class="unit">草</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="总草之精华产量">
-                  <span class="adv-kusa-value">{{ (grassStats.personal.sumAdvKusa || 0).toLocaleString() }}</span>
+                  <span class="adv-kusa-value">{{ (personalGrassStats.sumAdvKusa || 0).toLocaleString() }}</span>
                   <span class="unit">草精</span>
                 </el-descriptions-item>
                   <el-descriptions-item label="每次平均草产量">
-                    <span class="avg-value">{{ grassStats.personal.avgKusa ? grassStats.personal.avgKusa.toFixed(2) : ((grassStats.personal.sumKusa || 0) / (grassStats.personal.count || 1)).toFixed(2) }}</span>
+                    <span class="avg-value">{{ personalGrassStats.avgKusa ? personalGrassStats.avgKusa.toFixed(2) : ((personalGrassStats.sumKusa || 0) / (personalGrassStats.count || 1)).toFixed(2) }}</span>
                     <span class="unit">草/次</span>
                   </el-descriptions-item>
                   <el-descriptions-item label="每次平均草精产量">
-                    <span class="avg-value">{{ grassStats.personal.avgAdvKusa ? grassStats.personal.avgAdvKusa.toFixed(2) : ((grassStats.personal.sumAdvKusa || 0) / (grassStats.personal.count || 1)).toFixed(2) }}</span>
+                    <span class="avg-value">{{ personalGrassStats.avgAdvKusa ? personalGrassStats.avgAdvKusa.toFixed(2) : ((personalGrassStats.sumAdvKusa || 0) / (personalGrassStats.count || 1)).toFixed(2) }}</span>
                     <span class="unit">草精/次</span>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -132,31 +132,31 @@
                   <h3>全服产量统计</h3>
                   <el-radio-group v-model="totalGrassStatsPeriod" size="small">
                     <el-radio-button label="24小时">24小时</el-radio-button>
-                    <el-radio-button label="每日">每日</el-radio-button>
-                    <el-radio-button label="每周">每周</el-radio-button>
+                    <el-radio-button label="昨日">昨日</el-radio-button>
+                    <el-radio-button label="上周">上周</el-radio-button>
                   </el-radio-group>
                 </div>
               </template>
-              <div v-if="grassStats && grassStats.total" class="grass-stats-content">
+              <div v-if="totalGrassStats" class="grass-stats-content">
                 <el-descriptions :column="2" border class="responsive-descriptions">
                   <el-descriptions-item label="总生草次数">
-                    <span class="stats-value">{{ grassStats.total.count || 0 }}</span>
+                    <span class="stats-value">{{ totalGrassStats.count || 0 }}</span>
                   <span class="unit">次</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="总草产量">
-                  <span class="kusa-value">{{ (grassStats.total.sumKusa || 0).toLocaleString() }}</span>
+                  <span class="kusa-value">{{ (totalGrassStats.sumKusa || 0).toLocaleString() }}</span>
                   <span class="unit">草</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="总草之精华产量">
-                  <span class="adv-kusa-value">{{ (grassStats.total.sumAdvKusa || 0).toLocaleString() }}</span>
+                  <span class="adv-kusa-value">{{ (totalGrassStats.sumAdvKusa || 0).toLocaleString() }}</span>
                   <span class="unit">草精</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="每次平均草产量">
-                  <span class="avg-value">{{ grassStats.total.avgKusa ? grassStats.total.avgKusa.toFixed(2) : (grassStats.total.count ? ((grassStats.total.sumKusa || 0) / grassStats.total.count).toFixed(2) : 0) }}</span>
+                  <span class="avg-value">{{ totalGrassStats.avgKusa ? totalGrassStats.avgKusa.toFixed(2) : (totalGrassStats.count ? ((totalGrassStats.sumKusa || 0) / totalGrassStats.count).toFixed(2) : 0) }}</span>
                   <span class="unit">草/次</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="每次平均草精产量">
-                  <span class="avg-value">{{ grassStats.total.avgAdvKusa ? grassStats.total.avgAdvKusa.toFixed(2) : (grassStats.total.count ? ((grassStats.total.sumAdvKusa || 0) / grassStats.total.count).toFixed(2) : 0) }}</span>
+                  <span class="avg-value">{{ totalGrassStats.avgAdvKusa ? totalGrassStats.avgAdvKusa.toFixed(2) : (totalGrassStats.count ? ((totalGrassStats.sumAdvKusa || 0) / totalGrassStats.count).toFixed(2) : 0) }}</span>
                   <span class="unit">草精/次</span>
                 </el-descriptions-item>
                 </el-descriptions>
@@ -363,7 +363,8 @@ const productionFactors = ref<any>({})
 const hasProductionFactors = ref(false)
 const grassStatsPeriod = ref('24小时')
 const totalGrassStatsPeriod = ref('24小时')
-const grassStats = ref<any>(null)
+const personalGrassStats = ref<any>(null)
+const totalGrassStats = ref<any>(null)
 const gMarketStats = ref<any>(null)
 const gMarketRecords = ref<any[]>([])
 const gMarketRecordsTotal = ref(0)
@@ -379,7 +380,8 @@ const refreshStats = async () => {
       fetchDailyProduction(),
       fetchUserStats(),
       fetchKusaRank(),
-      fetchGrassStats(),
+      fetchPersonalGrassStats(),
+      fetchTotalGrassStats(),
       fetchGMarketStats(),
       fetchGMarketRecords()
     ])
@@ -452,28 +454,21 @@ const fetchKusaRank = async () => {
   }
 }
 
-const fetchGrassStats = async () => {
+const fetchPersonalGrassStats = async () => {
   try {
-    // 调用后端API，传递个人和全服的统计周期
-    const response = await warehouseApi.getGrassStats(grassStatsPeriod.value, totalGrassStatsPeriod.value)
-    grassStats.value = response
+    const response = await warehouseApi.getGrassStatsPersonal(grassStatsPeriod.value)
+    personalGrassStats.value = response
   } catch (error) {
-    grassStats.value = null
+    personalGrassStats.value = null
   }
 }
 
 const fetchTotalGrassStats = async () => {
   try {
-    // 调用后端API，传递个人和全服的统计周期
-    const response = await warehouseApi.getGrassStats(grassStatsPeriod.value, totalGrassStatsPeriod.value)
-    // 只更新全服统计数据
-    if (grassStats.value) {
-      grassStats.value.total = response.total
-    } else {
-      grassStats.value = response
-    }
+    const response = await warehouseApi.getGrassStatsTotal(totalGrassStatsPeriod.value)
+    totalGrassStats.value = response
   } catch (error) {
-    console.error('获取全服统计数据失败:', error)
+    totalGrassStats.value = null
   }
 }
 
@@ -503,7 +498,7 @@ const handleGMarketPageChange = (page: number) => {
 }
 
 const handleGrassStatsPeriodChange = () => {
-  fetchGrassStats()
+  fetchPersonalGrassStats()
 }
 
 const handleTotalGrassStatsPeriodChange = () => {

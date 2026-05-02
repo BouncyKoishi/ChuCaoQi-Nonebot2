@@ -147,9 +147,11 @@ async def getRecentKusaHistory(userId, limit: int):
     return rows
 
 
-async def kusaHistoryTotalReport(interval):
+async def kusaHistoryTotalReport(interval, endTime: datetime.datetime = None):
+    if endTime is None:
+        endTime = datetime.datetime.now()
+    startTime = endTime - datetime.timedelta(seconds=interval)
     conn = Tortoise.get_connection('default')
-    currentTimestamp = datetime.datetime.now().timestamp()
     rows = await conn.execute_query_dict(f'''
         SELECT
             count(*) AS count,
@@ -158,14 +160,17 @@ async def kusaHistoryTotalReport(interval):
         FROM
             KusaHistory
         WHERE
-            {currentTimestamp} - createTimeTs < ?
-    ''', [interval])
+            createTimeTs < ? AND createTimeTs > ?
+    ''', [endTime.timestamp(), startTime.timestamp()])
     return rows[0] if rows else {"count": 0, "sumKusa": 0, "sumAdvKusa": 0}
 
 
-async def kusaFarmChampion():
+async def kusaFarmChampion(endTime: datetime.datetime = None, interval: int = 86400):
+    if endTime is None:
+        endTime = datetime.datetime.now()
+    startTime = endTime - datetime.timedelta(seconds=interval)
+
     async def executeChampionQuery(conn, select: str, orderBy: str):
-        currentTimestamp = datetime.datetime.now().timestamp()
         rows = await conn.execute_query_dict(f'''
                 SELECT
                     userId,
@@ -173,13 +178,14 @@ async def kusaFarmChampion():
                 FROM
                     KusaHistory
                 WHERE
-                    {currentTimestamp} - createTimeTs < 86400
+                    createTimeTs < ? AND createTimeTs > ?
                 GROUP BY
                     userId
                 ORDER BY
                     {orderBy} DESC
-            ''', [])
-        return rows[0]
+            ''', [endTime.timestamp(), startTime.timestamp()])
+        return rows[0] if rows else None
+
     conn = Tortoise.get_connection('default')
     maxTimes = await executeChampionQuery(conn, "count(*) AS count", "count")
     maxKusa = await executeChampionQuery(conn, "sum(kusaResult) AS sumKusa", "sumKusa")
