@@ -92,6 +92,9 @@
       <div class="trade-section">
         <h3>批量交易栏</h3>
         <el-form :model="batchTradeForm" label-width="100px" class="batch-trade-form">
+          <el-form-item label="当前草量">
+            <span>{{ formatNumber(userInfo?.kusa || 0) }} 草</span>
+          </el-form-item>
           <el-form-item label="G类型">
             <div class="form-row">
               <el-select v-model="batchTradeForm.gTypes" multiple placeholder="选择G类型" class="g-type-select">
@@ -115,10 +118,20 @@
           </el-form-item>
           <el-form-item label="交易数量">
             <div class="form-row">
-              <el-input-number v-model="batchTradeForm.amount" :min="1" :step="1" class="amount-input" />
+              <el-input-number
+                v-model="batchTradeForm.amount"
+                :min="1"
+                :step="1"
+                :disabled="batchTradeForm.positionMode !== 'manual'"
+                :placeholder="batchPositionAmountPlaceholder"
+                class="amount-input"
+              />
               <div class="button-row">
-                <el-button @click="selectFullPosition">全仓</el-button>
-                <el-button @click="selectHalfPosition">半仓</el-button>
+                <el-radio-group v-model="batchTradeForm.positionMode" :disabled="batchTradeForm.gTypes.length === 0">
+                  <el-radio-button label="manual">手动</el-radio-button>
+                  <el-radio-button label="full">全仓</el-radio-button>
+                  <el-radio-button label="half">半仓</el-radio-button>
+                </el-radio-group>
               </div>
             </div>
           </el-form-item>
@@ -256,7 +269,8 @@ let chartInstance: echarts.ECharts | null = null
 const batchTradeForm = ref({
   gTypes: [] as string[],
   tradeType: 'buy',
-  amount: 1
+  amount: 1,
+  positionMode: 'manual' as 'manual' | 'full' | 'half'
 })
 
 const popupTradeForm = ref({
@@ -295,17 +309,6 @@ const getGTypeFromChinese = (chineseName: string): GType | undefined => {
   return CHINESE_TO_G_TYPE[key]
 }
 
-const getMinPriceAmongSelected = (gTypes: GType[]): number => {
-  let minPrice = Infinity
-  for (const gType of gTypes) {
-    const price = getCurrentPrice(gType)
-    if (price > 0 && price < minPrice) {
-      minPrice = price
-    }
-  }
-  return minPrice
-}
-
 const computeYAxisRange = (values: number[]): { yMin: number; yMax: number } => {
   const minValue = Math.min(...values)
   const maxValue = Math.max(...values)
@@ -328,34 +331,28 @@ const computeYAxisRange = (values: number[]): { yMin: number; yMax: number } => 
 
 const formatTime = (timeStr: string) => {
   const date = new Date(timeStr)
-  return date.toLocaleString('zh-CN', { timeZone: 'UTC' })
+  return date.toLocaleString('zh-CN')
 }
 
 // ==================== 仓位计算函数 ====================
 
 interface PositionCalcParams {
   tradeType: 'buy' | 'sell'
-  gTypes: GType[]
   singleGType?: GType
   fullGName?: string
   ratio: number
 }
 
 const calculatePosition = (params: PositionCalcParams): number => {
-  const { tradeType, gTypes, singleGType, fullGName, ratio } = params
-  
+  const { tradeType, singleGType, fullGName, ratio } = params
+
   if (tradeType === 'buy') {
     const userKusa = userInfo.value?.kusa || 0
-    const targetTypes = singleGType ? [singleGType] : gTypes
-    
-    if (targetTypes.length === 0) return 1
-    
-    const minPrice = singleGType 
-      ? getCurrentPrice(singleGType) 
-      : getMinPriceAmongSelected(targetTypes)
-    
-    if (minPrice < Infinity && minPrice > 0 && userKusa > 0) {
-      const maxAmount = Math.floor(userKusa / minPrice / (1 / ratio))
+    if (!singleGType) return 1
+
+    const price = getCurrentPrice(singleGType)
+    if (price > 0 && userKusa > 0) {
+      const maxAmount = Math.floor(userKusa / price * ratio)
       return Math.max(1, maxAmount)
     }
     return 1
@@ -363,16 +360,8 @@ const calculatePosition = (params: PositionCalcParams): number => {
     if (fullGName) {
       const amount = getHoldingAmount(fullGName)
       return Math.max(1, Math.floor(amount * ratio))
-    } else {
-      for (const gType of gTypes) {
-        const chineseName = G_TYPE_TO_CHINESE[gType]
-        const amount = getHoldingAmount(chineseName)
-        if (amount > 0) {
-          return Math.max(1, Math.floor(amount * ratio))
-        }
-      }
-      return 1
     }
+    return 1
   }
 }
 
@@ -403,12 +392,48 @@ const holdingData = computed(() => {
   })
 })
 
+const getBatchAmountForType = (gType: GType): number => {
+  const mode = batchTradeForm.value.positionMode
+  if (mode === 'manual') return batchTradeForm.value.amount
+
+  const ratio = mode === 'full' ? 1 : 0.5
+
+  if (batchTradeForm.value.tradeType === 'buy') {
+    const userKusa = userInfo.value?.kusa || 0
+    const price = getCurrentPrice(gType)
+    const typeCount = batchTradeForm.value.gTypes.length || 1
+    if (price > 0 && userKusa > 0) {
+      return Math.max(1, Math.floor(userKusa / typeCount / price * ratio))
+    }
+    return 1
+  } else {
+    const chineseName = G_TYPE_TO_CHINESE[gType]
+    const holding = getHoldingAmount(chineseName)
+    if (holding > 0) {
+      return Math.max(1, Math.floor(holding * ratio))
+    }
+    return 0
+  }
+}
+
+const batchPositionAmountPlaceholder = computed(() => {
+  const mode = batchTradeForm.value.positionMode
+  if (mode === 'manual') return ''
+  if (batchTradeForm.value.gTypes.length === 0) return ''
+  if (batchTradeForm.value.gTypes.length === 1) {
+    const gType = batchTradeForm.value.gTypes[0] as GType
+    return String(getBatchAmountForType(gType))
+  }
+  return ''
+})
+
 const estimatedBatchPrice = computed(() => {
   if (!gValue.value || !batchTradeForm.value.gTypes.length) return 0
-  
+
   return batchTradeForm.value.gTypes.reduce((total, gType) => {
     const price = getCurrentPrice(gType as GType)
-    return total + (price * batchTradeForm.value.amount)
+    const amount = getBatchAmountForType(gType as GType)
+    return total + (price * amount)
   }, 0)
 })
 
@@ -597,39 +622,22 @@ const deselectAllGTypes = () => {
   batchTradeForm.value.gTypes = []
 }
 
-const selectFullPosition = () => {
-  const amount = calculatePosition({
-    tradeType: batchTradeForm.value.tradeType as 'buy' | 'sell',
-    gTypes: batchTradeForm.value.gTypes as GType[],
-    ratio: 1
-  })
-  batchTradeForm.value.amount = amount
-  ElMessage.info(`已设置为全仓交易数量: ${amount}`)
-}
-
-const selectHalfPosition = () => {
-  const amount = calculatePosition({
-    tradeType: batchTradeForm.value.tradeType as 'buy' | 'sell',
-    gTypes: batchTradeForm.value.gTypes as GType[],
-    ratio: 0.5
-  })
-  batchTradeForm.value.amount = amount
-  ElMessage.info(`已设置为半仓交易数量: ${amount}`)
-}
-
 const handleBatchTrade = async () => {
   if (!batchTradeForm.value.gTypes.length) {
     ElMessage.warning('请选择至少一种G类型')
     return
   }
-  
+
   trading.value = true
   try {
     for (const gType of batchTradeForm.value.gTypes) {
+      const amount = getBatchAmountForType(gType as GType)
+      if (amount <= 0) continue
+
       if (batchTradeForm.value.tradeType === 'buy') {
-        await gMarketApi.buyG(gType, batchTradeForm.value.amount)
+        await gMarketApi.buyG(gType, amount)
       } else {
-        await gMarketApi.sellG(gType, batchTradeForm.value.amount)
+        await gMarketApi.sellG(gType, amount)
       }
     }
     ElMessage.success('批量交易成功')
@@ -675,7 +683,6 @@ const handleSellPopup = (gName: string) => {
 const selectPopupFullPosition = () => {
   const amount = calculatePosition({
     tradeType: popupTradeForm.value.tradeType as 'buy' | 'sell',
-    gTypes: [],
     singleGType: popupTradeForm.value.gType as GType,
     fullGName: popupTradeForm.value.fullGName,
     ratio: 1
@@ -687,7 +694,6 @@ const selectPopupFullPosition = () => {
 const selectPopupHalfPosition = () => {
   const amount = calculatePosition({
     tradeType: popupTradeForm.value.tradeType as 'buy' | 'sell',
-    gTypes: [],
     singleGType: popupTradeForm.value.gType as GType,
     fullGName: popupTradeForm.value.fullGName,
     ratio: 0.5
@@ -717,14 +723,21 @@ const confirmPopupTrade = async () => {
 
 // ==================== 生命周期 ====================
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   refreshGValue()
+  refreshTimer = setInterval(refreshGValue, 30 * 60 * 1000)
   window.addEventListener('resize', () => {
     chartInstance?.resize()
   })
 })
 
 onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
   chartInstance?.dispose()
 })
 </script>
