@@ -50,7 +50,7 @@ async def updateUsingModel(userId, newModel):
 async def changeUsingRole(userId, roleName):
     chatUser = await getChatUser(userId)
     if not roleName:
-        chatUser.chosenRoleId = 1
+        chatUser.chosenRoleId = 0
         await chatUser.save()
         return True
     role = await getChatRole(userId, roleName, True)

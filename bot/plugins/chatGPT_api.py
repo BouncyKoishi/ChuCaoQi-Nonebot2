@@ -489,7 +489,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
     chatUser = await db.getChatUser(user_id)
     
     model = "gpt-5" if useGPT5 else chatUser.chosenModel
-    roleId = 1 if useDefaultRole else chatUser.chosenRoleId
+    roleId = 0 if useDefaultRole else chatUser.chosenRoleId
     history = await getNewConversation(user_id, roleId) if isNewConversation else await readDefaultConversation(user_id)
     history.append({"role": "user", "content": content})
 
@@ -502,7 +502,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
 
         if isNewConversation:
             role = await db.getChatRoleById(roleId)
-            roleName = role.name if role and roleId != 1 else ""
+            roleName = role.name if role and roleId != 0 else ""
         else:
             systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
             roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ""
@@ -553,7 +553,9 @@ async def getNewConversation(user_id, roleId):
     role = await db.getChatRoleById(roleId)
     if not role:
         return []
-    if roleId == 1:
+    if roleId == 0:
+        if not role.detail:
+            return []
         return [{"role": "system", "content": [{"type": "text", "text": role.detail}]}]
     return [{"role": "system", "botRoleName": role.name, "content": [{"type": "text", "text": role.detail}]}]
 

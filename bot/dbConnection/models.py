@@ -139,7 +139,7 @@ class ChatUser(Model):
     tokenUse = IntField(default=0)
     todayTokenUse = IntField(default=0)
     dailyTokenLimit = IntField(default=10000)
-    chosenRoleId = IntField(default=1)
+    chosenRoleId = IntField(default=0)
     createTime = DatetimeField(auto_now_add=True)
 
 
