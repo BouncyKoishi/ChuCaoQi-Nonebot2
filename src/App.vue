@@ -83,11 +83,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { DataLine, House, InfoFilled, Menu, PieChart, Present, ShoppingCart, Star, SwitchButton, TrendCharts } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { House, TrendCharts, ShoppingCart, DataLine, Star, PieChart, Present, Menu, SwitchButton, InfoFilled } from '@element-plus/icons-vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
@@ -150,7 +150,8 @@ onUnmounted(() => {
 })
 
 watch(() => route.path, (newPath) => {
-  if (!userStore.isLoggedIn && newPath !== '/login') {
+  const publicPages = ['/login', '/about', '/docs']
+  if (!userStore.isLoggedIn && !publicPages.includes(newPath)) {
     router.push('/login')
   }
 })

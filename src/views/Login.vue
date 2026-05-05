@@ -34,6 +34,9 @@
           Token获取方式：在Bot中发送 !生成token
         </el-text>
       </div>
+      <div class="docs-link">
+        <router-link to="/docs">查看Bot指令文档 →</router-link>
+      </div>
     </el-card>
   </div>
 </template>
@@ -112,5 +115,22 @@ const handleLogin = async () => {
 .login-tip {
   text-align: center;
   margin-top: 20px;
+}
+
+.docs-link {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.docs-link a {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.docs-link a:hover {
+  color: #764ba2;
+  text-decoration: underline;
 }
 </style>

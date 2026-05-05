@@ -12,7 +12,6 @@
 
 生草系统/除草器主群：738721109
 生草系统简明攻略：https://www.bilibili.com/opus/1029642903728685075
-除草器指令文档(杂项)：https://rinkastone.com/2024/05/13/archives/409
-除草器指令文档(抽奖)：https://rinkastone.com/2024/11/27/archives/429
+除草器Bot指令文档：http://110.41.149.62/kusa/docs
 除草器代码仓库：https://github.com/BouncyKoishi/ChuCaoQi-Nonebot2
 生草系统完整攻略见主群群文件，非常感谢作者ScarMoon！

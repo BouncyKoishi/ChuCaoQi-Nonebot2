@@ -12,7 +12,7 @@
           <div class="section">
             <el-row :gutter="16">
               <el-col :xs="24" :sm="12" v-for="link in links" :key="link.title">
-                <el-card shadow="hover" class="link-card" @click="openLink(link.url)">
+                <el-card shadow="hover" class="link-card" @click="openLink(link.url, link.internal)">
                   <div class="link-content">
                     <el-icon :size="24" :color="link.color">
                       <component :is="link.icon" />
@@ -111,6 +111,9 @@
 import { donateApi } from '@/api'
 import { ChatDotRound, Collection, Connection, Document, Present } from '@element-plus/icons-vue'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const activeTab = ref('links')
 const donateRecords = ref<{ amount: number; date: string; source: string; remark: string | null }[]>([])
@@ -139,18 +142,12 @@ const links = [
     color: '#00a1d6'
   },
   { 
-    title: '指令文档(杂项)', 
+    title: '指令文档', 
     desc: 'Bot端指令使用文档',
-    url: 'https://rinkastone.com/2024/05/13/archives/409',
+    url: '/docs',
     icon: Collection,
-    color: '#67c23a'
-  },
-  { 
-    title: '指令文档(抽奖)', 
-    desc: 'Bot端抽奖系统使用文档',
-    url: 'https://rinkastone.com/2024/11/27/archives/429',
-    icon: Present,
-    color: '#e6a23c'
+    color: '#67c23a',
+    internal: true
   },
   { 
     title: 'QQ主群', 
@@ -161,8 +158,12 @@ const links = [
   }
 ]
 
-const openLink = (url: string) => {
-  window.open(url, '_blank')
+const openLink = (url: string, internal?: boolean) => {
+  if (internal) {
+    router.push(url)
+  } else {
+    window.open(url, '_blank')
+  }
 }
 
 const handlePageChange = (page: number) => {
