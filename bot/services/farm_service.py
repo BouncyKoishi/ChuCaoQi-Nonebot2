@@ -414,6 +414,14 @@ class FarmService:
     @staticmethod
     async def set_default_type(userId: int, kusa_type: Optional[str]) -> Dict[str, Any]:
         """设置默认草种"""
+        validation = await FarmService._validate_kusa_type(userId, kusa_type)
+        if not validation['valid']:
+            return {
+                'success': False,
+                'error': 'INVALID_KUSA_TYPE',
+                'message': validation['message']
+            }
+        
         field = await fieldDB.getKusaField(userId)
         if not field:
             from dbConnection.models import KusaField
@@ -550,8 +558,8 @@ class FarmService:
     @staticmethod
     async def get_available_types(userId: int) -> List[Dict[str, Any]]:
         """获取可用草种"""
-        grass_types = ['草', '巨草', '巨巨草', '巨灵草', '速草', '速速草',
-                      '灵草', '半灵草', '灵灵草', '半灵巨草', '神灵草', '不灵草']
+        grass_types = ['草', '巨草', '巨巨草', '速草', '速速草',
+                      '灵草', '半灵草', '灵灵草', '半灵巨草', '不灵草']
         
         available = []
         for gtype in grass_types:

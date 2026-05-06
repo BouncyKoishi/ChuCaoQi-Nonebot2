@@ -367,7 +367,8 @@ async def handle_default_kusa_type(
     if result['success']:
         await send_finish(default_kusa_type_cmd, result['message'])
     else:
-        await send_finish(default_kusa_type_cmd, '设置失败')
+        error_msg = result.get('message', '设置失败')
+        await send_finish(default_kusa_type_cmd, error_msg)
 
 
 recover_capacity_cmd = on_command("承载力补充", aliases={"补充承载力"}, priority=5, block=True)
