@@ -240,11 +240,11 @@ const G_TYPE_TO_FULL_NAME: Record<GType, string> = {
 }
 
 const G_TYPE_TO_COLOR: Record<GType, string> = {
-  east: '#5470c6',
-  south: '#91cc75',
-  north: '#fac858',
-  zhuhai: '#ee6666',
-  shenzhen: '#73c0de'
+  east: '#1f77b4',
+  south: '#ff7f0e',
+  north: '#2ca02c',
+  zhuhai: '#d62728',
+  shenzhen: '#9467bd'
 }
 
 const INITIAL_G_VALUES: Record<GType, number> = {
