@@ -182,6 +182,8 @@ async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: boo
     all_trade_records = await baseDB.getAllTradeRecordsByCostItem('草之精华')
     user_trade_amount = {}
     for record in all_trade_records:
+        if '升级' in (record.tradeType or ''):
+            continue
         uid = record.user_id
         user_trade_amount[uid] = user_trade_amount.get(uid, 0) + record.costItemAmount
 
@@ -268,7 +270,7 @@ async def getKusaAdv(user):
     nowKusaAdv = user.advKusa
     titleKusaAdv = sum(10 ** (i - 4) for i in range(5, user.vipLevel + 1)) if user.vipLevel > 4 else 0
     advItemTradeRecord = await baseDB.getTradeRecord(userId=user.user_id, costItemName='草之精华')
-    itemKusaAdv = sum(record.costItemAmount for record in advItemTradeRecord)
+    itemKusaAdv = sum(record.costItemAmount for record in advItemTradeRecord if '升级' not in (record.tradeType or ''))
     return nowKusaAdv + titleKusaAdv + itemKusaAdv, nowKusaAdv, titleKusaAdv, itemKusaAdv
 
 

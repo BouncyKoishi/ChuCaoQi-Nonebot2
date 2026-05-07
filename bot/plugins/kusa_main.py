@@ -657,6 +657,14 @@ async def handle_vip_upgrade(event: Union[OneBotV11MessageEvent, QQMessageEvent]
         await user.save()
         await base_db.changeKusa(user_id, -cost_kusa)
         await base_db.changeKusa(await get_bot_qq(), cost_kusa)
+        await base_db.setTradeRecord(
+            userId=user_id,
+            tradeType='信息员升级',
+            gainItemName=f'VIP等级{new_level}',
+            gainItemAmount=1,
+            costItemName='草',
+            costItemAmount=cost_kusa
+        )
         await send_finish(vip_upgrade_cmd, f'获取成功！你成为了{vip_title_names[new_level]}！')
     else:
         await send_finish(vip_upgrade_cmd, f'成为{vip_title_names[new_level]}需要消耗{cost_kusa}草，你不够草^ ^')
@@ -687,6 +695,14 @@ async def handle_vip_upgrade_2(event: Union[OneBotV11MessageEvent, QQMessageEven
         await user.save()
         await base_db.changeAdvKusa(user_id, -cost_adv_point)
         await base_db.changeAdvKusa(await get_bot_qq(), cost_adv_point)
+        await base_db.setTradeRecord(
+            userId=user_id,
+            tradeType='进阶信息员升级',
+            gainItemName=f'VIP等级{new_level}',
+            gainItemAmount=1,
+            costItemName='草之精华',
+            costItemAmount=cost_adv_point
+        )
         await send_finish(vip_upgrade_2_cmd, f'获取成功！你成为了{vip_title_names[new_level]}！')
     else:
         await send_finish(vip_upgrade_2_cmd,

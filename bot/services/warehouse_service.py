@@ -371,7 +371,7 @@ class WarehouseService:
         now_adv = user.advKusa
         title_adv = sum(10 ** (i - 4) for i in range(5, user.vipLevel + 1)) if user.vipLevel > 4 else 0
         trade_records = await baseDB.getTradeRecord(userId=userId, costItemName='草之精华')
-        item_adv = sum(record.costItemAmount for record in trade_records)
+        item_adv = sum(record.costItemAmount for record in trade_records if '升级' not in (record.tradeType or ''))
         
         return {
             'userId': userId,
@@ -568,6 +568,8 @@ class WarehouseService:
         
         user_trade_amount = {}
         for record in all_trade_records:
+            if '升级' in (record.tradeType or ''):
+                continue
             uid = record.user_id
             if uid not in user_trade_amount:
                 user_trade_amount[uid] = 0
