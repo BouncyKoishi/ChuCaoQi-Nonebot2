@@ -66,7 +66,7 @@ async def pagination_preprocessor(event: OneBotV11MessageEvent):
     raw_message = event.raw_message if hasattr(event, 'raw_message') else str(event.message)
     if raw_message.startswith('!') or raw_message.startswith('/'):
         cmd_text = raw_message[1:].strip().lower()
-        pagination_cmds = ['下一页', 'next', 'n', '上一页', 'prev', 'p', 'previous']
+        pagination_cmds = ['下一页', 'next',  '上一页', 'prev', 'previous']
         for pg_cmd in pagination_cmds:
             if cmd_text == pg_cmd or cmd_text.startswith(pg_cmd + ' '):
                 return
@@ -79,7 +79,7 @@ async def pagination_preprocessor(event: OneBotV11MessageEvent):
     return
 
 
-下一页_cmd = on_command('下一页', aliases={'next', 'n'}, priority=5, block=True)
+下一页_cmd = on_command('下一页', aliases={'next'}, priority=5, block=True)
 
 @下一页_cmd.handle()
 async def handle_下一页(event: OneBotV11MessageEvent):
@@ -127,7 +127,7 @@ async def handle_下一页(event: OneBotV11MessageEvent):
 
 
 # 全局上一页命令
-上一页_cmd = on_command('上一页', aliases={'prev', 'p', 'previous'}, priority=5, block=True)
+上一页_cmd = on_command('上一页', aliases={'prev', 'previous'}, priority=5, block=True)
 
 @上一页_cmd.handle()
 async def handle_上一页(event: OneBotV11MessageEvent):
