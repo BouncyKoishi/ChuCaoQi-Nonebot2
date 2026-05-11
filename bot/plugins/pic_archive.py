@@ -38,6 +38,7 @@ archiveInfo = {
     "251": {"onlinePath": os.path.join(BASE_PIC_PATH, '251图库'), "displayName": "251"},
     "xiba": {"onlinePath": os.path.join(BASE_PIC_PATH, '西八兔子图库'), "displayName": "西八兔"},
     "nczw": {"onlinePath": os.path.join(BASE_PIC_PATH, '鸟澄珠乌'), "displayName": "鸟澄珠乌"},
+    "fumo": {"onlinePath": os.path.join(BASE_PIC_PATH, 'Fumo Emoji'), "displayName": "Fumo Emoji"},
 }
 
 for value in archiveInfo.values():
@@ -178,6 +179,7 @@ _ROLL_COMMANDS = [
     ('roll251',      [],            '251'),
     ('rollxb',       [],            'xiba'),
     ('rollnczw',     ['rollhorou'], 'nczw'),
+    ('rollfumo',     [],            'fumo'),
 ]
 
 _roll_matchers = {}
