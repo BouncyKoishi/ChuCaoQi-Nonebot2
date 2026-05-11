@@ -188,6 +188,35 @@ async def 怪话_cmd(event, bot):
         return get_random_sentence(group_num)
 
 
+@reply_text_command('remove')
+async def remove_cmd(event, bot):
+    from multi_platform import get_user_id
+    from kusa_base import is_super_admin
+
+    user_id = await get_user_id(event)
+    if not user_id or not await is_super_admin(user_id):
+        return
+
+    text = str(event.reply.message).strip()
+    if not text:
+        return
+
+    global sentence_list_dict
+
+    found = False
+    for group_num in list(sentence_list_dict.keys()):
+        sentence_list = sentence_list_dict[group_num]
+        if text in sentence_list:
+            sentence_list.remove(text)
+            found = True
+
+    if found:
+        save_strange_words()
+        return '已移除本句怪话'
+    else:
+        return '未查找到怪话'
+
+
 @freeze_cmd.handle()
 async def handle_freeze(event: MessageEvent):
     """冻结/解冻怪话接收"""
