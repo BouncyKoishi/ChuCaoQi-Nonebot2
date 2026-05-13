@@ -493,7 +493,6 @@ async def handle_rob(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
             continue
         
         kusa_robbed = random.randint(round(rob_info.robLimit * 0.04), round(rob_info.robLimit * 0.15))
-        await base_db.changeKusa(user_id, kusa_robbed)
         await base_db.changeKusa(rob_info.targetId, -kusa_robbed)
         rob_info.robCount += kusa_robbed
         rob_info.participantIds.add(user_id)
@@ -503,8 +502,9 @@ async def handle_rob(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 
         record = f'围殴 {target_user_name} 成功！你获得了{kusa_robbed}草！'
         user = await base_db.getKusaUser(user_id)
-        if rob_info.extraKusaAdv and user and user.vipLevel >= 5:
-            await base_db.changeAdvKusa(user_id, 1)
+        adv_bonus = 1 if (rob_info.extraKusaAdv and user and user.vipLevel >= 5) else 0
+        await base_db.changeKusaAndAdvKusa(user_id, kusa_robbed, adv_bonus)
+        if adv_bonus:
             record += '额外获得了1草之精华！'
         rob_records.append(await build_at_message(event, user_id, record))
         
@@ -636,8 +636,7 @@ async def kusa_harvest(field):
     if not field.kusaFinishTs:
         return
     
-    await base_db.changeKusa(field.user_id, field.kusaResult)
-    await base_db.changeAdvKusa(field.user_id, field.advKusaResult)
+    await base_db.changeKusaAndAdvKusa(field.user_id, field.kusaResult, field.advKusaResult)
     
     output_msg = f'你的{field.kusaType}生了出来！获得了{field.kusaResult}草。'
     if field.advKusaResult:

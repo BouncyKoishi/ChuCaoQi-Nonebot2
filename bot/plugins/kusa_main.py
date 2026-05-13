@@ -654,8 +654,8 @@ async def handle_vip_upgrade(event: Union[OneBotV11MessageEvent, QQMessageEvent]
 
     if user.kusa >= cost_kusa:
         user.vipLevel = new_level
+        user.kusa -= cost_kusa
         await user.save()
-        await base_db.changeKusa(user_id, -cost_kusa)
         await base_db.changeKusa(await get_bot_qq(), cost_kusa)
         await base_db.setTradeRecord(
             userId=user_id,
@@ -692,8 +692,8 @@ async def handle_vip_upgrade_2(event: Union[OneBotV11MessageEvent, QQMessageEven
 
     if user.advKusa >= cost_adv_point:
         user.vipLevel = new_level
+        user.advKusa -= cost_adv_point
         await user.save()
-        await base_db.changeAdvKusa(user_id, -cost_adv_point)
         await base_db.changeAdvKusa(await get_bot_qq(), cost_adv_point)
         await base_db.setTradeRecord(
             userId=user_id,

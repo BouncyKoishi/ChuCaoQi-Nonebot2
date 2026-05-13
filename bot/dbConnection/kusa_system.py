@@ -100,6 +100,16 @@ async def changeAdvKusa(userId, changeAmount):
         return False
 
 
+async def changeKusaAndAdvKusa(userId, kusaChange, advKusaChange):
+    """同时修改用户的草和草之精华（单次 save，避免异步覆盖）"""
+    user = await getKusaUser(userId)
+    if user:
+        user.kusa += kusaChange
+        user.advKusa += advKusaChange
+        await user.save()
+    return user
+
+
 async def batchChangeKusa(updates):
     """
     批量更新用户的草数量
