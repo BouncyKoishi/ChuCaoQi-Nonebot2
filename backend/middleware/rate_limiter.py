@@ -87,6 +87,7 @@ RATE_LIMITS = {
     'farm_test_recover_capacity': '30/minute',
     'farm_release_spare_capacity': '30/minute',
     'item_compose_ticket': '60/minute',
+    'analytics_pageview': '60/minute',
 }
 
 

@@ -20,6 +20,7 @@ from . import gmarket
 from . import lottery
 from . import item
 from . import notify
+from . import analytics
 
 __all__ = [
     'auth',
@@ -30,4 +31,5 @@ __all__ = [
     'lottery',
     'item',
     'notify',
+    'analytics',
 ]

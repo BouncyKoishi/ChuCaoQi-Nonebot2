@@ -179,3 +179,11 @@ class TradeRecord(Model):
     costItemName = CharField(max_length=64, null=True)
     detail = CharField(max_length=128, null=True)
     timestamp = IntField()
+
+
+class PageView(Model):
+    id = IntField(pk=True)
+    userId = IntField(null=True)
+    path = CharField(max_length=128)
+    pageName = CharField(max_length=64, null=True)
+    createdAt = DatetimeField(auto_now_add=True)

@@ -59,7 +59,7 @@ const routes: RouteRecordRaw[] = [
     path: '/about',
     name: 'About',
     component: () => import('@/views/About.vue'),
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: true }
   },
   {
     path: '/docs',
@@ -94,6 +94,15 @@ router.beforeEach(async (to, from, next) => {
     next('/login')
   } else {
     next()
+  }
+})
+
+
+router.afterEach((to) => {
+  if (to.path && to.path !== '/') {
+    import('@/api/index').then(({ analyticsApi }) => {
+      analyticsApi.recordPageview(to.path, (to.name as string) || '').catch(() => { })
+    })
   }
 })
 

@@ -49,16 +49,21 @@ import traceback
 import dbConnection.db as baseDB
 
 # 导入路由
-from routers import auth, farm, warehouse, rank, gmarket, lottery, item, shop, notify, user, donate
+from routers import auth, farm, warehouse, rank, gmarket, lottery, item, shop, notify, user, donate, analytics
 
 # 导入中间件
 from middleware.session_auth import SessionAuthMiddleware
 from middleware.rate_limiter import limiter, setup_rate_limiter
 
+from common import ENV
+
 app = FastAPI(
     title="除草器Bot Web API",
     description="除草器机器人的Web API网关",
-    version="2.0.0"
+    version="2.0.0",
+    docs_url="/docs" if ENV != "prod" else None,
+    redoc_url="/redoc" if ENV != "prod" else None,
+    openapi_url="/openapi.json" if ENV != "prod" else None,
 )
 
 app.state.limiter = limiter
@@ -176,6 +181,9 @@ app.include_router(notify.router, tags=["notify"])
 
 # 捐赠记录路由
 app.include_router(donate.router, prefix="/api/donate", tags=["donate"])
+
+# 访问统计路由
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 
 if __name__ == "__main__":

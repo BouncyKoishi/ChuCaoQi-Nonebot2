@@ -147,6 +147,13 @@ export const donateApi = {
   getTotal: () => api.get<{ total: number }>('/donate/total')
 }
 
+export const analyticsApi = {
+  recordPageview: (path: string, pageName: string) =>
+    api.post('/analytics/pageview', { path, pageName }),
+  getStats: (days?: number) =>
+    api.get('/analytics/stats', { params: { days } })
+}
+
 export { farmWebSocket } from './websocket'
 
 export default api

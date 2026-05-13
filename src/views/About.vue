@@ -102,24 +102,80 @@
             <el-empty v-else description="暂无投喂记录" />
           </div>
         </el-tab-pane>
+
+        <el-tab-pane v-if="isAdmin" label="统计" name="stats">
+          <div class="section">
+            <div class="stats-controls">
+              <el-select v-model="statsDays" size="small" style="width: 120px" @change="fetchStats">
+                <el-option :value="7" label="最近 7 天" />
+                <el-option :value="30" label="最近 30 天" />
+                <el-option :value="90" label="最近 90 天" />
+              </el-select>
+              <el-button size="small" @click="fetchStats" :loading="statsLoading">刷新</el-button>
+            </div>
+
+            <div v-if="statsData" class="stats-content">
+              <el-row :gutter="16" style="margin-bottom: 16px">
+                <el-col :span="8">
+                  <el-statistic title="总访问量 (PV)" :value="statsData.totalPv" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="独立用户 (UV)" :value="statsData.totalUv" />
+                </el-col>
+                <el-col :span="8">
+                  <el-statistic title="统计天数" :value="statsData.days" />
+                </el-col>
+              </el-row>
+
+              <h4>页面访问排行</h4>
+              <el-table :data="statsData.pages" size="small" style="margin-bottom: 20px">
+                <el-table-column prop="path" label="路径" />
+                <el-table-column prop="pageName" label="页面" width="120" />
+                <el-table-column prop="pv" label="PV" width="80" />
+              </el-table>
+
+              <h4>每日趋势</h4>
+              <div ref="chartRef" style="height: 300px; width: 100%"></div>
+            </div>
+            <el-empty v-else-if="!statsLoading" description="暂无统计数据" />
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { donateApi } from '@/api'
+import { analyticsApi, donateApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 import { ChatDotRound, Collection, Connection, Document, Present } from '@element-plus/icons-vue'
-import { computed, onMounted, ref } from 'vue'
+import * as echarts from 'echarts'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const activeTab = ref('links')
 const donateRecords = ref<{ amount: number; date: string; source: string; remark: string | null }[]>([])
 const donateTotal = ref(0)
 const currentPage = ref(1)
 const pageSize = 10
+
+const isAdmin = computed(() => userStore.isLoggedIn && userStore.userInfo?.isSuperAdmin)
+
+const statsDays = ref(30)
+const statsLoading = ref(false)
+const statsData = ref<{
+  totalPv: number
+  totalUv: number
+  days: number
+  daily: { date: string; pv: number; uv: number }[]
+  pages: { path: string; pageName: string | null; pv: number }[]
+} | null>(null)
+
+const chartRef = ref<HTMLElement | null>(null)
+let chartInstance: echarts.ECharts | null = null
 
 const paginatedRecords = computed(() => {
   const start = (currentPage.value - 1) * pageSize
@@ -182,8 +238,66 @@ const fetchDonateRecords = async () => {
   }
 }
 
+const updateChart = () => {
+  if (!chartInstance || !statsData.value) return
+  const daily = statsData.value.daily
+  chartInstance.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['PV', 'UV'], top: 0 },
+    grid: { top: 30, right: 50, bottom: 30, left: 50 },
+    xAxis: { type: 'category', data: daily.map(d => d.date.slice(5)), boundaryGap: false },
+    yAxis: [
+      { type: 'value', name: 'PV', minInterval: 1, position: 'left' },
+      { type: 'value', name: 'UV', minInterval: 1, position: 'right' }
+    ],
+    series: [
+      { name: 'PV', type: 'line', yAxisIndex: 0, data: daily.map(d => d.pv), smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { color: 'rgba(64,158,255,0.1)' } },
+      { name: 'UV', type: 'line', yAxisIndex: 1, data: daily.map(d => d.uv), smooth: true, itemStyle: { color: '#67c23a' }, areaStyle: { color: 'rgba(103,194,58,0.1)' } }
+    ]
+  })
+}
+
+const initChart = async () => {
+  await nextTick()
+  if (!chartRef.value) return
+  chartInstance = echarts.init(chartRef.value)
+  updateChart()
+}
+
+const fetchStats = async () => {
+  statsLoading.value = true
+  try {
+    const data = await analyticsApi.getStats(statsDays.value)
+    statsData.value = data as any
+    await nextTick()
+    if (chartInstance) {
+      chartInstance.resize()
+      updateChart()
+    } else {
+      await initChart()
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+watch(activeTab, async (val) => {
+  if (val === 'stats' && isAdmin.value) {
+    await fetchStats()
+  }
+})
+
 onMounted(() => {
   fetchDonateRecords()
+})
+
+onUnmounted(() => {
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
 })
 </script>
 
@@ -281,5 +395,18 @@ onMounted(() => {
   color: #f56c6c;
   font-weight: bold;
   font-size: 18px;
+}
+
+.stats-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.stats-content h4 {
+  margin: 16px 0 8px;
+  color: #333;
+  font-size: 14px;
 }
 </style>

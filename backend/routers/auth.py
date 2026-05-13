@@ -109,7 +109,9 @@ async def login(request: Request):
             "title": str(user.title) if user and user.title else None,
             "vipLevel": int(user.vipLevel) if user else 0,
             "kusa": float(user.kusa) if user else 0,
-            "advKusa": float(user.advKusa) if user else 0
+            "advKusa": float(user.advKusa) if user else 0,
+            "isSuperAdmin": bool(unified_user.isSuperAdmin),
+            "isRobot": bool(unified_user.isRobot)
         }
     }
 
@@ -139,7 +141,9 @@ async def verify_session(request: Request):
             "title": str(user.title) if user and user.title else None,
             "vipLevel": int(user.vipLevel) if user else 0,
             "kusa": float(user.kusa) if user else 0,
-            "advKusa": float(user.advKusa) if user else 0
+            "advKusa": float(user.advKusa) if user else 0,
+            "isSuperAdmin": bool(unified_user.isSuperAdmin),
+            "isRobot": bool(unified_user.isRobot)
         }
     }
 
