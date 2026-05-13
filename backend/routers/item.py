@@ -60,7 +60,7 @@ async def get_item_amount(request: Request, item_name: str = Query(..., descript
 # ==================== 奖券合成接口 ====================
 
 @router.post("/compose-ticket")
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def compose_ticket(request: Request):
     """奖券合成：将低级奖券合成为高级奖券"""
     userId = get_user_id(request)

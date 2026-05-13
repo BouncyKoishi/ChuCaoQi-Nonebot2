@@ -91,7 +91,7 @@ async def get_lottery_item_detail(item_name: str, request: Request):
 
 
 @router.post("/draw")
-@limiter.limit("20/minute")
+@limiter.limit("60/minute")
 async def lottery_draw(request: Request):
     """单抽（支持骰子碎片重抽）"""
     userId = get_user_id(request)
@@ -145,7 +145,7 @@ async def lottery_draw(request: Request):
 
 
 @router.post("/draw-ten")
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")
 async def lottery_draw_ten(request: Request):
     """十连抽"""
     userId = get_user_id(request)

@@ -44,7 +44,7 @@ limiter = Limiter(
 )
 
 ip_limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_ip_identifier,
     default_limits=["1000/minute"],
     storage_uri="memory://",
     enabled=True
@@ -69,8 +69,8 @@ def rate_limit(limit: str, key_func: Optional[Callable] = None):
 RATE_LIMITS = {
     'auth_login': '5/minute',
     'auth_verify_session': '30/minute',
-    'lottery_draw': '20/minute',
-    'lottery_draw_ten': '10/minute',
+    'lottery_draw': '60/minute',
+    'lottery_draw_ten': '60/minute',
     'lottery_add': '10/minute',
     'lottery_search': '30/minute',
     'lottery_update': '20/minute',
@@ -86,7 +86,7 @@ RATE_LIMITS = {
     'farm_harvest': '60/minute',
     'farm_test_recover_capacity': '30/minute',
     'farm_release_spare_capacity': '30/minute',
-    'item_compose_ticket': '30/minute',
+    'item_compose_ticket': '60/minute',
 }
 
 
@@ -102,8 +102,7 @@ def setup_rate_limiter(app):
     
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
-        ip = get_remote_address(request)
-        ip_key = f"ip:{ip}"
+        ip_key = get_ip_identifier(request)
         
         ip_limit_reached = False
         try:
@@ -115,7 +114,7 @@ def setup_rate_limiter(app):
             pass
         
         if ip_limit_reached:
-            logger.warning(f"IP 限流触发: {ip}")
+            logger.warning(f"IP 限流触发: {get_remote_address(request)}")
             raise HTTPException(
                 status_code=429,
                 detail={
