@@ -25,7 +25,7 @@ from multi_platform import (
 
 itemRareDescribe = ['Easy', 'Normal', 'Hard', 'Lunatic']
 drawConfig = plugin_config.get('drawItem', {})
-sensitiveWords = plugin_config.get('sensitiveWords', [])
+from sensitive_filter import get_sensitive_filter
 
 
 抽奖_cmd = on_command('抽奖', priority=5, block=True)
@@ -170,10 +170,9 @@ async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Me
     if itemDetail and len(itemDetail) > 1024:
         await send_finish(matcher, '物品简介太长啦!最多1024字')
         return
-    for word in sensitiveWords:
-        if word in itemName or (itemDetail and word in itemDetail):
-            await send_finish(matcher, '物品名或简介中包含敏感词汇^_^')
-            return
+    if get_sensitive_filter().contains(itemName) or (itemDetail and get_sensitive_filter().contains(itemDetail)):
+        await send_finish(matcher, '物品名或简介中包含敏感词汇^_^')
+        return
     
     realQQ = await get_real_qq_by_event(event)
     userPool = drawConfig['userPool']

@@ -22,7 +22,7 @@ from multi_platform import (
 
 HISTORY_PATH = u"chatHistory/"
 
-sensitiveWords = plugin_config.get('sensitiveWords', [])
+from sensitive_filter import get_sensitive_filter
 
 
 chat_cmd = on_command('chat', priority=5, block=True)
@@ -495,8 +495,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
 
     try:
         reply, tokenUsage = await getChatReply(model, history)
-        for word in sensitiveWords:
-            reply = reply.replace(word, '')
+        reply = get_sensitive_filter().filter(reply)
         await db.addTokenUsage(chatUser, model, tokenUsage)
         saveDefaultConversation(user_id, history)
 

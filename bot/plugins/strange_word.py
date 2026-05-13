@@ -28,6 +28,7 @@ from nonebot_plugin_apscheduler import scheduler
 from kusa_base import plugin_config
 from .reply_commands import reply_text_command
 from services.chat_service import ChatService
+from sensitive_filter import get_sensitive_filter
 
 sentence_list_dict = {}
 
@@ -64,7 +65,12 @@ def get_random_sentence(group_num: int) -> str:
     sentence_list = get_sentence_list(group_num)
     if not sentence_list:
         return "目前还没有怪话库存^ ^"
-    return random.choice(sentence_list)
+    sensitive_filter = get_sensitive_filter()
+    for _ in range(min(len(sentence_list), 20)):
+        sentence = random.choice(sentence_list)
+        if not sensitive_filter.contains(sentence):
+            return sentence
+    return "目前还没有怪话库存^ ^"
 
 
 def is_valid_for_model(sentence: str) -> bool:
@@ -123,6 +129,11 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
         print(f'输出内容为:"{reply}" 匹配怪话库失败，输出随机怪话')
         reply = random.choice(model_sentence_list) if model_sentence_list else "目前还没有怪话库存awa"
     
+    sensitive_filter = get_sensitive_filter()
+    if sensitive_filter.contains(reply):
+        print(f'[怪话] AI选中怪话含敏感词，替换为随机怪话')
+        return get_random_sentence(group_num)
+
     return reply
 
 
@@ -158,7 +169,7 @@ async def get_sentence_list_advance(group_num: int, input_str: str) -> list:
     
     print(f'输出内容为:"{reply}" 基本格式匹配失败，输出随机怪话')
     sentence_list = get_sentence_list(group_num)
-    return [random.choice(sentence_list) if sentence_list else "目前还没有怪话库存awa" for _ in range(3)]
+    return [get_random_sentence(group_num) if sentence_list else "目前还没有怪话库存awa" for _ in range(3)]
 
 
 say_cmd = on_command("说点怪话", priority=5, block=True)
@@ -334,6 +345,12 @@ async def record_message(event: MessageEvent):
         if word in msg:
             return
 
+    sensitive_filter = get_sensitive_filter()
+    if sensitive_filter.contains(msg):
+        hit = sensitive_filter.find_first(msg)
+        print(f'[怪话] 敏感词拦截，群{group_num}，来自{user_id}，命中:"{hit}"，原文:{msg[:30]}...')
+        return
+
     sentence_list = sentence_list_dict.get(group_num, [])
     list_len = len(sentence_list)
 
@@ -362,16 +379,26 @@ async def load_strange_words():
     folder_path = 'database/strangeWord'
     os.makedirs(folder_path, exist_ok=True)
     
+    sensitive_filter = get_sensitive_filter()
+    
     for filename in os.listdir(folder_path):
         if filename.endswith('.txt'):
             try:
                 group_num = int(filename[:-4])
                 sentence_list = []
+                removed = 0
                 with open(os.path.join(folder_path, filename), 'r', encoding='utf-8') as f:
                     for sentence in f.readlines():
                         sentence = sentence.strip()
                         if sentence:
-                            sentence_list.append(sentence)
+                            if sensitive_filter.contains(sentence):
+                                hit = sensitive_filter.find_first(sentence)
+                                print(f'[怪话] 启动清理敏感词，群{group_num}，命中:"{hit}"，原文:{sentence[:30]}...')
+                                removed += 1
+                            else:
+                                sentence_list.append(sentence)
+                if removed > 0:
+                    print(f'[怪话] 群{group_num}清理了 {removed} 条含敏感词的怪话')
                 print(f'群聊{group_num}当前怪话条目数：{len(sentence_list)}')
                 sentence_list_dict[group_num] = sentence_list
             except Exception as e:

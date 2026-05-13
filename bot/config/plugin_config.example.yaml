@@ -65,8 +65,6 @@ web:
   moderateContent:
     key: "" # ModerateContent API Key
 
-sensitiveWords: []
-
 # napcat_interceptor:  # [已禁用] 官方QQ Bot未连接时无需配置，napcat_interceptor 插件已移至 _disabled 目录
 #   enabled: false
 #   command_prefixes:
