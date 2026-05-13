@@ -420,7 +420,7 @@ const handleOverloadPlant = async () => {
 
 const fetchConfig = async () => {
   try {
-    const response = await api.get('/api/config')
+    const response = await api.get('/config')
     isDev.value = response.isDev
   } catch (error) {
     console.error('获取配置失败:', error)
