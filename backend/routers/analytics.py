@@ -55,17 +55,25 @@ async def get_stats(request: Request, days: int = Query(30, description="统计�
 
     total_pv = len(records)
     unique_users = set()
+    page_stats = {}
+
+    hourly_pv = defaultdict(int)
+    hourly_uv = defaultdict(set)
     daily_pv = defaultdict(int)
     daily_uv = defaultdict(set)
-    page_stats = {}
 
     for r in records:
         uid = r.userId
         if uid is not None:
             unique_users.add(uid)
 
-        day_key = r.createdAt.strftime("%Y-%m-%d") if r.createdAt else None
-        if day_key:
+        if r.createdAt:
+            hour_key = r.createdAt.strftime("%Y-%m-%d %H:00")
+            hourly_pv[hour_key] += 1
+            if uid is not None:
+                hourly_uv[hour_key].add(uid)
+
+            day_key = r.createdAt.strftime("%Y-%m-%d")
             daily_pv[day_key] += 1
             if uid is not None:
                 daily_uv[day_key].add(uid)
@@ -75,14 +83,25 @@ async def get_stats(request: Request, days: int = Query(30, description="统计�
             page_stats[path] = {"path": path, "pageName": r.pageName, "pv": 0}
         page_stats[path]["pv"] += 1
 
-    daily_data = []
-    for i in range(days):
-        day = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
-        daily_data.append({
-            "date": day,
-            "pv": daily_pv.get(day, 0),
-            "uv": len(daily_uv.get(day, set())),
-        })
+    if days == 1:
+        trend_data = []
+        for i in range(23, -1, -1):
+            hour_dt = now - timedelta(hours=i)
+            hour_key = hour_dt.strftime("%Y-%m-%d %H:00")
+            trend_data.append({
+                "date": hour_key,
+                "pv": hourly_pv.get(hour_key, 0),
+                "uv": len(hourly_uv.get(hour_key, set())),
+            })
+    else:
+        trend_data = []
+        for i in range(days):
+            day = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+            trend_data.append({
+                "date": day,
+                "pv": daily_pv.get(day, 0),
+                "uv": len(daily_uv.get(day, set())),
+            })
 
     page_ranking = sorted(page_stats.values(), key=lambda x: x["pv"], reverse=True)
 
@@ -92,7 +111,7 @@ async def get_stats(request: Request, days: int = Query(30, description="统计�
             "totalPv": total_pv,
             "totalUv": len(unique_users),
             "days": days,
-            "daily": daily_data,
+            "daily": trend_data,
             "pages": page_ranking,
         },
     }

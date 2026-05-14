@@ -107,6 +107,7 @@
           <div class="section">
             <div class="stats-controls">
               <el-select v-model="statsDays" size="small" style="width: 120px" @change="fetchStats">
+                <el-option :value="1" label="最近 1 天" />
                 <el-option :value="7" label="最近 7 天" />
                 <el-option :value="30" label="最近 30 天" />
                 <el-option :value="90" label="最近 90 天" />
@@ -241,20 +242,38 @@ const fetchDonateRecords = async () => {
 const updateChart = () => {
   if (!chartInstance || !statsData.value) return
   const daily = statsData.value.daily
-  chartInstance.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['PV', 'UV'], top: 0 },
-    grid: { top: 30, right: 50, bottom: 30, left: 50 },
-    xAxis: { type: 'category', data: daily.map(d => d.date.slice(5)), boundaryGap: false },
-    yAxis: [
-      { type: 'value', name: 'PV', minInterval: 1, position: 'left' },
-      { type: 'value', name: 'UV', minInterval: 1, position: 'right' }
-    ],
-    series: [
-      { name: 'PV', type: 'line', yAxisIndex: 0, data: daily.map(d => d.pv), smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { color: 'rgba(64,158,255,0.1)' } },
-      { name: 'UV', type: 'line', yAxisIndex: 1, data: daily.map(d => d.uv), smooth: true, itemStyle: { color: '#67c23a' }, areaStyle: { color: 'rgba(103,194,58,0.1)' } }
-    ]
-  })
+  const isHourly = statsDays.value === 1
+  const xLabels = isHourly
+    ? daily.map(d => d.date.slice(11, 16))
+    : daily.map(d => d.date.slice(5))
+
+  if (isHourly) {
+    chartInstance.setOption({
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['PV'], top: 0 },
+      grid: { top: 30, right: 20, bottom: 30, left: 50 },
+      xAxis: { type: 'category', data: xLabels, boundaryGap: false, axisLabel: { interval: 2 } },
+      yAxis: { type: 'value', name: 'PV', minInterval: 1 },
+      series: [
+        { name: 'PV', type: 'line', data: daily.map(d => d.pv), smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { color: 'rgba(64,158,255,0.1)' } }
+      ]
+    }, true)
+  } else {
+    chartInstance.setOption({
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['PV', 'UV'], top: 0 },
+      grid: { top: 30, right: 50, bottom: 30, left: 50 },
+      xAxis: { type: 'category', data: xLabels, boundaryGap: false },
+      yAxis: [
+        { type: 'value', name: 'PV', minInterval: 1, position: 'left' },
+        { type: 'value', name: 'UV', minInterval: 1, position: 'right' }
+      ],
+      series: [
+        { name: 'PV', type: 'line', yAxisIndex: 0, data: daily.map(d => d.pv), smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { color: 'rgba(64,158,255,0.1)' } },
+        { name: 'UV', type: 'line', yAxisIndex: 1, data: daily.map(d => d.uv), smooth: true, itemStyle: { color: '#67c23a' }, areaStyle: { color: 'rgba(103,194,58,0.1)' } }
+      ]
+    }, true)
+  }
 }
 
 const initChart = async () => {
