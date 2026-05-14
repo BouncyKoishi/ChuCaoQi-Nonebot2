@@ -8,11 +8,27 @@
       </template>
       <el-form :model="loginForm" label-width="80px" @submit.prevent="handleLogin">
         <el-form-item label="QQ号">
-          <el-input
+          <el-autocomplete
             v-model="loginForm.qq"
+            :fetch-suggestions="querySuggestions"
             placeholder="请输入QQ号"
             size="large"
-          />
+            style="width: 100%"
+            clearable
+            @select="onQQSelect"
+          >
+            <template #default="{ item }">
+              <div class="qq-suggestion">
+                <span>{{ item.value }}</span>
+                <el-icon
+                  class="qq-suggestion-delete"
+                  @click.stop="handleRemoveAccount(item.value)"
+                >
+                  <Close />
+                </el-icon>
+              </div>
+            </template>
+          </el-autocomplete>
         </el-form-item>
         <el-form-item label="Token">
           <el-input
@@ -22,6 +38,9 @@
             show-password
             size="large"
           />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="rememberAccount">记住此账号</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" size="large" :loading="loading" style="width: 100%" native-type="submit">
@@ -43,8 +62,10 @@
 
 <script setup lang="ts">
 import { useUserStore } from '@/stores/user'
-import { ElMessage } from 'element-plus'
-import { ref } from 'vue'
+import { getSavedAccounts, getTokenByQQ, removeSavedAccount, saveAccount } from '@/utils'
+import { Close } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -56,6 +77,53 @@ const loginForm = ref({
 })
 
 const loading = ref(false)
+const rememberAccount = ref(true)
+const savedAccounts = ref(getSavedAccounts())
+
+onMounted(() => {
+  if (savedAccounts.value.length > 0) {
+    const lastQQ = localStorage.getItem('lastLoginQQ')
+    if (lastQQ && savedAccounts.value.some(a => a.qq === lastQQ)) {
+      loginForm.value.qq = lastQQ
+      const token = getTokenByQQ(lastQQ)
+      if (token) {
+        loginForm.value.token = token
+      }
+    }
+  }
+})
+
+const querySuggestions = (queryString: string, cb: (results: { value: string }[]) => void) => {
+  const results = savedAccounts.value
+    .filter(a => a.qq.includes(queryString))
+    .map(a => ({ value: a.qq }))
+  cb(results)
+}
+
+const onQQSelect = (item: { value: string }) => {
+  const token = getTokenByQQ(item.value)
+  if (token) {
+    loginForm.value.token = token
+  } else {
+    loginForm.value.token = ''
+  }
+}
+
+const handleRemoveAccount = async (qq: string) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除已保存的账号 ${qq} 吗？`,
+      '删除账号',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    removeSavedAccount(qq)
+    savedAccounts.value = getSavedAccounts()
+    if (loginForm.value.qq === qq) {
+      loginForm.value.token = ''
+    }
+    ElMessage.success(`已删除账号 ${qq}`)
+  } catch {}
+}
 
 const handleLogin = async () => {
   if (!loginForm.value.qq) {
@@ -76,6 +144,13 @@ const handleLogin = async () => {
   loading.value = true
   try {
     await userStore.login(loginForm.value.qq, loginForm.value.token || undefined)
+
+    if (rememberAccount.value) {
+      saveAccount(loginForm.value.qq, loginForm.value.token || '')
+      localStorage.setItem('lastLoginQQ', loginForm.value.qq)
+      savedAccounts.value = getSavedAccounts()
+    }
+
     ElMessage.success('登录成功')
     router.push('/warehouse')
   } catch (error: any) {
@@ -110,6 +185,24 @@ const handleLogin = async () => {
 .card-header h2 {
   margin: 0;
   color: #333;
+}
+
+.qq-suggestion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.qq-suggestion-delete {
+  color: #909399;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.qq-suggestion-delete:hover {
+  color: #f56c6c;
 }
 
 .login-tip {
