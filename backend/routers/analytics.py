@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Query
 from middleware.session_auth import get_user_id, get_unified_user
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import re
 import sys
@@ -14,6 +14,8 @@ from dbConnection.models import PageView
 router = APIRouter()
 
 VALID_PATH_RE = re.compile(r'^/[a-z0-9/_-]*$')
+
+TZ_SHANGHAI = timezone(timedelta(hours=8))
 
 
 @router.post("/pageview")
@@ -48,8 +50,8 @@ async def get_stats(request: Request, days: int = Query(30, description="统计�
     if not unified_user or not unified_user.isSuperAdmin:
         return {"success": False, "error": "权限不足"}
 
-    now = datetime.now()
-    start_date = now - timedelta(days=days)
+    now = datetime.now(TZ_SHANGHAI)
+    start_date = (now - timedelta(days=days)).astimezone(timezone.utc)
 
     records = await PageView.filter(createdAt__gte=start_date)
 
@@ -68,12 +70,13 @@ async def get_stats(request: Request, days: int = Query(30, description="统计�
             unique_users.add(uid)
 
         if r.createdAt:
-            hour_key = r.createdAt.strftime("%Y-%m-%d %H:00")
+            local_dt = r.createdAt.astimezone(TZ_SHANGHAI) if r.createdAt.tzinfo else r.createdAt
+            hour_key = local_dt.strftime("%Y-%m-%d %H:00")
             hourly_pv[hour_key] += 1
             if uid is not None:
                 hourly_uv[hour_key].add(uid)
 
-            day_key = r.createdAt.strftime("%Y-%m-%d")
+            day_key = local_dt.strftime("%Y-%m-%d")
             daily_pv[day_key] += 1
             if uid is not None:
                 daily_uv[day_key].add(uid)
