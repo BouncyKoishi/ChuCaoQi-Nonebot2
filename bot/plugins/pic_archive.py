@@ -325,8 +325,10 @@ async def handle_examinepic(event: Event, state: T_State):
 
         await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
         fileName = os.path.basename(examineFiles[index])
+        fileSize = os.path.getsize(examineFiles[index])
+        fileSizeStr = f'{fileSize / 1024:.1f}KB' if fileSize < 1024 * 1024 else f'{fileSize / 1024 / 1024:.1f}MB'
         archiveMenu = _build_archive_menu(archive_keys)
-        await examinepic_cmd.reject(f'文件名: {fileName}\n{archiveMenu}\n请输入选择')
+        await examinepic_cmd.reject(f'文件名: {fileName} ({fileSizeStr})\n{archiveMenu}\n请输入选择')
     except (FinishedException, PausedException, RejectedException):
         raise
     except Exception as e:
