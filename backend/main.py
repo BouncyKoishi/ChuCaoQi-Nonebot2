@@ -49,7 +49,7 @@ import traceback
 import dbConnection.db as baseDB
 
 # 导入路由
-from routers import auth, farm, warehouse, rank, gmarket, lottery, item, shop, notify, user, donate, analytics
+from routers import auth, farm, warehouse, rank, gmarket, lottery, item, shop, notify, user, donate, analytics, spellcard
 
 # 导入中间件
 from middleware.session_auth import SessionAuthMiddleware
@@ -184,6 +184,9 @@ app.include_router(donate.router, prefix="/api/donate", tags=["donate"])
 
 # 访问统计路由
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+
+# 符卡对战路由
+app.include_router(spellcard.router, prefix="/api/spellcard", tags=["spellcard"])
 
 
 if __name__ == "__main__":
