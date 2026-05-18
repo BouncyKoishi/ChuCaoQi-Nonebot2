@@ -154,6 +154,10 @@ export const analyticsApi = {
     api.get('/analytics/stats', { params: { days } })
 }
 
+export const spellcardApi = {
+  getDiceSeed: () => api.get<{ seed: number }>('/spellcard/dice-seed'),
+}
+
 export { farmWebSocket } from './websocket'
 
 export default api

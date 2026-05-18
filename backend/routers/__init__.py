@@ -21,6 +21,7 @@ from . import lottery
 from . import item
 from . import notify
 from . import analytics
+from . import spellcard
 
 __all__ = [
     'auth',
@@ -32,4 +33,5 @@ __all__ = [
     'item',
     'notify',
     'analytics',
+    'spellcard',
 ]

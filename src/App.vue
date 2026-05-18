@@ -63,6 +63,14 @@
             <el-icon><Present /></el-icon>
             <template #title>抽奖</template>
           </el-menu-item>
+          <el-menu-item index="battle">
+            <el-icon><Aim /></el-icon>
+            <template #title>对战</template>
+          </el-menu-item>
+          <el-menu-item index="expedition">
+            <el-icon><Compass /></el-icon>
+            <template #title>远征</template>
+          </el-menu-item>
           <el-menu-item index="about">
             <el-icon><InfoFilled /></el-icon>
             <template #title>关于</template>
@@ -106,6 +114,8 @@ const activeMenu = computed(() => {
   if (path.startsWith('/gmarket')) return 'gmarket'
   if (path.startsWith('/statistics')) return 'statistics'
   if (path.startsWith('/lottery')) return 'lottery'
+  if (path.startsWith('/battle')) return 'battle'
+  if (path.startsWith('/expedition')) return 'expedition'
   if (path.startsWith('/ability')) return 'ability'
   if (path.startsWith('/about')) return 'about'
   return ''
