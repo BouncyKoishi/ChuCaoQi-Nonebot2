@@ -127,9 +127,16 @@
           <div class="fixed-drop-item">
             <div class="fd-name">
               {{ fixedDropItem.displayName }}
-              <el-tag size="small" :type="fixedDropItem.rarity === 'rare' ? 'danger' : 'info'">{{ fixedDropItem.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
+              <el-tag size="small" :type="fixedDropItem.rarity === 'epic' ? 'warning' : fixedDropItem.rarity === 'rare' ? 'danger' : 'info'">{{ fixedDropItem.rarity === 'epic' ? '史诗' : fixedDropItem.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
             </div>
-            <div class="fd-desc">{{ fixedDropItem.description }}</div>
+            <div class="fd-desc">
+              <template v-for="(seg, si) in parseDescription(fixedDropItem.description)" :key="si">
+                <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                  <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                </el-tooltip>
+                <span v-else>{{ seg.text }}</span>
+              </template>
+            </div>
           </div>
           <div class="reward-target">
             <h4>选择装配到：</h4>
@@ -175,9 +182,16 @@
             :class="{ selected: selectedRewardIdx === idx }" @click="selectReward(idx)" shadow="hover">
             <div class="reward-name">
               {{ reward.displayName }}
-              <el-tag size="small" :type="reward.rarity === 'rare' ? 'danger' : 'info'">{{ reward.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
+              <el-tag size="small" :type="reward.rarity === 'epic' ? 'warning' : reward.rarity === 'rare' ? 'danger' : 'info'">{{ reward.rarity === 'epic' ? '史诗' : reward.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
             </div>
-            <div class="reward-desc">{{ reward.description }}</div>
+            <div class="reward-desc">
+              <template v-for="(seg, si) in parseDescription(reward.description)" :key="si">
+                <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                  <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                </el-tooltip>
+                <span v-else>{{ seg.text }}</span>
+              </template>
+            </div>
             <div class="reward-slot" v-if="'slot' in reward">
               <el-tag size="small" type="warning">{{ slotLabel(reward.slot) }}</el-tag>
             </div>
@@ -218,7 +232,14 @@
             <div v-for="(eff, ei) in replaceSlotInfo.existingEffects" :key="ei" class="replace-option"
               :class="{ selected: replaceChoiceIdx === ei }" @click="replaceChoiceIdx = ei">
               <el-tag size="small" type="danger">{{ eff.displayName }}</el-tag>
-              <span class="replace-option-desc">{{ eff.description }}</span>
+              <span class="replace-option-desc">
+                <template v-for="(seg, si) in parseDescription(eff.description)" :key="si">
+                  <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                    <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                  </el-tooltip>
+                  <span v-else>{{ seg.text }}</span>
+                </template>
+              </span>
             </div>
           </div>
           <p v-if="replaceSlotInfo" class="replace-new">
@@ -238,7 +259,14 @@
         <div class="shop-items">
           <el-card v-for="(item, idx) in shopItems" :key="idx" class="shop-card" shadow="hover">
             <div class="shop-item-name">{{ item.name }}</div>
-            <div class="shop-item-desc">{{ item.description }}</div>
+            <div class="shop-item-desc">
+              <template v-for="(seg, si) in parseDescription(item.description)" :key="si">
+                <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                  <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                </el-tooltip>
+                <span v-else>{{ seg.text }}</span>
+              </template>
+            </div>
             <div class="shop-item-price">
               <el-tag type="warning">{{ item.price }} 灵力</el-tag>
             </div>
@@ -312,18 +340,18 @@ import { generateEncounter, getSpiritReward, getStageTemplate } from '@/spellcar
 import type { CardData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import {
-  type DiceUpgrade, type EffectModule, type EffectSlot,
-  type ExpeditionCard, type ExpeditionState, type FixedDrop,
-  type Reward, type ShopItem,
-  BASE_PANELS, INITIAL_CARD_EFFECTS, NEW_CARD_POOL,
-  addEffectToCard,
-  addSlotCapacity,
-  canAddEffectToSlot,
-  createNonCard,
-  createSpellCard,
-  healAllForNewStage,
-  healNonCard,
-  toCardData
+    type DiceUpgrade, type EffectModule, type EffectSlot,
+    type ExpeditionCard, type ExpeditionState, type FixedDrop,
+    type Reward, type ShopItem,
+    BASE_PANELS, INITIAL_CARD_EFFECTS,
+    addEffectToCard,
+    addSlotCapacity,
+    canAddEffectToSlot,
+    createNonCard,
+    createSpellCard,
+    healAllForNewStage,
+    healNonCard,
+    toCardData
 } from '@/spellcard/expedition'
 import { DICE_POOL, generateRewards, generateShopItems, parseDescription } from '@/spellcard/rewards'
 import '@/spellcard/spellcard-test'
@@ -423,7 +451,7 @@ const slotLabel = (slot: EffectSlot) => slot === 'onCardSet' ? '宣言' : slot =
 const slotTagType = (slot: EffectSlot) => slot === 'onCardSet' ? 'success' : slot === 'onCardBreak' ? 'danger' : 'warning'
 
 function createInitialState(): ExpeditionState {
-  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 3, totalStages: 3, finished: false, victories: 0 }
+  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0 }
 }
 
 function startExpedition() {
@@ -528,7 +556,7 @@ function setupFixedDrop() {
     fixedDropItem.value = DICE_POOL[Math.floor(Math.random() * DICE_POOL.length)]
     fixedDropNewCard.value = null
   } else {
-    fixedDropNewCard.value = NEW_CARD_POOL[Math.floor(Math.random() * NEW_CARD_POOL.length)]
+    fixedDropNewCard.value = generateNewCardDrop(state.value.currentStage, Math.random)
     fixedDropItem.value = null
   }
   fixedDropTargetIdx.value = -1

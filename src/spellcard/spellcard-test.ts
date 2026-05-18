@@ -2,7 +2,7 @@ import { ALL_CARDS } from '@/spellcard/cards'
 import '@/spellcard/effects'
 import { generateEncounter, getSpiritReward, getStageTemplate } from '@/spellcard/encounters'
 import type { CardData, LogEntry } from '@/spellcard/engine'
-import { Battle } from '@/spellcard/engine'
+import { Battle, SeededRandom } from '@/spellcard/engine'
 import {
   type ExpeditionCard, type ExpeditionState, type Reward,
   BASE_PANELS, INITIAL_CARD_EFFECTS, NEW_CARD_POOL,
@@ -178,24 +178,51 @@ function testEffectBasics() {
     return logContains(r.log, '冰冻') && logContains(r.log, '无法进行攻击')
   })())
 
-  assert(`[${section}] 防御不可`, (() => {
+  assert(`[${section}] 防御不可(永续)`, (() => {
     const card = makeCard({ atkPoint: '5', defPoint: '0', dodPoint: '0' })
     const enemy = makeCard({ atkPoint: '1', defPoint: '5', dodPoint: '0', cardHp: 50 })
     const r = runBattle(
-      [{ ...card, onCardSet(_u, e) { e.appendEffect('CantDefence', 1); return '' } }],
+      [{ ...card, onCardSet(_u, e) { e.appendEffect('CantDefence', -1); return '' } }],
       [enemy],
     )
     return logContains(r.log, '无法作出防御')
   })())
 
-  assert(`[${section}] 回避不可`, (() => {
+  assert(`[${section}] 防御不可(1回合后消退)`, (() => {
+    const card = makeCard({ atkPoint: '5', defPoint: '0', dodPoint: '0', cardHp: 50 })
+    const enemy = makeCard({ atkPoint: '1', defPoint: '5', dodPoint: '0', cardHp: 50 })
+    const r = runBattle(
+      [
+        { ...card, onCardSet(_u, e) { e.appendEffect('CantDefence', 1); return '' } },
+        makeCard({ atkPoint: '5', defPoint: '0', dodPoint: '0', cardHp: 50 }),
+      ],
+      [enemy],
+    )
+    const cantDefTurns = r.log.filter(l => l.message.includes('无法作出防御')).length
+    const reducedDmgTurns = r.log.filter(l => l.message.includes('预计受伤:1') || l.message.includes('预计受伤:2')).length
+    return cantDefTurns >= 1 && reducedDmgTurns >= 1
+  })())
+
+  assert(`[${section}] 回避不可(永续)`, (() => {
     const card = makeCard({ atkPoint: '5', defPoint: '0', dodPoint: '0' })
+    const enemy = makeCard({ atkPoint: '1', defPoint: '0', dodPoint: '99', cardHp: 50 })
+    const r = runBattle(
+      [{ ...card, onCardSet(_u, e) { e.appendEffect('CantDodge', -1); return '' } }],
+      [enemy],
+    )
+    return logContains(r.log, '无法进行回避')
+  })())
+
+  assert(`[${section}] 回避不可(1回合后消退)`, (() => {
+    const card = makeCard({ atkPoint: '1', defPoint: '0', dodPoint: '0', cardHp: 50 })
     const enemy = makeCard({ atkPoint: '1', defPoint: '0', dodPoint: '99', cardHp: 50 })
     const r = runBattle(
       [{ ...card, onCardSet(_u, e) { e.appendEffect('CantDodge', 1); return '' } }],
       [enemy],
     )
-    return logContains(r.log, '无法进行回避')
+    const cantDodTurns = r.log.filter(l => l.message.includes('无法进行回避')).length
+    const dodSuccessTurns = r.log.filter(l => l.message.includes('闪避成功')).length
+    return cantDodTurns >= 1 && dodSuccessTurns >= 1
   })())
 
   assert(`[${section}] 连击: 敌方受伤时ATK+1`, (() => {
@@ -239,6 +266,390 @@ function testEffectBasics() {
       [enemy],
     )
     return logContains(r.log, '荆棘反弹')
+  })())
+}
+
+function testDrainEffect() {
+  const section = '吸血效果'
+
+  assert(`[${section}] Drain: 造成战斗伤害时回复HP`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '10', cardHp: 50 }), onCardSet(u, _e) { u.appendEffect('Drain', 2); return '' } }],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    const firstHurt = hurtEntries[0]
+    return firstHurt.creatorHp !== undefined && firstHurt.creatorHp > 50
+  })())
+
+  assert(`[${section}] Drain: 回复量不超过Drain层数`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '10', cardHp: 50 }), onCardSet(u, _e) { u.appendEffect('Drain', 1); return '' } }],
+      [makeCard({ atkPoint: '5', cardHp: 50 })],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    const firstHurt = hurtEntries[0]
+    return firstHurt.creatorHp !== undefined && firstHurt.creatorHp === 46
+  })())
+
+  assert(`[${section}] Drain: 受伤方有Drain不触发(只有攻击方触发)`, (() => {
+    const r = runBattle(
+      [makeCard({ atkPoint: '10', cardHp: 50 })],
+      [{ ...makeCard({ atkPoint: '5', cardHp: 50 }), onCardSet(u, _e) { u.appendEffect('Drain', 5); return '' } }],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    const firstHurt = hurtEntries[0]
+    return firstHurt.joinerHp !== undefined && firstHurt.joinerHp > 50 - 5
+  })())
+
+  assert(`[${section}] Drain: 敌方有Drain时攻击方受伤触发敌方吸血`, (() => {
+    const r = runBattle(
+      [makeCard({ atkPoint: '1', cardHp: 50 })],
+      [{ ...makeCard({ atkPoint: '10', cardHp: 50 }), onCardSet(u, _e) { u.appendEffect('Drain', 3); return '' } }],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    const firstHurt = hurtEntries[0]
+    return firstHurt.joinerHp !== undefined && firstHurt.joinerHp > 50
+  })())
+}
+
+function testEffectAlias() {
+  const section = '效果别名'
+
+  assert(`[${section}] aliasName覆盖displayName但保留id`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.creator.appendEffect('CantDefence', 1, '破甲')
+    const effect = b.creator.effects.find(e => e.id === 'CantDefence')
+    if (!effect) return false
+    return effect.displayName === '破甲' && effect.id === 'CantDefence'
+  })())
+
+  assert(`[${section}] 不传aliasName使用默认displayName`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.creator.appendEffect('CantDefence', 1)
+    const effect = b.creator.effects.find(e => e.id === 'CantDefence')
+    if (!effect) return false
+    return effect.displayName === '防御不可' && effect.id === 'CantDefence'
+  })())
+
+  assert(`[${section}] Freeze别名时停`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.joiner!.appendEffect('Freeze', 1, '时停')
+    const effect = b.joiner!.effects.find(e => e.id === 'Freeze')
+    if (!effect) return false
+    return effect.displayName === '时停' && effect.id === 'Freeze'
+  })())
+
+  assert(`[${section}] 别名效果功能正常(破甲=防御不可)`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '5' }), onCardSet(_u, e) { e.appendEffect('CantDefence', 1, '破甲'); return '' } }],
+      [makeCard({ atkPoint: '1', defPoint: '5', cardHp: 50 })],
+    )
+    return logContains(r.log, '无法作出防御')
+  })())
+
+  assert(`[${section}] 别名效果功能正常(贯穿=防御不可)`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '5' }), onCardSet(_u, e) { e.appendEffect('CantDefence', 1, '贯穿'); return '' } }],
+      [makeCard({ atkPoint: '1', defPoint: '5', cardHp: 50 })],
+    )
+    return logContains(r.log, '无法作出防御')
+  })())
+}
+
+function testTimeCard() {
+  const section = '时符机制'
+
+  const timeCard: CardData = {
+    id: -2, cost: 0, name: '测试时符', cardHp: 3,
+    atkPoint: '1', defPoint: '0', dodPoint: '0',
+    description: '[时符2]', isTimeCard: true, timeCardTurns: 2,
+    onTurnStart(u, e) { e.effectHurt(2); return `[${u.name}]时符攻击！造成2点伤害\n` },
+  }
+
+  assert(`[${section}] 时符免疫战斗伤害`, (() => {
+    const r = runBattle(
+      [timeCard, makeCard({ atkPoint: '1', cardHp: 50 })],
+      [makeCard({ atkPoint: '99', cardHp: 50 })],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    const firstTwoTurns = hurtEntries.slice(0, 2)
+    return firstTwoTurns.length >= 1 && firstTwoTurns.every(e => e.creatorHp === 3)
+  })())
+
+  assert(`[${section}] 时符免疫效果伤害`, (() => {
+    const r = runBattle(
+      [timeCard, makeCard({ atkPoint: '1', cardHp: 50 })],
+      [{ ...makeCard({ atkPoint: '1', cardHp: 50 }), onCardSet(u, _e) { u.appendBorder('DamageBorder', 5, 3); return '' } }],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    const firstTwoTurns = hurtEntries.slice(0, 2)
+    return firstTwoTurns.length >= 1 && firstTwoTurns.every(e => e.creatorHp === 3)
+  })())
+
+  assert(`[${section}] 时符onTurnStart效果正常触发`, (() => {
+    const r = runBattle(
+      [timeCard, makeCard({ atkPoint: '1', cardHp: 50 })],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    return logContains(r.log, '时符攻击')
+  })())
+
+  assert(`[${section}] 时符回合耗尽后自动击破`, (() => {
+    const r = runBattle(
+      [timeCard, makeCard({ atkPoint: '1', cardHp: 50 })],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    return logContains(r.log, '符卡被击破')
+  })())
+
+  assert(`[${section}] E43时符卡可正常出战`, (() => {
+    try {
+      const card = ALL_CARDS.find(c => c.id === 63)!
+      const r = runBattle([card, makeCard({ atkPoint: '1', cardHp: 50 })], [makeCard({ atkPoint: '0', cardHp: 50 })])
+      return logContains(r.log, '无人生还')
+    } catch {
+      return false
+    }
+  })())
+}
+
+function testCrescendoCard() {
+  const section = '渐强机制'
+
+  assert(`[${section}] QED卡可正常出战`, (() => {
+    try {
+      const card = ALL_CARDS.find(c => c.id === 64)!
+      runBattle([card], [makeCard({ atkPoint: '1', cardHp: 50 })])
+      return true
+    } catch {
+      return false
+    }
+  })())
+
+  assert(`[${section}] QED满血时不触发渐强`, (() => {
+    const card = ALL_CARDS.find(c => c.id === 64)!
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [card]
+    b.setSingleEnemy('B', [makeCard({ atkPoint: '0', cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.applyCard(b.creator!, 0)
+    b.applyCard(b.joiner!, 0)
+    b.onNewCardsSet()
+    const msg = card.onTurnStart!(b.creator!, b.joiner!)
+    return msg === ''
+  })())
+
+  assert(`[${section}] QED HP≤75%时获得强化2`, (() => {
+    const card = ALL_CARDS.find(c => c.id === 64)!
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [card]
+    b.setSingleEnemy('B', [makeCard({ atkPoint: '0', cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.applyCard(b.creator!, 0)
+    b.applyCard(b.joiner!, 0)
+    b.onNewCardsSet()
+    b.creator.nowHp = 10
+    const msg = card.onTurnStart!(b.creator!, b.joiner!)
+    return msg.includes('强化2')
+  })())
+
+  assert(`[${section}] QED HP≤50%时额外获得追击2`, (() => {
+    const card = ALL_CARDS.find(c => c.id === 64)!
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [card]
+    b.setSingleEnemy('B', [makeCard({ atkPoint: '0', cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.applyCard(b.creator!, 0)
+    b.applyCard(b.joiner!, 0)
+    b.onNewCardsSet()
+    b.creator.nowHp = 7
+    const msg = card.onTurnStart!(b.creator!, b.joiner!)
+    return msg.includes('强化2') && msg.includes('追击2')
+  })())
+
+  assert(`[${section}] QED HP≤25%时额外获得吸血1`, (() => {
+    const card = ALL_CARDS.find(c => c.id === 64)!
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [card]
+    b.setSingleEnemy('B', [makeCard({ atkPoint: '0', cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    b.applyCard(b.creator!, 0)
+    b.applyCard(b.joiner!, 0)
+    b.onNewCardsSet()
+    b.creator.nowHp = 3
+    const msg = card.onTurnStart!(b.creator!, b.joiner!)
+    return msg.includes('强化2') && msg.includes('追击2') && msg.includes('吸血1')
+  })())
+}
+
+function testForgeEffects() {
+  const section = '锻造效果'
+
+  assert(`[${section}] 新增宣言效果可正常apply`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    const effects = [
+      { id: 'set_weaken1', apply: (_u: Battler, e: Battler) => { e.appendEffect('Weaken', 1); return '' } },
+      { id: 'set_sluggish1', apply: (_u: Battler, e: Battler) => { e.appendEffect('Sluggish', 1); return '' } },
+      { id: 'set_stable1', apply: (u: Battler, _e: Battler) => { u.appendEffect('Stable', 1); return '' } },
+      { id: 'set_agile1', apply: (u: Battler, _e: Battler) => { u.appendEffect('Agile', 1); return '' } },
+      { id: 'set_unbreak1', apply: (u: Battler, _e: Battler) => { u.appendEffect('Unbreakable', 1); return '' } },
+      { id: 'set_thorns1', apply: (u: Battler, _e: Battler) => { u.appendEffect('Thorns', 1); return '' } },
+      { id: 'set_fragborder', apply: (u: Battler, _e: Battler) => { u.appendBorder('FragileBorder', 3, 1); return '' } },
+    ]
+    for (const eff of effects) {
+      try { eff.apply(b.creator!, b.joiner!) } catch { return false }
+    }
+    return true
+  })())
+
+  assert(`[${section}] 新增亡语效果可正常apply`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    const effects = [
+      { id: 'break_sluggishborder', apply: (_u: Battler, e: Battler) => { e.appendBorder('SluggishBorder', 3, 1); return '' } },
+      { id: 'break_weakenborder', apply: (_u: Battler, e: Battler) => { e.appendBorder('WeakenBorder', 3, 1); return '' } },
+    ]
+    for (const eff of effects) {
+      try { eff.apply(b.creator!, b.joiner!) } catch { return false }
+    }
+    return true
+  })())
+
+  assert(`[${section}] 新增被动效果可正常apply`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
+    b.creator.setEnemy(b.joiner!)
+    b.joiner!.setEnemy(b.creator!)
+    try { b.creator!.removeEffect('Stable', 1); b.creator!.appendEffect('Stable', 1) } catch { return false }
+    return true
+  })())
+
+  assert(`[${section}] 宣言·造成3伤害可正常apply`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '1', cardHp: 50 }), onCardSet(_u, e) { e.effectHurt(3); return '' } }],
+      [makeCard({ atkPoint: '1', cardHp: 50 })],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    return hurtEntries[0].joinerHp <= 47
+  })())
+
+  assert(`[${section}] 稀有度三级分类正确`, (() => {
+    let hasCommon = false, hasRare = false, hasEpic = false
+    for (let i = 0; i < 100; i++) {
+      const rewards = generateRewards('boss', () => Math.random())
+      for (const r of rewards) {
+        if (r.rarity === 'common') hasCommon = true
+        if (r.rarity === 'rare') hasRare = true
+        if (r.rarity === 'epic') hasEpic = true
+      }
+    }
+    for (let i = 0; i < 100; i++) {
+      const rewards = generateRewards('elite', () => Math.random())
+      for (const r of rewards) {
+        if (r.rarity === 'common') hasCommon = true
+        if (r.rarity === 'rare') hasRare = true
+        if (r.rarity === 'epic') hasEpic = true
+      }
+    }
+    return hasCommon && hasRare && hasEpic
+  })())
+
+  assert(`[${section}] 骰子数+1为epic稀有度`, (() => {
+    const countDice = DICE_POOL.filter(d => d.id.includes('_count'))
+    return countDice.length === 3 && countDice.every(d => d.rarity === 'epic')
+  })())
+
+  assert(`[${section}] Boss战不掉落普通奖励`, (() => {
+    for (let i = 0; i < 50; i++) {
+      const rewards = generateRewards('boss', () => Math.random())
+      if (rewards.some(r => r.rarity === 'common')) return false
+    }
+    return true
+  })())
+
+  assert(`[${section}] 普通战不掉落史诗奖励`, (() => {
+    for (let i = 0; i < 50; i++) {
+      const rewards = generateRewards('normal', () => Math.random())
+      if (rewards.some(r => r.rarity === 'epic')) return false
+    }
+    return true
+  })())
+
+  assert(`[${section}] 商店定价: 普通3/稀有6/史诗10`, (() => {
+    const items = generateShopItems(() => Math.random())
+    for (const item of items) {
+      if (item.id === 'shop_refresh') continue
+      const r = item.reward
+      const expected = r.rarity === 'epic' ? 10 : r.rarity === 'rare' ? 6 : 3
+      if (item.price !== expected) return false
+    }
+    return true
+  })())
+
+  assert(`[${section}] 已删除set_dmg2(与set_damage2重复)`, (() => {
+    const allIds = new Set<string>()
+    for (let i = 0; i < 200; i++) {
+      const rewards = generateRewards('elite', () => Math.random())
+      for (const r of rewards) allIds.add(r.id)
+    }
+    for (let i = 0; i < 200; i++) {
+      const rewards = generateRewards('boss', () => Math.random())
+      for (const r of rewards) allIds.add(r.id)
+    }
+    return !allIds.has('set_dmg2') && allIds.has('set_damage2')
+  })())
+
+  assert(`[${section}] 已将被动荆棘改为宣言荆棘`, (() => {
+    const allIds = new Set<string>()
+    for (let i = 0; i < 500; i++) {
+      const rewards = generateRewards('elite', () => Math.random())
+      for (const r of rewards) allIds.add(r.id)
+    }
+    for (let i = 0; i < 500; i++) {
+      const rewards = generateRewards('boss', () => Math.random())
+      for (const r of rewards) allIds.add(r.id)
+    }
+    return allIds.has('set_thorns1') && !allIds.has('turn_thorns1')
   })())
 }
 
@@ -542,7 +953,7 @@ function runSingleExpedition(): {
 
   const state: ExpeditionState = {
     cards: [nonCard, spellCard], spirit: 0, currentStage: 1, currentBattle: 1,
-    battlesPerStage: 4, totalStages: 3, finished: false, victories: 0,
+    battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
   }
   let totalRounds = 0
 
@@ -633,7 +1044,7 @@ function testExpeditionFlow(count: number = 200): string {
   lines.push(`  平均胜场: ${(totalBattles / count).toFixed(1)}`)
   lines.push(`  平均回合: ${(totalRounds / count).toFixed(1)}`)
   lines.push(`  平均最终符卡数: ${(cardCounts.reduce((a, b) => a + b, 0) / count).toFixed(1)}`)
-  for (let s = 0; s <= 3; s++) {
+  for (let s = 0; s <= 6; s++) {
     const cnt = stageReached.get(s) ?? 0
     lines.push(`  ${s === 0 ? '1面前失败' : s + '面'}: ${cnt} (${(cnt / count * 100).toFixed(1)}%)`)
   }
@@ -648,6 +1059,11 @@ export function runFullTest(expeditionCount: number = 200): string {
   clearResults()
 
   testEffectBasics()
+  testDrainEffect()
+  testEffectAlias()
+  testTimeCard()
+  testCrescendoCard()
+  testForgeEffects()
   testBorderEffects()
   testCardBreakClearsEffects()
   testCardEffects()
@@ -686,10 +1102,10 @@ export function runFullTest(expeditionCount: number = 200): string {
 }
 
 if (typeof window !== 'undefined') {
-  (window as any).runSpellcardTest = runFullTest
-    (window as any).runExpeditionTest = (count?: number) => {
-      clearResults()
-      return testExpeditionFlow(count ?? 200)
-    }
+  (window as any).runSpellcardTest = runFullTest;
+  (window as any).runExpeditionTest = (count?: number) => {
+    clearResults()
+    return testExpeditionFlow(count ?? 200)
+  }
   console.log('符卡自测已就绪: window.runSpellcardTest() 完整测试 | window.runExpeditionTest(200) 远征流程')
 }

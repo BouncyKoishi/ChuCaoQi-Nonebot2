@@ -135,6 +135,9 @@ class CantDefenceEffect extends Effect {
     this.infoMsg = `[${this.userName}]受符卡效果影响，无法作出防御\n`
     return false
   }
+  onTurnEnd(_user: Battler, _enemy: Battler): void {
+    if (this.amount > 0) this.reduce(1)
+  }
 }
 
 class CantDodgeEffect extends Effect {
@@ -142,6 +145,9 @@ class CantDodgeEffect extends Effect {
   onDodgeSuccessJudge(_success: boolean): boolean {
     this.infoMsg = `[${this.userName}]受符卡效果影响，无法进行回避\n`
     return false
+  }
+  onTurnEnd(_user: Battler, _enemy: Battler): void {
+    if (this.amount > 0) this.reduce(1)
   }
 }
 
@@ -253,6 +259,10 @@ class ThornsEffect extends Effect {
   }
 }
 
+class DrainEffect extends Effect {
+  id = 'Drain'; displayName = '吸血'; effectType = 'BUFF' as const
+}
+
 const ALL_EFFECTS: Record<string, new (...args: any[]) => Effect> = {
   Strength: StrengthEffect,
   Weaken: WeakenEffect,
@@ -279,6 +289,7 @@ const ALL_EFFECTS: Record<string, new (...args: any[]) => Effect> = {
   DesperateAtk: DesperateAtkEffect,
   DesperateDod: DesperateDodEffect,
   Thorns: ThornsEffect,
+  Drain: DrainEffect,
 }
 
 registerEffects(ALL_EFFECTS)

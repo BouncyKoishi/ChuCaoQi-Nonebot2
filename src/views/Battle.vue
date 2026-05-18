@@ -6,19 +6,13 @@
       </template>
 
       <el-tabs v-model="activeTab">
-        <el-tab-pane label="快速对战" name="quick">
-          <div class="quick-battle-section">
-            <p class="section-desc">随机生成双方符卡，立即开始对战</p>
-            <el-button type="primary" size="large" @click="handleQuickBattle">快速对战</el-button>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="逐回合对战" name="turnbased">
+        <el-tab-pane label="对战" name="turnbased">
           <div class="turnbased-section">
             <template v-if="battlePhase === 'idle'">
               <div class="idle-section">
                 <p class="section-desc">选择5张符卡，逐回合与AI对战</p>
                 <el-button type="primary" @click="startCardSelection">开始选卡</el-button>
+                <el-button v-if="isDev" type="info" @click="handleQuickBattle">快速对战(测试)</el-button>
               </div>
             </template>
 
@@ -34,7 +28,14 @@
                     <span>HP:{{ card.cardHp }}</span><span>ATK:{{ card.atkPoint }}</span>
                     <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                   </div>
-                  <div class="card-desc" v-if="card.description !== '无'">{{ card.description }}</div>
+                  <div class="card-desc" v-if="card.description !== '无'">
+                    <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                      <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                        <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                      </el-tooltip>
+                      <span v-else class="effect-text-seg">{{ seg.text }}</span>
+                    </template>
+                  </div>
                 </el-card>
               </div>
               <el-button type="primary" @click="confirmCardSelection" :disabled="tempSelectedIndex === -1">确认选择</el-button>
@@ -108,7 +109,14 @@
                         <span>HP:{{ card.cardHp }}</span><span>ATK:{{ card.atkPoint }}</span>
                         <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                       </div>
-                      <div class="card-desc" v-if="card.description !== '无'">{{ card.description }}</div>
+                      <div class="card-desc" v-if="card.description !== '无'">
+                        <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                          <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                            <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+                          </el-tooltip>
+                          <span v-else class="effect-text-seg">{{ seg.text }}</span>
+                        </template>
+                      </div>
                     </el-card>
                   </div>
                   <div class="play-actions">
@@ -222,13 +230,20 @@
               <el-card v-for="card in filteredCards" :key="card.id" class="codex-card" shadow="hover">
                 <div class="codex-card-header">
                   <span class="codex-card-name">{{ card.name }}</span>
-                  <el-tag size="small" :type="costTagType(card.cost)">Cost {{ card.cost }}</el-tag>
+                  <el-tag size="small" :type="costTagType(card.cost)" :class="costTagClass(card.cost)">Cost {{ card.cost }}</el-tag>
                 </div>
                 <div class="codex-card-stats">
                   <span>HP:{{ card.cardHp }}</span><span>ATK:{{ card.atkPoint }}</span>
                   <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                 </div>
-                <div class="codex-card-desc" v-if="card.description !== '无'">{{ card.description }}</div>
+                <div class="codex-card-desc" v-if="card.description !== '无'">
+                  <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                    <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                      <el-tag size="small" type="success" class="codex-effect-tag">{{ seg.text }}</el-tag>
+                    </el-tooltip>
+                    <span v-else class="codex-effect-text">{{ seg.text }}</span>
+                  </template>
+                </div>
               </el-card>
             </div>
           </div>
@@ -239,18 +254,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { ElMessageBox } from 'element-plus'
-import { useUserStore } from '@/stores/user'
-import { Battle, Battler, SeededRandom } from '@/spellcard/engine'
-import type { CardData, LogEntry, EffectData, VisualData } from '@/spellcard/engine'
 import { ALL_CARDS, getRandomCards } from '@/spellcard/cards'
 import '@/spellcard/effects'
+import type { CardData, EffectData, LogEntry } from '@/spellcard/engine'
+import { Battle } from '@/spellcard/engine'
+import { parseDescription } from '@/spellcard/rewards'
+import { useUserStore } from '@/stores/user'
+import { ElMessageBox } from 'element-plus'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 const userStore = useUserStore()
 const userId = computed(() => userStore.userInfo?.qq)
 
 const activeTab = ref('turnbased')
+const isDev = import.meta.env.DEV
 const battlePhase = ref<'idle' | 'selecting' | 'selected' | 'playing' | 'animating' | 'finished'>('idle')
 const battle = ref<Battle | null>(null)
 const isFirstCard = ref(true)
@@ -266,7 +283,8 @@ const filteredCards = computed(() => {
   if (!codexSearch.value) return ALL_CARDS
   return ALL_CARDS.filter(c => c.name.includes(codexSearch.value))
 })
-const costTagType = (cost: number) => ({ 0: 'info', 1: '', 2: 'warning', 3: 'danger' }[cost] ?? 'info')
+const costTagType = (cost: number) => ({ 0: 'info', 1: '', 2: 'success', 3: 'warning', 4: 'danger', 5: '' }[cost] ?? 'info')
+const costTagClass = (cost: number) => cost === 5 ? 'cost-epic-tag' : ''
 
 const EFFECT_DESC: Record<string, string> = {
   Strength: '攻击力+{n}',
@@ -574,7 +592,6 @@ const handleQuickBattle = () => {
     _statsKey = 0; _damageKey = 0; _breakKey = 0
     logCollapsed.value = false
     battlePhase.value = 'finished'
-    activeTab.value = 'turnbased'
   } catch (e) {
     console.error('快速对战失败', e)
   }
@@ -622,7 +639,9 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
 .candidate-card:hover { transform: translateY(-4px); }
 .card-name { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
 .card-stats { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; color: #606266; margin-bottom: 8px; }
-.card-desc { font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 8px; }
+.card-desc { font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 8px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.inline-effect-tag { display: inline-flex; align-items: center; height: 20px; margin: 0 1px; cursor: help; vertical-align: baseline; padding: 0 6px; font-size: 11px; white-space: normal; line-height: 1.4; }
+.effect-text-seg { font-size: 12px; color: #909399; }
 .selected-cards-list { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .selected-tag { font-size: 14px; }
 .battle-actions { display: flex; gap: 12px; justify-content: center; }
@@ -660,7 +679,10 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
 .codex-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .codex-card-name { font-weight: bold; font-size: 14px; }
 .codex-card-stats { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: #606266; margin-bottom: 6px; }
-.codex-card-desc { font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 6px; }
+.codex-card-desc { font-size: 12px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.codex-effect-tag { font-size: 11px; white-space: normal; height: auto; line-height: 1.4; cursor: help; }
+.cost-epic-tag { background: linear-gradient(135deg, #9b59b6, #8e44ad) !important; border-color: #9b59b6 !important; color: #fff !important; }
+.codex-effect-text { font-size: 12px; color: #909399; }
 
 .battle-visual {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);

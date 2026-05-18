@@ -23,6 +23,9 @@ export interface CardData {
   onTurnStart?: (user: Battler, enemy: Battler) => string
   onTurnEnd?: (user: Battler, enemy: Battler) => string
   onEnemyCardBreak?: (user: Battler, enemy: Battler) => string
+  isTimeCard?: boolean
+  timeCardTurns?: number
+  character?: string
 }
 
 export interface EffectData {
@@ -103,6 +106,8 @@ export function rollDice(diceStr: string, rng: SeededRandom): number {
   }
 }
 
+export const PERMANENT_EFFECT_IDS = new Set(['CantDodge', 'CantDefence', 'Freeze'])
+
 export class Effect {
   id: string = 'DefaultEffect'
   displayName: string = ''
@@ -125,8 +130,15 @@ export class Effect {
   get enemyName(): string { return this.enemy?.name ?? '' }
   get userHp(): number { return this.user?.nowHp ?? 0 }
 
-  stack(amount: number) { this.amount += amount }
-  reduce(amount: number) { this.amount = Math.max(0, this.amount - amount) }
+  stack(amount: number) {
+    this.amount += amount
+    if (this.amount < -1) this.amount = -1
+    if (this.amount === -1 && !PERMANENT_EFFECT_IDS.has(this.id)) this.amount = 0
+  }
+  reduce(amount: number) {
+    if (this.amount === -1) return
+    this.amount = Math.max(0, this.amount - amount)
+  }
   clean() { this.amount = 0 }
 
   onTurnStart(_user: Battler, _enemy: Battler): void { }
@@ -205,6 +217,7 @@ export class Battler {
   lastHurtType: 'battle' | 'effect' | '' = ''
   gameRound: number = 0
   spiritGained: number = 0
+  timeCardRemaining?: number
 
   constructor(id: number, name: string) {
     this.id = id
@@ -213,15 +226,20 @@ export class Battler {
 
   setEnemy(enemy: Battler) { this.enemy = enemy }
 
-  appendEffect(effectId: string, amount: number) {
+  appendEffect(effectId: string, amount: number, aliasName?: string) {
     if (!effectId) return
     const ALL_EFFECTS = getEffectsRegistry()
     for (const e of this.effects) {
-      if (e.id === effectId) { e.stack(amount); return }
+      if (e.id === effectId) {
+        e.stack(amount)
+        if (aliasName) e.displayName = aliasName
+        return
+      }
     }
     const Cls = ALL_EFFECTS[effectId]
     if (Cls) {
       const effect = new Cls(amount)
+      if (aliasName) effect.displayName = aliasName
       if (this.enemy) effect.setPlayerInfo(this, this.enemy)
       this.effects.push(effect)
     }
@@ -251,7 +269,7 @@ export class Battler {
         break
       }
     }
-    this.effects = this.effects.filter(e => e.amount > 0)
+    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && PERMANENT_EFFECT_IDS.has(e.id)))
   }
 
   runEffects(funcName: string, ...args: any[]): any {
@@ -272,7 +290,7 @@ export class Battler {
         effect.infoMsg = ''
       }
     }
-    this.effects = this.effects.filter(e => e.amount > 0)
+    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && PERMANENT_EFFECT_IDS.has(e.id)))
     const msg = msgs.join('\n')
     if (args.length === 0) return msg
     if (args.length === 1) return [args[0], msg]
@@ -342,6 +360,9 @@ export class Battler {
   }
 
   effectHurt(value: number): string {
+    if (this.nowCard?.isTimeCard && this.timeCardRemaining !== undefined && this.timeCardRemaining > 0) {
+      return ''
+    }
     this.lastHurtType = 'effect'
     const [val1, beforeMsg] = this.runEffects('beforeHurt', value) as [number, string]
     this.nowHp -= val1
@@ -366,6 +387,9 @@ export class Battler {
     this.nowCard = this.chosenCards[cardIndex]
     this.nowHp = this.nowCard.cardHp
     this.usedCardIndices.push(cardIndex)
+    if (this.nowCard.isTimeCard) {
+      this.timeCardRemaining = this.nowCard.timeCardTurns
+    }
     return true
   }
 
@@ -482,6 +506,9 @@ export class Battle {
     battler.nowCard = battler.chosenCards[cardIndex]
     battler.nowHp = battler.nowCard.cardHp
     battler.usedCardIndices.push(cardIndex)
+    if (battler.nowCard.isTimeCard) {
+      battler.timeCardRemaining = battler.nowCard.timeCardTurns
+    }
   }
 
   onNewCardsSet() {
@@ -580,10 +607,38 @@ export class Battle {
   }
 
   turnHpChange(cHurt: number, jHurt: number) {
+    // 时符免疫战斗伤害
+    if (this.creator!.nowCard?.isTimeCard && this.creator!.timeCardRemaining !== undefined && this.creator!.timeCardRemaining > 0) {
+      cHurt = 0
+    }
+    if (this.joiner!.nowCard?.isTimeCard && this.joiner!.timeCardRemaining !== undefined && this.joiner!.timeCardRemaining > 0) {
+      jHurt = 0
+    }
+
     const prevCreatorHp = this.creator!.nowHp
     const prevJoinerHp = this.joiner!.nowHp
-    const cMsg = this.creator!.battleHurt(cHurt)
-    const jMsg = this.joiner!.battleHurt(jHurt)
+    const cMsg = cHurt > 0 ? this.creator!.battleHurt(cHurt) : ''
+    const jMsg = jHurt > 0 ? this.joiner!.battleHurt(jHurt) : ''
+
+    // Drain（吸血）钩子
+    const creatorActualDmg = prevCreatorHp - this.creator!.nowHp
+    const joinerActualDmg = prevJoinerHp - this.joiner!.nowHp
+
+    if (joinerActualDmg > 0) {
+      const drainEffect = this.creator!.effects.find(e => e.id === 'Drain')
+      if (drainEffect) {
+        const healAmt = Math.min(joinerActualDmg, drainEffect.amount)
+        this.creator!.nowHp += healAmt
+      }
+    }
+    if (creatorActualDmg > 0) {
+      const drainEffect = this.joiner!.effects.find(e => e.id === 'Drain')
+      if (drainEffect) {
+        const healAmt = Math.min(creatorActualDmg, drainEffect.amount)
+        this.joiner!.nowHp += healAmt
+      }
+    }
+
     this.log.add(this.gameRound, 'hurt', cMsg + jMsg, this.creator!.nowHp, this.joiner!.nowHp, {
       creatorHurt: prevCreatorHp - this.creator!.nowHp,
       joinerHurt: prevJoinerHp - this.joiner!.nowHp,
@@ -601,6 +656,21 @@ export class Battle {
     if (msg1) this.log.add(this.gameRound, 'turn_end', msg1)
     const msg2 = this.joiner!.nowCard!.onTurnEnd?.(this.joiner!, this.creator!) ?? ''
     if (msg2) this.log.add(this.gameRound, 'turn_end', msg2)
+
+    // 时符倒计时
+    if (this.creator!.nowCard?.isTimeCard && this.creator!.timeCardRemaining !== undefined) {
+      this.creator!.timeCardRemaining--
+      if (this.creator!.timeCardRemaining <= 0) {
+        this.creator!.nowHp = 0
+      }
+    }
+    if (this.joiner!.nowCard?.isTimeCard && this.joiner!.timeCardRemaining !== undefined) {
+      this.joiner!.timeCardRemaining--
+      if (this.joiner!.timeCardRemaining <= 0) {
+        this.joiner!.nowHp = 0
+      }
+    }
+
     this.creator!.cleanTurnTemp()
     this.joiner!.cleanTurnTemp()
   }
@@ -626,6 +696,7 @@ export class Battle {
     }
     battler.effects = battler.effects.filter(e => e instanceof Border)
     battler.states = []
+    battler.timeCardRemaining = undefined
     const enemy = battler.enemy!
     if (!enemy.shouldEnd() && enemy.nowCard?.onEnemyCardBreak) {
       const killMsg = enemy.nowCard.onEnemyCardBreak(enemy, battler)

@@ -2,7 +2,7 @@ import type { Battler, CardData } from './engine'
 
 export type EffectSlot = 'onCardSet' | 'onCardBreak' | 'onPassive'
 export type PassiveTrigger = 'turnStart' | 'enemyCardBreak'
-export type Rarity = 'common' | 'rare'
+export type Rarity = 'common' | 'rare' | 'epic'
 
 export interface EffectModule {
   id: string
