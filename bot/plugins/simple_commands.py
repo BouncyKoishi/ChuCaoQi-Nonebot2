@@ -182,21 +182,6 @@ async def handle_timestamp(bot: Bot, event: Event):
     await send_finish(timestamp_cmd, str(datetime.datetime.now().timestamp()))
 
 
-if scheduler:
-    @scheduler.scheduled_job('cron', day='*', hour='9', minute='0', second='10', misfire_grace_time=500)
-    async def read60sRunner():
-        msg = await get60sNewsPic()
-        bot = get_bot()
-        for qq_group in plugin_config.get('sendNews', {}).get('group', []):
-            try:
-                if is_onebot_v11_bot(bot):
-                    from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
-                    onebot_bot = cast(OneBotV11Bot, bot)
-                    await onebot_bot.send_group_msg(group_id=qq_group, message=msg)
-            except Exception as e:
-                print(f'发送新闻到群{qq_group}失败：{e}')
-
-
 news_cmd = on_command('news', priority=5, block=True)
 
 @news_cmd.handle()
