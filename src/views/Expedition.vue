@@ -336,7 +336,7 @@
 
 <script setup lang="ts">
 import '@/spellcard/effects'
-import { generateEncounter, getSpiritReward, getStageTemplate } from '@/spellcard/encounters'
+import { generateEncounter, generateNewCardDrop, getSpiritReward, getStageTemplate } from '@/spellcard/encounters'
 import type { CardData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import {
@@ -479,7 +479,23 @@ function loadEncounter() {
 
 function startBattle() {
   const hpBefore = state.value.cards.map(c => c.currentHp)
-  const myCardDatas = state.value.cards.map(c => toCardData(c))
+  const activeIndices: number[] = []
+  const myCardDatas: CardData[] = []
+  for (let i = 0; i < state.value.cards.length; i++) {
+    if (state.value.cards[i].currentHp > 0) {
+      activeIndices.push(i)
+      myCardDatas.push(toCardData(state.value.cards[i]))
+    }
+  }
+  if (myCardDatas.length === 0) {
+    battleWon.value = false
+    spiritGainedInBattle.value = 0
+    battleSummary.value = state.value.cards.map(c => ({ name: c.name, maxHp: c.maxCardHp, hpBefore: c.currentHp, hpAfter: c.currentHp, damage: 0, broken: c.currentHp <= 0, isNonCard: c.isNonCard }))
+    battleLog.value = []
+    logCollapsed.value = true
+    phase.value = 'result'
+    return
+  }
   const b = new Battle(1)
   b.setCreator('你')
   b.creator.chosenCards = myCardDatas
@@ -490,23 +506,28 @@ function startBattle() {
   battleWon.value = b.winnerId === 1
 
   const summary: CardSummary[] = []
-  const usedIndices = b.creator.usedCardIndices
+  const usedBattleIndices = b.creator.usedCardIndices
   for (let i = 0; i < state.value.cards.length; i++) {
     const card = state.value.cards[i]
-    const wasUsed = i < usedIndices.length
+    const activePos = activeIndices.indexOf(i)
     let hpAfter: number
     let broken = false
 
-    if (wasUsed) {
-      if (i === usedIndices.length - 1) {
-        hpAfter = b.creator.nowHp
-        broken = b.creator.nowHp <= 0
-      } else {
-        hpAfter = 0
-        broken = true
-      }
-    } else {
+    if (activePos === -1) {
       hpAfter = card.currentHp
+    } else {
+      const wasUsed = activePos < usedBattleIndices.length
+      if (wasUsed) {
+        if (activePos === usedBattleIndices.length - 1) {
+          hpAfter = Math.max(b.creator.nowHp, 0)
+          broken = b.creator.nowHp <= 0
+        } else {
+          hpAfter = 0
+          broken = true
+        }
+      } else {
+        hpAfter = card.currentHp
+      }
     }
 
     summary.push({ name: card.name, maxHp: card.maxCardHp, hpBefore: hpBefore[i], hpAfter, damage: hpBefore[i] - hpAfter, broken, isNonCard: card.isNonCard })

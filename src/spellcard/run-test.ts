@@ -1,15 +1,15 @@
 import { ALL_CARDS } from './cards'
 import './effects'
-import { generateEncounter, getSpiritReward, getStageTemplate } from './encounters'
+import { generateEncounter, generateNewCardDrop, getSpiritReward, getStageTemplate } from './encounters'
 import type { CardData, LogEntry } from './engine'
 import { Battle } from './engine'
 import {
   type ExpeditionCard, type ExpeditionState, type Reward,
-  BASE_PANELS, INITIAL_CARD_EFFECTS, NEW_CARD_POOL,
+  BASE_PANELS, INITIAL_CARD_EFFECTS,
   addEffectToCard, addSlotCapacity, canAddEffectToSlot,
-  createNonCard, createSpellCard, healAllForNewStage, healNonCard, toCardData,
+  createNonCard, createSpellCard, healAllForNewStage, healNonCard, toCardData
 } from './expedition'
-import { DICE_POOL, generateRewards, generateShopItems } from './rewards'
+import { DICE_POOL, EFFECT_POOL, generateRewards, generateShopItems } from './rewards'
 
 interface TestResult { name: string; passed: boolean; detail: string }
 const results: TestResult[] = []
@@ -687,6 +687,188 @@ function testBattleMechanics() {
   })())
 }
 
+function testBugFixes() {
+  const S = 'Bug修复验证'
+
+  assert(`[${S}] 坤神招来盾: 击破后护盾保留`, (() => {
+    const r = runBattle(
+      [
+        { id: 10, cost: 0, name: '坤神招来 盾', cardHp: 1, atkPoint: '1', defPoint: '1d3', dodPoint: '1d3', description: '', onCardBreak(u, _e) { u.appendEffect('Shield', 3); return '护盾！' } },
+        makeCard({ atkPoint: '1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '99', cardHp: 50 })],
+    )
+    return logContains(r.log, '护盾')
+  })())
+
+  assert(`[${S}] 时符免疫战斗伤害日志`, (() => {
+    const r = runBattle(
+      [
+        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1', defPoint: '0', dodPoint: '0', description: '', isTimeCard: true, timeCardTurns: 3 },
+        makeCard({ atkPoint: '1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '5', cardHp: 50 })],
+    )
+    return logContains(r.log, '无法受到伤害') && !logContains(r.log, '战斗伤害')
+  })())
+
+  assert(`[${S}] 时符免疫效果伤害日志`, (() => {
+    const r = runBattle(
+      [
+        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1', defPoint: '0', dodPoint: '0', description: '', isTimeCard: true, timeCardTurns: 3, onTurnStart(u, e) { const info = e.effectHurt(2); return `造成2点伤害\n${info}` } },
+        makeCard({ atkPoint: '1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    return logContains(r.log, '无法受到伤害')
+  })())
+
+  assert(`[${S}] 时符耗尽日志`, (() => {
+    const r = runBattle(
+      [
+        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1', defPoint: '0', dodPoint: '0', description: '', isTimeCard: true, timeCardTurns: 1 },
+        makeCard({ atkPoint: '1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    return logContains(r.log, '时符时间耗尽')
+  })())
+
+  assert(`[${S}] 时符耗尽击破来源为time`, (() => {
+    const r = runBattle(
+      [
+        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1', defPoint: '0', dodPoint: '0', description: '', isTimeCard: true, timeCardTurns: 1 },
+        makeCard({ atkPoint: '1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '0', cardHp: 50 })],
+    )
+    const breakEntry = r.log.find(e => e.phase === 'card_break' && e.visual?.breakSource === 'time')
+    return breakEntry !== undefined
+  })())
+
+  assert(`[${S}] 幻世The World: onCardSet只触发1次`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ cardHp: 4 }),
+        { id: 50, cost: 0, name: '幻世「The World」', cardHp: 8, atkPoint: '1d5', defPoint: '1d3', dodPoint: '1d2', description: '', onCardSet(u, e) { e.appendEffect('Freeze', 1); u.appendEffect('Strength', 2); return '时停！' } },
+      ],
+      [
+        makeCard({ cardHp: 4 }),
+        makeCard({ cardHp: 4 }),
+      ],
+    )
+    const freezeLogs = r.log.filter(e => e.message.includes('时停'))
+    return freezeLogs.length === 1
+  })())
+
+  assert(`[${S}] 击破日志包含符卡快照`, (() => {
+    const r = runBattle(
+      [makeCard({ cardHp: 1 }), makeCard({ atkPoint: '1', cardHp: 50 })],
+      [makeCard({ atkPoint: '99', cardHp: 50 })],
+    )
+    const breakEntry = r.log.find(e => e.phase === 'card_break')
+    return breakEntry !== undefined && (breakEntry.creatorCard !== undefined || breakEntry.joinerCard !== undefined)
+  })())
+
+  assert(`[${S}] 宣言日志包含符卡快照`, (() => {
+    const r = runBattle(
+      [makeCard({ atkPoint: '1', cardHp: 50 })],
+      [makeCard({ atkPoint: '1', cardHp: 50 })],
+    )
+    const setEntry = r.log.find(e => e.phase === 'card_set')
+    return setEntry !== undefined && (setEntry.creatorCard !== undefined || setEntry.joinerCard !== undefined)
+  })())
+
+  assert(`[${S}] 符卡描述"每回合开始时"`, (() => {
+    const oldStyle = ALL_CARDS.filter(c => c.description?.match(/(?<!偶数)(?<!每)回合开始时/))
+    return oldStyle.length === 0
+  })())
+
+  assert(`[${S}] 被动·破釜: HP≤50%时获得强化2`, (() => {
+    const pofu = EFFECT_POOL.find(e => e.id === 'turn_str1_weak1')
+    return pofu !== undefined && pofu.description === 'HP≤50%时获得[强化2]' && !pofu.description.includes('弱化')
+  })())
+
+  assert(`[${S}] 固定值1吃骰面+1变成1d2`, (() => {
+    const card = createSpellCard({ name: '测试', cardHp: 5, maxCardHp: 5, atkPoint: '1d3', defPoint: '1', dodPoint: '1' })
+    const defUp = DICE_POOL.find(d => d.id === 'dice_def1')!
+    defUp.apply(card)
+    return card.defPoint === '1d2'
+  })())
+
+  assert(`[${S}] 固定值1吃下限+1变成1d1+1`, (() => {
+    const card = createSpellCard({ name: '测试', cardHp: 5, maxCardHp: 5, atkPoint: '1d3', defPoint: '1', dodPoint: '1' })
+    const defMinUp = DICE_POOL.find(d => d.id === 'dice_def_min1')!
+    defMinUp.apply(card)
+    return card.defPoint === '1d1+1'
+  })())
+
+  assert(`[${S}] 1d1+1吃骰面+1变成1d2+1`, (() => {
+    const card = createSpellCard({ name: '测试', cardHp: 5, maxCardHp: 5, atkPoint: '1d3', defPoint: '1', dodPoint: '1' })
+    const defMinUp = DICE_POOL.find(d => d.id === 'dice_def_min1')!
+    const defUp = DICE_POOL.find(d => d.id === 'dice_def1')!
+    defMinUp.apply(card)
+    defUp.apply(card)
+    return card.defPoint === '1d2+1'
+  })())
+
+  assert(`[${S}] 远征已击破符卡不出战`, (() => {
+    const cards: ExpeditionCard[] = [
+      createNonCard(),
+      createSpellCard({ name: '符卡A', cardHp: 7, maxCardHp: 7, atkPoint: '1d5', defPoint: '1d3', dodPoint: '1d3' }),
+    ]
+    cards[1].currentHp = 0
+    const activeIndices: number[] = []
+    const myCardDatas = []
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i].currentHp > 0) {
+        activeIndices.push(i)
+        myCardDatas.push(toCardData(cards[i]))
+      }
+    }
+    return myCardDatas.length === 1 && !myCardDatas.some(c => c.name === '符卡A')
+  })())
+
+  assert(`[${S}] 远征战后HP不为负数`, (() => {
+    const cards: ExpeditionCard[] = [
+      createNonCard(),
+      createSpellCard({ name: '符卡', cardHp: 3, maxCardHp: 3, atkPoint: '1d3', defPoint: '1', dodPoint: '1' }),
+    ]
+    healAllForNewStage(cards)
+    const activeIndices: number[] = []
+    const myCardDatas = []
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i].currentHp > 0) {
+        activeIndices.push(i)
+        myCardDatas.push(toCardData(cards[i]))
+      }
+    }
+    const b = new Battle(1)
+    b.setCreator('玩家')
+    b.creator.chosenCards = myCardDatas
+    b.setSingleEnemy('敌人', [makeCard({ atkPoint: '99', cardHp: 50 })])
+    b.runFullBattle()
+    const usedBattleIndices = b.creator.usedCardIndices
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i]
+      const activePos = activeIndices.indexOf(i)
+      let hpAfter: number
+      if (activePos === -1) {
+        hpAfter = card.currentHp
+      } else {
+        const wasUsed = activePos < usedBattleIndices.length
+        if (wasUsed) {
+          hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0
+        } else {
+          hpAfter = card.currentHp
+        }
+      }
+      card.currentHp = hpAfter
+    }
+    return cards.every(c => c.currentHp >= 0)
+  })())
+}
+
 function rng(): number { return Math.random() }
 function isSlotReward(r: Reward): boolean { return 'slot' in r && !('apply' in r) }
 function isDiceCountUpgrade(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.endsWith('_count') }
@@ -746,19 +928,39 @@ function runSingleExpedition() {
 
   while (!state.finished) {
     const enc = generateEncounter(state.currentStage, state.currentBattle, rng)
+    const activeIndices: number[] = []
+    const myCardDatas = []
+    for (let i = 0; i < state.cards.length; i++) {
+      if (state.cards[i].currentHp > 0) {
+        activeIndices.push(i)
+        myCardDatas.push(toCardData(state.cards[i]))
+      }
+    }
+    if (myCardDatas.length === 0) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors }
     try {
       const b = new Battle(1)
       b.setCreator('玩家')
-      b.creator.chosenCards = state.cards.map(c => toCardData(c))
+      b.creator.chosenCards = myCardDatas
       b.setSingleEnemy('敌人', enc.enemyCards)
       b.runFullBattle()
       totalRounds += b.gameRound
 
-      const usedIndices = b.creator.usedCardIndices
+      const usedBattleIndices = b.creator.usedCardIndices
       for (let i = 0; i < state.cards.length; i++) {
-        if (i < usedIndices.length) {
-          state.cards[i].currentHp = i === usedIndices.length - 1 ? b.creator.nowHp : 0
+        const card = state.cards[i]
+        const activePos = activeIndices.indexOf(i)
+        let hpAfter: number
+        if (activePos === -1) {
+          hpAfter = card.currentHp
+        } else {
+          const wasUsed = activePos < usedBattleIndices.length
+          if (wasUsed) {
+            hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0
+          } else {
+            hpAfter = card.currentHp
+          }
         }
+        card.currentHp = hpAfter
       }
 
       if (b.winnerId !== 1) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors }
@@ -776,7 +978,7 @@ function runSingleExpedition() {
           const tc = state.cards.filter(c => canApplyToCard(c, d))
           if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 3) state.spirit -= 3; d.apply(c) }
         } else {
-          state.cards.push(createSpellCard(NEW_CARD_POOL[Math.floor(rng() * NEW_CARD_POOL.length)]))
+          state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, rng)))
         }
       }
 
@@ -839,6 +1041,7 @@ testBorderEffects()
 testCardBreakClearsEffects()
 testCardEffects()
 testBattleMechanics()
+testBugFixes()
 
 const passed = results.filter(r => r.passed).length
 const failed = results.filter(r => !r.passed).length

@@ -183,7 +183,7 @@
 
                   <div class="visual-card-break" v-if="turnVisual.cardBreak" :key="'break-' + turnVisual.breakKey">
                     <span class="break-icon">💔</span>
-                    <span class="break-text">{{ turnVisual.cardBreak === 'creator' ? '你' : 'AI' }}的符卡被{{ turnVisual.breakSource === 'effect' ? '效果伤害' : '战斗伤害' }}击破!</span>
+                    <span class="break-text">{{ turnVisual.cardBreak === 'creator' ? '你' : 'AI' }}的符卡{{ turnVisual.breakSource === 'time' ? '因时符耗尽而消散' : '被' + (turnVisual.breakSource === 'effect' ? '效果伤害' : '战斗伤害') + '击破' }}!</span>
                   </div>
                 </div>
 
@@ -454,12 +454,16 @@ const processNextAnimEntry = () => {
   if (entry.creatorHp !== undefined) animCreatorHp.value = entry.creatorHp
   if (entry.joinerHp !== undefined) animJoinerHp.value = entry.joinerHp
   if (entry.phase === 'card_set') {
-    if (animFinalCreator.nowCard) { animCreatorCard.value = animFinalCreator.nowCard; animCreatorMaxHp.value = animFinalCreator.nowCard.cardHp }
-    if (animFinalJoiner.nowCard) { animJoinerCard.value = animFinalJoiner.nowCard; animJoinerMaxHp.value = animFinalJoiner.nowCard.cardHp }
+    if (entry.creatorCard) { animCreatorCard.value = entry.creatorCard; animCreatorMaxHp.value = entry.creatorCard.cardHp }
+    else if (animFinalCreator.nowCard) { animCreatorCard.value = animFinalCreator.nowCard; animCreatorMaxHp.value = animFinalCreator.nowCard.cardHp }
+    if (entry.joinerCard) { animJoinerCard.value = entry.joinerCard; animJoinerMaxHp.value = entry.joinerCard.cardHp }
+    else if (animFinalJoiner.nowCard) { animJoinerCard.value = animFinalJoiner.nowCard; animJoinerMaxHp.value = animFinalJoiner.nowCard.cardHp }
   }
   if (entry.phase === 'card_break') {
-    if (animCreatorHp.value <= 0) animCreatorCard.value = null
-    if (animJoinerHp.value <= 0) animJoinerCard.value = null
+    if (entry.creatorCard) { animCreatorCard.value = entry.creatorCard; animCreatorMaxHp.value = entry.creatorCard.cardHp }
+    if (entry.joinerCard) { animJoinerCard.value = entry.joinerCard; animJoinerMaxHp.value = entry.joinerCard.cardHp }
+    if (animCreatorHp.value <= 0 && !entry.creatorCard) animCreatorCard.value = null
+    if (animJoinerHp.value <= 0 && !entry.joinerCard) animJoinerCard.value = null
   }
 
   updateTurnVisual(entry)
@@ -671,6 +675,8 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
 .log-phase-card_break { color: #f56c6c; }
 .log-phase-card_set { color: #67c23a; }
 .log-phase-end { color: #e6a23c; font-weight: bold; }
+.log-phase-time_immune { color: #409eff; }
+.log-phase-time_expire { color: #e6a23c; }
 .result-section { text-align: center; }
 .result-section > * { margin-bottom: 16px; }
 .codex-section { padding: 0; }

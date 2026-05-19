@@ -196,8 +196,15 @@ const EFFECT_POOL: EffectModule[] = [
   },
   {
     id: 'turn_str1_weak1', displayName: '被动·破釜', slot: 'onPassive', rarity: 'rare',
-    description: '每回合获得[强化1][弱化1]',
-    apply(user: Battler, _enemy: Battler) { user.removeEffect('Strength', 1); user.appendEffect('Strength', 1); user.removeEffect('Weaken', 1); user.appendEffect('Weaken', 1); return '' },
+    description: 'HP≤50%时获得[强化2]',
+    apply(user: Battler, _enemy: Battler) {
+      if (user.nowHp <= user.nowCard!.cardHp * 0.5) {
+        user.removeEffect('Strength', 2); user.appendEffect('Strength', 2)
+      } else {
+        user.removeEffect('Strength', 2)
+      }
+      return ''
+    },
   },
   {
     id: 'turn_desperate_atk2', displayName: '被动·背水', slot: 'onPassive', rarity: 'rare',
@@ -287,20 +294,23 @@ const STAT_POOL: StatUpgrade[] = [
 ]
 
 function upgradeDice(diceStr: string): string {
+  if (/^\d+$/.test(diceStr)) return `1d${parseInt(diceStr) + 1}`
   return diceStr.replace(/d(\d+)/, (_, faces) => `d${parseInt(faces) + 1}`)
 }
 
 function upgradeDiceCount(diceStr: string): string {
+  if (/^\d+$/.test(diceStr)) return `2d${diceStr}`
   return diceStr.replace(/(\d+)d/, (_, count) => `${parseInt(count) + 1}d`)
 }
 
 function upgradeDiceMin(diceStr: string): string {
+  if (/^\d+$/.test(diceStr)) return `1d1+${parseInt(diceStr)}`
   const match = diceStr.match(/^(\d+)d(\d+)(\+\d+)?$/)
   if (!match) return diceStr
   const count = parseInt(match[1])
   const faces = parseInt(match[2])
   const bonus = match[3] ? parseInt(match[3]) : 0
-  if (faces <= 1) return diceStr
+  if (faces <= 1) return `${count}d${faces}+${bonus + 1}`
   return `${count}d${faces - 1}+${bonus + 1}`
 }
 
@@ -497,5 +507,5 @@ export function parseDescription(desc: string): DescSegment[] {
   return segments
 }
 
-export { DICE_POOL }
+export { DICE_POOL, EFFECT_POOL }
 

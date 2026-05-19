@@ -51,7 +51,7 @@ export interface VisualData {
   creatorHurt?: number
   joinerHurt?: number
   whoBroke?: 'creator' | 'joiner'
-  breakSource?: 'battle' | 'effect'
+  breakSource?: 'battle' | 'effect' | 'time'
 }
 
 export interface LogEntry {
@@ -61,6 +61,8 @@ export interface LogEntry {
   creatorHp?: number
   joinerHp?: number
   visual?: VisualData
+  creatorCard?: CardData
+  joinerCard?: CardData
 }
 
 export class SeededRandom {
@@ -214,10 +216,11 @@ export class Battler {
   dodge: number = 0
   dodSuccess: boolean | null = null
   defSuccess: boolean | null = null
-  lastHurtType: 'battle' | 'effect' | '' = ''
+  lastHurtType: 'battle' | 'effect' | 'time' | '' = ''
   gameRound: number = 0
   spiritGained: number = 0
   timeCardRemaining?: number
+  justApplied: boolean = false
 
   constructor(id: number, name: string) {
     this.id = id
@@ -361,7 +364,7 @@ export class Battler {
 
   effectHurt(value: number): string {
     if (this.nowCard?.isTimeCard && this.timeCardRemaining !== undefined && this.timeCardRemaining > 0) {
-      return ''
+      return `[${this.nowCard.name}]时符效果：无法受到伤害！\n`
     }
     this.lastHurtType = 'effect'
     const [val1, beforeMsg] = this.runEffects('beforeHurt', value) as [number, string]
@@ -387,6 +390,7 @@ export class Battler {
     this.nowCard = this.chosenCards[cardIndex]
     this.nowHp = this.nowCard.cardHp
     this.usedCardIndices.push(cardIndex)
+    this.justApplied = true
     if (this.nowCard.isTimeCard) {
       this.timeCardRemaining = this.nowCard.timeCardTurns
     }
@@ -418,11 +422,13 @@ export class Battler {
 
 class BattleLog {
   entries: LogEntry[] = []
-  add(round: number, phase: string, message: string, creatorHp?: number, joinerHp?: number, visual?: VisualData) {
+  add(round: number, phase: string, message: string, creatorHp?: number, joinerHp?: number, visual?: VisualData, creatorCard?: CardData, joinerCard?: CardData) {
     const entry: LogEntry = { round, phase, message }
     if (creatorHp !== undefined) entry.creatorHp = creatorHp
     if (joinerHp !== undefined) entry.joinerHp = joinerHp
     if (visual) entry.visual = visual
+    if (creatorCard) entry.creatorCard = creatorCard
+    if (joinerCard) entry.joinerCard = joinerCard
     this.entries.push(entry)
   }
 }
@@ -506,6 +512,7 @@ export class Battle {
     battler.nowCard = battler.chosenCards[cardIndex]
     battler.nowHp = battler.nowCard.cardHp
     battler.usedCardIndices.push(cardIndex)
+    battler.justApplied = true
     if (battler.nowCard.isTimeCard) {
       battler.timeCardRemaining = battler.nowCard.timeCardTurns
     }
@@ -517,12 +524,18 @@ export class Battle {
     this.joiner!.gameRound = this.gameRound
     this.log.add(this.gameRound, 'card_set',
       `${this.creator!.name} 宣言 [${this.creator!.nowCard?.name ?? '??'}] HP:${this.creator!.nowHp} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${this.joiner!.nowHp}`,
-      this.creator!.nowHp, this.joiner!.nowHp)
-    const msg1 = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
-    if (msg1) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg1}`)
+      this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
+    if (this.creator!.justApplied) {
+      const msg1 = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
+      if (msg1) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg1}`)
+      this.creator!.justApplied = false
+    }
     if (this.joiner!.shouldChangeCard()) return
-    const msg2 = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
-    if (msg2) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg2}`)
+    if (this.joiner!.justApplied) {
+      const msg2 = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
+      if (msg2) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg2}`)
+      this.joiner!.justApplied = false
+    }
   }
 
   onJoinerNewCard() {
@@ -531,7 +544,7 @@ export class Battle {
     this.joiner!.gameRound = this.gameRound
     this.log.add(this.gameRound, 'card_set',
       `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}] HP:${this.creator!.nowHp} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${this.joiner!.nowHp}`,
-      this.creator!.nowHp, this.joiner!.nowHp)
+      this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
     const msg = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
     if (msg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg}`)
   }
@@ -607,12 +620,17 @@ export class Battle {
   }
 
   turnHpChange(cHurt: number, jHurt: number) {
-    // 时符免疫战斗伤害
+    const timeImmuneMsgs: string[] = []
     if (this.creator!.nowCard?.isTimeCard && this.creator!.timeCardRemaining !== undefined && this.creator!.timeCardRemaining > 0) {
+      if (cHurt > 0) timeImmuneMsgs.push(`[${this.creator!.nowCard.name}]时符效果：无法受到伤害！`)
       cHurt = 0
     }
     if (this.joiner!.nowCard?.isTimeCard && this.joiner!.timeCardRemaining !== undefined && this.joiner!.timeCardRemaining > 0) {
+      if (jHurt > 0) timeImmuneMsgs.push(`[${this.joiner!.nowCard.name}]时符效果：无法受到伤害！`)
       jHurt = 0
+    }
+    if (timeImmuneMsgs.length > 0) {
+      this.log.add(this.gameRound, 'time_immune', timeImmuneMsgs.join('\n'), this.creator!.nowHp, this.joiner!.nowHp)
     }
 
     const prevCreatorHp = this.creator!.nowHp
@@ -661,12 +679,16 @@ export class Battle {
     if (this.creator!.nowCard?.isTimeCard && this.creator!.timeCardRemaining !== undefined) {
       this.creator!.timeCardRemaining--
       if (this.creator!.timeCardRemaining <= 0) {
+        this.creator!.lastHurtType = 'time'
+        this.log.add(this.gameRound, 'time_expire', `[${this.creator!.nowCard.name}] 时符时间耗尽，自行消散！`, this.creator!.nowHp, this.joiner!.nowHp)
         this.creator!.nowHp = 0
       }
     }
     if (this.joiner!.nowCard?.isTimeCard && this.joiner!.timeCardRemaining !== undefined) {
       this.joiner!.timeCardRemaining--
       if (this.joiner!.timeCardRemaining <= 0) {
+        this.joiner!.lastHurtType = 'time'
+        this.log.add(this.gameRound, 'time_expire', `[${this.joiner!.nowCard.name}] 时符时间耗尽，自行消散！`, this.creator!.nowHp, this.joiner!.nowHp)
         this.joiner!.nowHp = 0
       }
     }
@@ -686,17 +708,18 @@ export class Battle {
   handleCardBreak(battler: Battler) {
     const whoBroke = battler === this.creator ? 'creator' : 'joiner'
     const brokenCardName = battler.nowCard?.name ?? '??'
+    const brokenCard = battler.nowCard ? { ...battler.nowCard } : undefined
+    battler.effects = battler.effects.filter(e => e instanceof Border)
+    battler.states = []
+    battler.timeCardRemaining = undefined
     this.log.add(this.gameRound, 'card_break', `${battler.name}[${brokenCardName}] 的符卡被击破！`, this.creator!.nowHp, this.joiner!.nowHp, {
       whoBroke: whoBroke as 'creator' | 'joiner',
       breakSource: battler.lastHurtType || undefined,
-    })
+    }, whoBroke === 'creator' ? brokenCard : undefined, whoBroke === 'joiner' ? brokenCard : undefined)
     if (!battler.shouldEnd()) {
       const msg = battler.nowCard!.onCardBreak?.(battler, battler.enemy!) ?? ''
       if (msg) this.log.add(this.gameRound, 'card_break', `[${brokenCardName}] ${msg}`, this.creator!.nowHp, this.joiner!.nowHp)
     }
-    battler.effects = battler.effects.filter(e => e instanceof Border)
-    battler.states = []
-    battler.timeCardRemaining = undefined
     const enemy = battler.enemy!
     if (!enemy.shouldEnd() && enemy.nowCard?.onEnemyCardBreak) {
       const killMsg = enemy.nowCard.onEnemyCardBreak(enemy, battler)
@@ -743,7 +766,7 @@ export class Battle {
       const jPart = joinerBreak ? `${this.joiner!.name} 宣言 [${jCardName}]` : `${this.joiner!.name}[${jCardName}]`
       this.log.add(this.gameRound, 'card_set',
         `${cPart} HP:${this.creator!.nowHp} | ${jPart} HP:${this.joiner!.nowHp}`,
-        this.creator!.nowHp, this.joiner!.nowHp)
+        this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
       if (creatorBreak) {
         const msg = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
         if (msg) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg}`)
