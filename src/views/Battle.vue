@@ -455,9 +455,7 @@ const processNextAnimEntry = () => {
   if (entry.joinerHp !== undefined) animJoinerHp.value = entry.joinerHp
   if (entry.phase === 'card_set') {
     if (entry.creatorCard) { animCreatorCard.value = entry.creatorCard; animCreatorMaxHp.value = entry.creatorCard.cardHp }
-    else if (animFinalCreator.nowCard) { animCreatorCard.value = animFinalCreator.nowCard; animCreatorMaxHp.value = animFinalCreator.nowCard.cardHp }
     if (entry.joinerCard) { animJoinerCard.value = entry.joinerCard; animJoinerMaxHp.value = entry.joinerCard.cardHp }
-    else if (animFinalJoiner.nowCard) { animJoinerCard.value = animFinalJoiner.nowCard; animJoinerMaxHp.value = animFinalJoiner.nowCard.cardHp }
   }
   if (entry.phase === 'card_break') {
     if (entry.creatorCard) { animCreatorCard.value = entry.creatorCard; animCreatorMaxHp.value = entry.creatorCard.cardHp }

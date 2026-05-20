@@ -96,6 +96,10 @@ export interface ExpeditionState {
   totalStages: number
   finished: boolean
   victories: number
+  exActive: boolean
+  exBattle: number
+  exCardsBroken: number
+  exFinished: boolean
 }
 
 function emptyEffects(): CardEffects {
@@ -107,7 +111,7 @@ function spellCardCapacity(): SlotCapacity {
 }
 
 function nonCardCapacity(): SlotCapacity {
-  return { onCardSet: 0, onCardBreak: 0, onPassive: 0 }
+  return { onCardSet: 0, onCardBreak: 1, onPassive: 0 }
 }
 
 const INITIAL_NON_CARD: Omit<ExpeditionCard, 'effects' | 'slotCapacity'> = {
@@ -124,7 +128,7 @@ const INITIAL_NON_CARD: Omit<ExpeditionCard, 'effects' | 'slotCapacity'> = {
 export const BASE_PANELS: Omit<ExpeditionCard, 'currentHp' | 'effects' | 'isNonCard' | 'slotCapacity'>[] = [
   { name: '霊符「梦想封印」', cardHp: 7, maxCardHp: 7, atkPoint: '1d4', defPoint: '1d2', dodPoint: '1d4' },
   { name: '夢符「封魔陣」', cardHp: 9, maxCardHp: 9, atkPoint: '1d5', defPoint: '1d3', dodPoint: '1d2' },
-  { name: '恋符「Master Spark」', cardHp: 5, maxCardHp: 5, atkPoint: '2d4+1', defPoint: '1', dodPoint: '1' },
+  { name: '恋符「Master Spark」', cardHp: 5, maxCardHp: 5, atkPoint: '2d4', defPoint: '1d1', dodPoint: '1d1' },
   { name: '魔符「Stardust Reverie」', cardHp: 7, maxCardHp: 7, atkPoint: '1d4', defPoint: '1d3', dodPoint: '1d3' },
 ]
 
@@ -150,7 +154,7 @@ export const NEW_CARD_POOL: Omit<ExpeditionCard, 'currentHp' | 'effects' | 'isNo
   { name: '火符「Agni Shine」', cardHp: 6, maxCardHp: 6, atkPoint: '1d5', defPoint: '1d2', dodPoint: '1d2' },
   { name: '幻符「Killing Doll」', cardHp: 6, maxCardHp: 6, atkPoint: '1d4', defPoint: '1d3', dodPoint: '1d3' },
   { name: '红符「Scarlet Shoot」', cardHp: 7, maxCardHp: 7, atkPoint: '1d4', defPoint: '1d2', dodPoint: '1d4' },
-  { name: '禁忌「Laevatein」', cardHp: 5, maxCardHp: 5, atkPoint: '2d4', defPoint: '1', dodPoint: '1d2' },
+  { name: '禁忌「Laevatein」', cardHp: 5, maxCardHp: 5, atkPoint: '2d4', defPoint: '1d1', dodPoint: '1d2' },
 ]
 
 export function createSpellCard(panel: Omit<ExpeditionCard, 'currentHp' | 'effects' | 'isNonCard' | 'slotCapacity'>): ExpeditionCard {
@@ -218,4 +222,8 @@ export function addEffectToCard(card: ExpeditionCard, effect: EffectModule): { r
   card.effects[slot].shift()
   card.effects[slot].push(effect)
   return { replaced: oldest }
+}
+
+export function initExpeditionState(): ExpeditionState {
+  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false }
 }

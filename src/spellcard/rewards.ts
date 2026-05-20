@@ -113,6 +113,44 @@ const EFFECT_POOL: EffectModule[] = [
     apply(_user: Battler, enemy: Battler) { enemy.appendEffect('CantDodge', -1); return '' },
   },
   {
+    id: 'set_drain1', displayName: '宣言·吸血', slot: 'onCardSet', rarity: 'epic',
+    description: '宣言时获得[吸血1]',
+    apply(user: Battler, _enemy: Battler) { user.appendEffect('Drain', 1); return '' },
+  },
+  {
+    id: 'set_strborder3', displayName: '宣言·强化结界', slot: 'onCardSet', rarity: 'epic',
+    description: '宣言时展开3回合[强化结界3]',
+    apply(user: Battler, _enemy: Battler) { user.appendBorder('StrengthBorder', 3, 3); return '' },
+  },
+  {
+    id: 'set_shield4', displayName: '宣言·大护盾', slot: 'onCardSet', rarity: 'epic',
+    description: '宣言时获得[护盾4]',
+    apply(user: Battler, _enemy: Battler) { user.appendEffect('Shield', 4); return '' },
+  },
+  {
+    id: 'break_damage3', displayName: '亡语·造成3伤害', slot: 'onCardBreak', rarity: 'epic',
+    description: '被击破时对敌方造成3点直接伤害',
+    apply(user: Battler, enemy: Battler) {
+      const info = enemy.effectHurt(3)
+      return `[${user.name}]亡语效果：造成3点直接伤害\n` + info
+    },
+  },
+  {
+    id: 'break_permstr', displayName: '亡语·遗志', slot: 'onCardBreak', rarity: 'epic',
+    description: '被击破时展开99回合[强化结界1]',
+    apply(user: Battler, _enemy: Battler) { user.appendBorder('StrengthBorder', 99, 1); return '' },
+  },
+  {
+    id: 'turn_chase1', displayName: '被动·追击', slot: 'onPassive', rarity: 'epic',
+    description: '每回合获得[追击1]',
+    apply(user: Battler, _enemy: Battler) { user.removeEffect('Chase', 1); user.appendEffect('Chase', 1); return '' },
+  },
+  {
+    id: 'turn_trace1', displayName: '被动·追踪', slot: 'onPassive', rarity: 'epic',
+    description: '每回合获得[追踪1]',
+    apply(user: Battler, _enemy: Battler) { user.removeEffect('Trace', 1); user.appendEffect('Trace', 1); return '' },
+  },
+  {
     id: 'break_damage1', displayName: '亡语·造成1伤害', slot: 'onCardBreak', rarity: 'common',
     description: '被击破时对敌方造成1点直接伤害',
     apply(user: Battler, enemy: Battler) {
@@ -250,17 +288,17 @@ const DICE_POOL: DiceUpgrade[] = [
   },
   {
     id: 'dice_atk_min1', displayName: 'ATK下限+1', rarity: 'rare',
-    description: '攻击骰下限+1（如1d4→1d3+1，范围2~4）',
+    description: '攻击骰下限+1',
     apply(card) { card.atkPoint = upgradeDiceMin(card.atkPoint) },
   },
   {
     id: 'dice_def_min1', displayName: 'DEF下限+1', rarity: 'rare',
-    description: '防御骰下限+1（如1d2→1d1+1，固定为2）',
+    description: '防御骰下限+1',
     apply(card) { card.defPoint = upgradeDiceMin(card.defPoint) },
   },
   {
     id: 'dice_dod_min1', displayName: 'DOD下限+1', rarity: 'rare',
-    description: '回避骰下限+1（如1d2→1d1+1，固定为2）',
+    description: '回避骰下限+1',
     apply(card) { card.dodPoint = upgradeDiceMin(card.dodPoint) },
   },
   {
@@ -270,12 +308,12 @@ const DICE_POOL: DiceUpgrade[] = [
   },
   {
     id: 'dice_def_count', displayName: 'DEF骰数+1', rarity: 'epic',
-    description: '防御骰数+1（如1d2→2d2）',
+    description: '防御骰数+1',
     apply(card) { card.defPoint = upgradeDiceCount(card.defPoint) },
   },
   {
     id: 'dice_dod_count', displayName: 'DOD骰数+1', rarity: 'epic',
-    description: '回避骰数+1（如1d2→2d2）',
+    description: '回避骰数+1',
     apply(card) { card.dodPoint = upgradeDiceCount(card.dodPoint) },
   },
 ]
@@ -293,25 +331,49 @@ const STAT_POOL: StatUpgrade[] = [
   },
 ]
 
+export function parseDice(diceStr: string): { count: number; faces: number; min: number; bonus: number } {
+  const minMatch = diceStr.match(/^(\d+)d\((\d+)~(\d+)\)([+-]\d+)?$/)
+  if (minMatch) {
+    return { count: parseInt(minMatch[1]), min: parseInt(minMatch[2]), faces: parseInt(minMatch[3]), bonus: minMatch[4] ? parseInt(minMatch[4]) : 0 }
+  }
+  const match = diceStr.match(/^(\d+)d(\d+)([+-]\d+)?$/)
+  if (!match) return { count: 1, faces: 1, min: 1, bonus: 0 }
+  return { count: parseInt(match[1]), min: 1, faces: parseInt(match[2]), bonus: match[3] ? parseInt(match[3]) : 0 }
+}
+
+export function formatDice(d: { count: number; faces: number; min?: number; bonus?: number }): string {
+  const min = d.min ?? 1
+  const bonus = d.bonus ?? 0
+  if (min > 1) {
+    const base = `${d.count}d(${min}~${d.faces})`
+    if (bonus > 0) return `${base}+${bonus}`
+    if (bonus < 0) return `${base}${bonus}`
+    return base
+  }
+  const base = `${d.count}d${d.faces}`
+  if (bonus > 0) return `${base}+${bonus}`
+  if (bonus < 0) return `${base}${bonus}`
+  return base
+}
+
+export function isDiceFixed(diceStr: string): boolean {
+  const d = parseDice(diceStr)
+  return d.min >= d.faces
+}
+
 function upgradeDice(diceStr: string): string {
-  if (/^\d+$/.test(diceStr)) return `1d${parseInt(diceStr) + 1}`
-  return diceStr.replace(/d(\d+)/, (_, faces) => `d${parseInt(faces) + 1}`)
+  const d = parseDice(diceStr)
+  return formatDice({ ...d, faces: d.faces + 1 })
 }
 
 function upgradeDiceCount(diceStr: string): string {
-  if (/^\d+$/.test(diceStr)) return `2d${diceStr}`
-  return diceStr.replace(/(\d+)d/, (_, count) => `${parseInt(count) + 1}d`)
+  const d = parseDice(diceStr)
+  return formatDice({ ...d, count: d.count + 1 })
 }
 
 function upgradeDiceMin(diceStr: string): string {
-  if (/^\d+$/.test(diceStr)) return `1d1+${parseInt(diceStr)}`
-  const match = diceStr.match(/^(\d+)d(\d+)(\+\d+)?$/)
-  if (!match) return diceStr
-  const count = parseInt(match[1])
-  const faces = parseInt(match[2])
-  const bonus = match[3] ? parseInt(match[3]) : 0
-  if (faces <= 1) return `${count}d${faces}+${bonus + 1}`
-  return `${count}d${faces - 1}+${bonus + 1}`
+  const d = parseDice(diceStr)
+  return formatDice({ ...d, min: d.min + 1 })
 }
 
 const SLOT_POOL: ExtraSlotReward[] = [
@@ -507,5 +569,5 @@ export function parseDescription(desc: string): DescSegment[] {
   return segments
 }
 
-export { DICE_POOL, EFFECT_POOL }
+export { DICE_POOL, EFFECT_POOL, SLOT_POOL, STAT_POOL }
 

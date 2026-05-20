@@ -88,10 +88,21 @@ export class SeededRandom {
 
 export function rollDice(diceStr: string, rng: SeededRandom): number {
   if (!diceStr) return 0
-  const diceRegex = /(\d{1,2})d(\d{1,2})/g
   let resultStr = diceStr
+  const minDiceRegex = /(\d{1,2})d\((\d{1,2})~(\d{1,2})\)/g
   let match: RegExpExecArray | null
-  while ((match = diceRegex.exec(diceStr)) !== null) {
+  while ((match = minDiceRegex.exec(diceStr)) !== null) {
+    const amount = parseInt(match[1])
+    const min = parseInt(match[2])
+    const faces = parseInt(match[3])
+    let total = 0
+    for (let i = 0; i < amount; i++) {
+      total += rng.nextInt(min, faces)
+    }
+    resultStr = resultStr.replace(match[0], total.toString())
+  }
+  const diceRegex = /(\d{1,2})d(\d{1,2})/g
+  while ((match = diceRegex.exec(resultStr)) !== null) {
     const amount = parseInt(match[1])
     const faces = parseInt(match[2])
     let total = 0
@@ -221,6 +232,12 @@ export class Battler {
   spiritGained: number = 0
   timeCardRemaining?: number
   justApplied: boolean = false
+  // [亡语鞭尸修复] 保存被击破符卡的引用。
+  // 当双方符卡同时被击破时，需要在触发亡语前先切换到新符卡，
+  // 否则亡语伤害会打到对方已被击破的旧符卡上（鞭尸）。
+  // 切换后 nowCard 已指向新符卡，因此需要此字段保存旧卡引用以正确触发亡语。
+  // 生命周期：handleCardBreakLog 中设置 → handleCardBreakEffects 中使用后清除
+  _brokenCardRef: CardData | null = null
 
   constructor(id: number, name: string) {
     this.id = id
@@ -477,7 +494,7 @@ export class Battle {
     this.onNewCardsSet()
 
     while (!this.finished) {
-      this.resolveTurnsUntilCardBreak()
+      this.resolveTurnsUntilCardBreak(false)
       if (this.checkGameEnd()) break
 
       const creatorBreak = this.creator!.shouldChangeCard()
@@ -522,15 +539,18 @@ export class Battle {
     this.gameRound++
     this.creator!.gameRound = this.gameRound
     this.joiner!.gameRound = this.gameRound
+    const creatorNew = this.creator!.justApplied
+    const joinerNew = this.joiner!.justApplied
+    const cPart = creatorNew ? `${this.creator!.name} 宣言 [${this.creator!.nowCard?.name ?? '??'}]` : `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}]`
+    const jPart = joinerNew ? `${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}]` : `${this.joiner!.name}[${this.joiner!.nowCard?.name ?? '??'}]`
     this.log.add(this.gameRound, 'card_set',
-      `${this.creator!.name} 宣言 [${this.creator!.nowCard?.name ?? '??'}] HP:${this.creator!.nowHp} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${this.joiner!.nowHp}`,
-      this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
+      `${cPart} HP:${Math.max(0, this.creator!.nowHp)} | ${jPart} HP:${Math.max(0, this.joiner!.nowHp)}`,
+      Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
     if (this.creator!.justApplied) {
       const msg1 = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
       if (msg1) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg1}`)
       this.creator!.justApplied = false
     }
-    if (this.joiner!.shouldChangeCard()) return
     if (this.joiner!.justApplied) {
       const msg2 = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
       if (msg2) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg2}`)
@@ -543,29 +563,42 @@ export class Battle {
     this.creator!.gameRound = this.gameRound
     this.joiner!.gameRound = this.gameRound
     this.log.add(this.gameRound, 'card_set',
-      `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}] HP:${this.creator!.nowHp} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${this.joiner!.nowHp}`,
-      this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
+      `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}] HP:${Math.max(0, this.creator!.nowHp)} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${Math.max(0, this.joiner!.nowHp)}`,
+      Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
     const msg = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
     if (msg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg}`)
   }
 
-  resolveTurnsUntilCardBreak() {
+  // [亡语鞭尸修复] 击破处理流程（三步走）：
+  // 1. handleCardBreakLog：记录击破日志 + 保存旧卡引用(_brokenCardRef) + 清理效果
+  // 2. setNewMainCard：切换到新符卡（此时 nowCard 指向新卡，enemy.nowCard 也指向新卡）
+  // 3. handleCardBreakEffects：触发亡语（从 _brokenCardRef 取旧卡回调，伤害打到对方新卡上）
+  // 关键：步骤2必须在步骤3之前，否则亡语伤害会打到对方已被击破的旧符卡（鞭尸）
+  resolveTurnsUntilCardBreak(autoSwap = true) {
     while (!this.finished) {
       if (this.creator!.shouldChangeCard() || this.joiner!.shouldChangeCard()) break
       this.resolveSingleTurn()
     }
     const brokenSet = new Set<Battler>()
-    if (this.creator!.shouldChangeCard()) { this.handleCardBreak(this.creator!); brokenSet.add(this.creator!) }
-    if (this.joiner!.shouldChangeCard()) { this.handleCardBreak(this.joiner!); brokenSet.add(this.joiner!) }
+    if (this.creator!.shouldChangeCard()) { this.handleCardBreakLog(this.creator!); brokenSet.add(this.creator!) }
+    if (this.joiner!.shouldChangeCard()) { this.handleCardBreakLog(this.joiner!); brokenSet.add(this.joiner!) }
+    if (autoSwap) {
+      for (const b of brokenSet) {
+        if (!b.shouldEnd()) b.setNewMainCard()
+      }
+    }
+    for (const b of brokenSet) {
+      this.handleCardBreakEffects(b)
+    }
     let recheck = true
     while (recheck) {
       recheck = false
-      if (this.creator!.shouldChangeCard() && this.creator!.nowHp <= 0 && !brokenSet.has(this.creator!)) {
+      if (this.creator!.shouldChangeCard() && !brokenSet.has(this.creator!)) {
         this.handleCardBreak(this.creator!)
         brokenSet.add(this.creator!)
         recheck = true
       }
-      if (this.joiner!.shouldChangeCard() && this.joiner!.nowHp <= 0 && !brokenSet.has(this.joiner!)) {
+      if (this.joiner!.shouldChangeCard() && !brokenSet.has(this.joiner!)) {
         this.handleCardBreak(this.joiner!)
         brokenSet.add(this.joiner!)
         recheck = true
@@ -645,15 +678,15 @@ export class Battle {
     if (joinerActualDmg > 0) {
       const drainEffect = this.creator!.effects.find(e => e.id === 'Drain')
       if (drainEffect) {
-        const healAmt = Math.min(joinerActualDmg, drainEffect.amount)
-        this.creator!.nowHp += healAmt
+        const healAmt = Math.min(joinerActualDmg, drainEffect.amount, this.creator!.nowCard!.cardHp - this.creator!.nowHp)
+        if (healAmt > 0) this.creator!.nowHp += healAmt
       }
     }
     if (creatorActualDmg > 0) {
       const drainEffect = this.joiner!.effects.find(e => e.id === 'Drain')
       if (drainEffect) {
-        const healAmt = Math.min(creatorActualDmg, drainEffect.amount)
-        this.joiner!.nowHp += healAmt
+        const healAmt = Math.min(creatorActualDmg, drainEffect.amount, this.joiner!.nowCard!.cardHp - this.joiner!.nowHp)
+        if (healAmt > 0) this.joiner!.nowHp += healAmt
       }
     }
 
@@ -705,10 +738,13 @@ export class Battle {
     return [m1, m2].filter((m): m is string => typeof m === 'string' && m.length > 0).join('\n')
   }
 
-  handleCardBreak(battler: Battler) {
+  // [亡语鞭尸修复] 击破处理第一步：记录日志 + 保存旧卡引用 + 清理效果
+  // 必须在 setNewMainCard 之前调用，因为此时 nowCard 仍指向被击破的符卡
+  handleCardBreakLog(battler: Battler) {
     const whoBroke = battler === this.creator ? 'creator' : 'joiner'
     const brokenCardName = battler.nowCard?.name ?? '??'
     const brokenCard = battler.nowCard ? { ...battler.nowCard } : undefined
+    battler._brokenCardRef = battler.nowCard
     battler.effects = battler.effects.filter(e => e instanceof Border)
     battler.states = []
     battler.timeCardRemaining = undefined
@@ -716,8 +752,17 @@ export class Battle {
       whoBroke: whoBroke as 'creator' | 'joiner',
       breakSource: battler.lastHurtType || undefined,
     }, whoBroke === 'creator' ? brokenCard : undefined, whoBroke === 'joiner' ? brokenCard : undefined)
-    if (!battler.shouldEnd()) {
-      const msg = battler.nowCard!.onCardBreak?.(battler, battler.enemy!) ?? ''
+  }
+
+  // [亡语鞭尸修复] 击破处理第二步：触发亡语效果
+  // 此时对方已切换到新符卡（setNewMainCard 已调用），
+  // 所以亡语伤害会正确打到对方的新符卡上，而非已被击破的旧符卡。
+  // 亡语回调从 _brokenCardRef（旧卡引用）上取，而非 nowCard（已指向新卡）。
+  handleCardBreakEffects(battler: Battler) {
+    const brokenCard = battler._brokenCardRef
+    const brokenCardName = brokenCard?.name ?? '??'
+    if (!battler.shouldEnd() && brokenCard) {
+      const msg = brokenCard.onCardBreak?.(battler, battler.enemy!) ?? ''
       if (msg) this.log.add(this.gameRound, 'card_break', `[${brokenCardName}] ${msg}`, this.creator!.nowHp, this.joiner!.nowHp)
     }
     const enemy = battler.enemy!
@@ -725,6 +770,12 @@ export class Battle {
       const killMsg = enemy.nowCard.onEnemyCardBreak(enemy, battler)
       if (killMsg) this.log.add(this.gameRound, 'card_break', killMsg, this.creator!.nowHp, this.joiner!.nowHp)
     }
+    battler._brokenCardRef = null
+  }
+
+  handleCardBreak(battler: Battler) {
+    this.handleCardBreakLog(battler)
+    this.handleCardBreakEffects(battler)
   }
 
   checkGameEnd(): boolean {
@@ -753,10 +804,17 @@ export class Battle {
     while (!this.finished) {
       this.resolveTurnsUntilCardBreak()
       if (this.checkGameEnd()) break
-      const creatorBreak = this.creator!.shouldChangeCard()
-      const joinerBreak = this.joiner!.shouldChangeCard()
-      if (creatorBreak && !this.creator!.setNewMainCard()) break
-      if (joinerBreak && !this.joiner!.setNewMainCard()) break
+      // [亡语鞭尸修复] resolveTurnsUntilCardBreak 内部已调用 setNewMainCard，
+      // 所以这里 shouldChangeCard() 通常为 false（新卡HP>0）。
+      // 这两行是兜底：如果因某种原因未自动切换，则在此切换。
+      if (this.creator!.shouldChangeCard() && !this.creator!.setNewMainCard()) break
+      if (this.joiner!.shouldChangeCard() && !this.joiner!.setNewMainCard()) break
+      // [亡语鞭尸修复] 用 justApplied 标记判断是否为新宣言，而非 shouldChangeCard()。
+      // 因为 resolveTurnsUntilCardBreak 内部已调用 setNewMainCard（重置了HP），
+      // shouldChangeCard() 此时返回 false，无法区分"刚切换新卡"和"无需切换"。
+      const creatorBreak = this.creator!.justApplied
+      const joinerBreak = this.joiner!.justApplied
+      if (!creatorBreak && !joinerBreak) continue
       this.gameRound++
       this.creator!.gameRound = this.gameRound
       this.joiner!.gameRound = this.gameRound
@@ -765,15 +823,17 @@ export class Battle {
       const cPart = creatorBreak ? `${this.creator!.name} 宣言 [${cCardName}]` : `${this.creator!.name}[${cCardName}]`
       const jPart = joinerBreak ? `${this.joiner!.name} 宣言 [${jCardName}]` : `${this.joiner!.name}[${jCardName}]`
       this.log.add(this.gameRound, 'card_set',
-        `${cPart} HP:${this.creator!.nowHp} | ${jPart} HP:${this.joiner!.nowHp}`,
-        this.creator!.nowHp, this.joiner!.nowHp, undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
+        `${cPart} HP:${Math.max(0, this.creator!.nowHp)} | ${jPart} HP:${Math.max(0, this.joiner!.nowHp)}`,
+        Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
       if (creatorBreak) {
         const msg = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
         if (msg) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg}`)
+        this.creator!.justApplied = false
       }
       if (joinerBreak) {
         const msg = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
         if (msg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg}`)
+        this.joiner!.justApplied = false
       }
     }
 

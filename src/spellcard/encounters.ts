@@ -22,7 +22,7 @@ const NON_CARD_STRONG: CardData = {
 
 const MAGIC_CIRCLE: CardData = {
   id: -110, cost: 0, name: '魔法阵', cardHp: 6,
-  atkPoint: '1d4', defPoint: '1d4', dodPoint: '0',
+  atkPoint: '1d4', defPoint: '1d4', dodPoint: '1d1-1',
   description: '回合结束时增加一个攻击骰子(上限6d4)',
   onTurnEnd(user, _enemy) {
     const current = user.nowCard!.atkPoint
@@ -95,11 +95,31 @@ const STAGE_TEMPLATES: EncounterTemplate[][] = [
   ],
   [
     { type: 'normal', buildCards: (rng) => [{ ...NON_CARD_STRONG }, ...pickFromPool(STRONG_POOL, 3, rng)] },
-    { type: 'elite', buildCards: () => [({ ...ALL_CARDS.find(c => c.id === 52)! })], fixedDrop: { type: 'dice' } },
+    { type: 'elite', buildCards: () => [{ ...NON_CARD_STRONG }, ({ ...ALL_CARDS.find(c => c.id === 52)! })], fixedDrop: { type: 'dice' } },
     { type: 'normal', buildCards: (rng) => pickFromPool(STRONG_POOL, 4, rng) },
-    { type: 'boss', buildCards: (rng) => pickFromCharPool('remilia', 4, rng) },
+    { type: 'boss', buildCards: () => [53, 54, 55, 56, 57].map(id => ({ ...ALL_CARDS.find(c => c.id === id)! })) },
   ],
 ]
+
+const EX_STAGE_TEMPLATES: EncounterTemplate[] = [
+  { type: 'normal', buildCards: (rng) => [{ ...NON_CARD_STRONG }, { ...NON_CARD_STRONG }, ...pickFromPool(STRONG_POOL, 3, rng)] },
+  { type: 'normal', buildCards: (rng) => [{ ...NON_CARD_STRONG }, ...pickFromPool(STRONG_POOL, 4, rng)] },
+  { type: 'elite', buildCards: () => [45, 46, 47].map(id => ({ ...ALL_CARDS.find(c => c.id === id)! })), fixedDrop: { type: 'dice' } },
+  { type: 'normal', buildCards: (rng) => [{ ...NON_CARD_STRONG }, { ...NON_CARD_STRONG }, ...pickFromPool(STRONG_POOL, 3, rng)] },
+  { type: 'normal', buildCards: (rng) => [{ ...NON_CARD_STRONG }, ...pickFromPool(STRONG_POOL, 4, rng)] },
+  { type: 'shop', buildCards: () => [] },
+  { type: 'boss', buildCards: () => [58, 59, 24, 12, 60, 25, 61, 62, 63, 64].map(id => ({ ...ALL_CARDS.find(c => c.id === id)! })) },
+]
+
+export function generateExEncounter(battle: number, rng: () => number): Encounter {
+  const template = EX_STAGE_TEMPLATES[Math.min(battle - 1, EX_STAGE_TEMPLATES.length - 1)]
+  const enemyCards = template.buildCards(rng)
+  return { stage: 7, battle, type: template.type, enemyCards, fixedDrop: template.fixedDrop }
+}
+
+export function getExStageTemplate() {
+  return EX_STAGE_TEMPLATES
+}
 
 export function generateEncounter(
   stage: number,

@@ -25,13 +25,14 @@
           </el-card>
         </div>
         <el-button type="primary" size="large" @click="startExpedition" :disabled="selectedPanelIdx === -1">开始远征</el-button>
+        <el-button v-if="isDev" type="warning" size="large" @click="startExDebug" :disabled="selectedPanelIdx === -1">调试: EX面</el-button>
       </div>
     </template>
 
     <template v-if="phase === 'encounter'">
       <div class="encounter-section">
         <div class="stage-info">
-          <el-tag type="info">第{{ state.currentStage }}面 / 第{{ state.currentBattle }}战</el-tag>
+          <el-tag type="info">{{ state.exActive ? `EX面 / 第${state.exBattle}战` : `第${state.currentStage}面 / 第${state.currentBattle}战` }}</el-tag>
           <el-tag :type="encounterType === 'boss' ? 'danger' : encounterType === 'elite' ? 'warning' : ''">
             {{ encounterType === 'boss' ? 'BOSS' : encounterType === 'elite' ? '精英' : '普通' }}
           </el-tag>
@@ -47,11 +48,12 @@
                 <div class="pc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
                 <div class="pc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
                 <div class="pc-effects">
-                  <el-tooltip v-for="eff in allEffects(card)" :key="eff.id" :content="eff.description" placement="top">
-                    <el-tag size="small" :type="slotTagType(eff.slot)">
-                      {{ eff.displayName }}
-                    </el-tag>
-                  </el-tooltip>
+                  <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                    <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
+                      <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
+                    </el-tooltip>
+                    <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
+                  </template>
                 </div>
               </div>
             </div>
@@ -115,6 +117,7 @@
           <el-button type="primary" @click="goToReward">领取奖励</el-button>
         </div>
         <div class="result-actions" v-else>
+          <el-button v-if="state.exActive" type="primary" @click="goToReward">返回结算</el-button>
           <el-button type="primary" @click="resetExpedition">重新开始</el-button>
         </div>
       </div>
@@ -208,11 +211,12 @@
               <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
               <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
               <div class="tc-effects">
-                <el-tooltip v-for="eff in allEffects(card)" :key="eff.id" :content="eff.description" placement="top">
-                  <el-tag size="small" :type="slotTagType(eff.slot)">
-                    {{ eff.displayName }}
-                  </el-tag>
-                </el-tooltip>
+                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                  <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
+                    <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
+                  </el-tooltip>
+                  <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
+                </template>
               </div>
               <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外3灵力</div>
             </div>
@@ -223,33 +227,6 @@
           <el-button type="primary" @click="confirmReward" :disabled="selectedRewardIdx === -1 || targetCardIdx === -1">确认装配</el-button>
           <el-button @click="skipReward">跳过</el-button>
         </div>
-
-        <el-dialog v-model="replaceConfirmVisible" title="效果替换确认" width="420px">
-          <p v-if="replaceSlotInfo">
-            该槽位已满，请选择要替换的效果：
-          </p>
-          <div v-if="replaceSlotInfo" class="replace-options">
-            <div v-for="(eff, ei) in replaceSlotInfo.existingEffects" :key="ei" class="replace-option"
-              :class="{ selected: replaceChoiceIdx === ei }" @click="replaceChoiceIdx = ei">
-              <el-tag size="small" type="danger">{{ eff.displayName }}</el-tag>
-              <span class="replace-option-desc">
-                <template v-for="(seg, si) in parseDescription(eff.description)" :key="si">
-                  <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
-                    <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
-                  </el-tooltip>
-                  <span v-else>{{ seg.text }}</span>
-                </template>
-              </span>
-            </div>
-          </div>
-          <p v-if="replaceSlotInfo" class="replace-new">
-            替换为：<el-tag size="small" type="success">{{ replaceSlotInfo.newEffect.displayName }}</el-tag>
-          </p>
-          <template #footer>
-            <el-button @click="replaceConfirmVisible = false">取消</el-button>
-            <el-button type="primary" @click="confirmReplaceEffect" :disabled="replaceChoiceIdx === -1">替换</el-button>
-          </template>
-        </el-dialog>
       </div>
     </template>
 
@@ -274,6 +251,25 @@
           </el-card>
         </div>
         <el-button type="primary" @click="leaveShop">继续远征</el-button>
+
+        <div class="shop-cards-info">
+          <h4>当前符卡</h4>
+          <div class="preview-cards">
+            <div v-for="(card, idx) in state.cards" :key="idx" class="preview-card" :class="{ noncard: card.isNonCard }">
+              <div class="pc-name">{{ card.name }}</div>
+              <div class="pc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
+              <div class="pc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
+              <div class="pc-effects">
+                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                  <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
+                    <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
+                  </el-tooltip>
+                  <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <el-dialog v-model="shopTargetVisible" title="选择装配目标" width="400px">
           <div class="target-cards">
@@ -305,12 +301,22 @@
 
     <template v-if="phase === 'victory'">
       <div class="victory-section">
-        <h3>远征胜利！</h3>
-        <p>你成功通过了所有挑战！</p>
+        <h3 v-if="state.exActive && state.exBattle < 7">EX面挑战失败</h3>
+        <h3 v-else-if="state.exActive && state.exBattle === 7">EX面Boss战失败</h3>
+        <h3 v-else-if="state.exActive && state.exBattle > 7">EX面通关！</h3>
+        <h3 v-else>远征胜利！</h3>
+        <p v-if="state.exActive && state.exBattle <= 7">你在EX面第{{ state.exBattle }}战被击败</p>
+        <p v-else-if="state.exActive">你成功通过了EX面所有挑战！</p>
+        <p v-else>你成功通过了所有挑战！</p>
         <div class="victory-stats">
           <div class="vs-row"><span>总胜场</span><span>{{ state.victories }}</span></div>
           <div class="vs-row"><span>剩余灵力</span><span>{{ state.spirit }}</span></div>
         </div>
+        <div v-if="state.exActive" class="ex-result-info">
+            <el-tag type="success" v-if="state.exBattle > 7">EX面通关！</el-tag>
+            <el-tag type="danger" v-else-if="state.exBattle === 7">EX面Boss战失败（击破符卡：{{ state.exCardsBroken }}/10）</el-tag>
+            <el-tag type="danger" v-else>EX面进度：{{ state.exBattle }}/7</el-tag>
+          </div>
         <div class="victory-cards">
           <h4>最终阵容</h4>
           <div class="summary-cards">
@@ -318,45 +324,77 @@
               <div class="sc-name">{{ card.name }}</div>
               <div class="sc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
               <div class="sc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
-              <div class="sc-effects" v-if="allEffects(card).length > 0">
-                <el-tooltip v-for="eff in allEffects(card)" :key="eff.id" :content="eff.description" placement="top">
-                  <el-tag size="small" :type="slotTagType(eff.slot)">
-                    {{ eff.displayName }}
-                  </el-tag>
-                </el-tooltip>
+              <div class="sc-effects">
+                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                  <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
+                    <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
+                  </el-tooltip>
+                  <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
+                </template>
               </div>
             </div>
           </div>
         </div>
-        <el-button type="primary" @click="resetExpedition">再来一次</el-button>
+        <div class="victory-actions">
+          <el-button v-if="!state.exActive && !state.exFinished" type="warning" @click="enterExStage">EX挑战</el-button>
+          <el-button type="primary" @click="resetExpedition">再来一次</el-button>
+        </div>
       </div>
     </template>
+
+    <el-dialog v-model="replaceConfirmVisible" title="效果替换确认" width="420px">
+      <p v-if="replaceSlotInfo">
+        该槽位已满，请选择要替换的效果：
+      </p>
+      <div v-if="replaceSlotInfo" class="replace-options">
+        <div v-for="(eff, ei) in replaceSlotInfo.existingEffects" :key="ei" class="replace-option"
+          :class="{ selected: replaceChoiceIdx === ei }" @click="replaceChoiceIdx = ei">
+          <el-tag size="small" type="danger">{{ eff.displayName }}</el-tag>
+          <span class="replace-option-desc">
+            <template v-for="(seg, si) in parseDescription(eff.description)" :key="si">
+              <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
+                <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
+              </el-tooltip>
+              <span v-else>{{ seg.text }}</span>
+            </template>
+          </span>
+        </div>
+      </div>
+      <p v-if="replaceSlotInfo" class="replace-new">
+        替换为：<el-tag size="small" type="success">{{ replaceSlotInfo.newEffect.displayName }}</el-tag>
+      </p>
+      <template #footer>
+        <el-button @click="replaceConfirmVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmReplaceEffect" :disabled="replaceChoiceIdx === -1">替换</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import '@/spellcard/effects'
-import { generateEncounter, generateNewCardDrop, getSpiritReward, getStageTemplate } from '@/spellcard/encounters'
+import { generateEncounter, generateExEncounter, generateNewCardDrop, getExStageTemplate, getSpiritReward, getStageTemplate } from '@/spellcard/encounters'
 import type { CardData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import {
-    type DiceUpgrade, type EffectModule, type EffectSlot,
-    type ExpeditionCard, type ExpeditionState, type FixedDrop,
-    type Reward, type ShopItem,
-    BASE_PANELS, INITIAL_CARD_EFFECTS,
-    addEffectToCard,
-    addSlotCapacity,
-    canAddEffectToSlot,
-    createNonCard,
-    createSpellCard,
-    healAllForNewStage,
-    healNonCard,
-    toCardData
+  type DiceUpgrade, type EffectModule, type EffectSlot,
+  type ExpeditionCard, type ExpeditionState, type FixedDrop,
+  type Reward, type ShopItem,
+  BASE_PANELS, INITIAL_CARD_EFFECTS,
+  addEffectToCard,
+  addSlotCapacity,
+  canAddEffectToSlot,
+  createNonCard,
+  createSpellCard,
+  healAllForNewStage,
+  healNonCard,
+  toCardData
 } from '@/spellcard/expedition'
-import { DICE_POOL, generateRewards, generateShopItems, parseDescription } from '@/spellcard/rewards'
+import { DICE_POOL, generateRewards, generateShopItems, isDiceFixed, parseDescription } from '@/spellcard/rewards'
 import '@/spellcard/spellcard-test'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
+const isDev = import.meta.env.DEV
 const phase = ref<'start' | 'encounter' | 'result' | 'fixedDrop' | 'reward' | 'shop' | 'defeated' | 'victory'>('start')
 const selectedPanelIdx = ref(-1)
 const basePanels = BASE_PANELS
@@ -379,10 +417,12 @@ const currentRewards = ref<Reward[]>([])
 const selectedRewardIdx = ref(-1)
 const targetCardIdx = ref(-1)
 const shopItems = ref<ShopItem[]>([])
+const shopRefreshCount = ref(0)
 const shopTargetVisible = ref(false)
 const shopTargetIdx = ref(-1)
 const shopBuyingIdx = ref(-1)
 const shopBuyingReward = ref<Reward | null>(null)
+const shopBuyingItem = computed(() => shopBuyingIdx.value >= 0 ? shopItems.value[shopBuyingIdx.value] : null)
 const replaceConfirmVisible = ref(false)
 const replaceSlotInfo = ref<{ cardIdx: number; slot: EffectSlot; existingEffects: EffectModule[]; newEffect: EffectModule } | null>(null)
 const replaceChoiceIdx = ref(-1)
@@ -393,14 +433,20 @@ const fixedDropNewCard = ref<typeof NEW_CARD_POOL[number] | null>(null)
 const fixedDropTargetIdx = ref(-1)
 
 function diceRange(diceStr: string): string {
-  const match = diceStr.match(/^(\d+)d(\d+)(\+\d+)?$/)
-  if (!match) return diceStr
-  const count = parseInt(match[1])
-  const faces = parseInt(match[2])
-  const bonus = match[3] ? parseInt(match[3]) : 0
-  const min = count * 1 + bonus
-  const max = count * faces + bonus
-  return min === max ? `${min}` : `${min}~${max}`
+  return diceStr
+}
+
+type SlotDisplay = { type: 'effect'; effect: EffectModule & { slot: EffectSlot } } | { type: 'empty'; slot: EffectSlot }
+
+function slotDisplayList(card: ExpeditionCard): SlotDisplay[] {
+  const result: SlotDisplay[] = []
+  for (const eff of card.effects.onCardSet) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardSet' } })
+  for (let i = card.effects.onCardSet.length; i < card.slotCapacity.onCardSet; i++) result.push({ type: 'empty', slot: 'onCardSet' })
+  for (const eff of card.effects.onCardBreak) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardBreak' } })
+  for (let i = card.effects.onCardBreak.length; i < card.slotCapacity.onCardBreak; i++) result.push({ type: 'empty', slot: 'onCardBreak' })
+  for (const eff of card.effects.onPassive) result.push({ type: 'effect', effect: { ...eff, slot: 'onPassive' } })
+  for (let i = card.effects.onPassive.length; i < card.slotCapacity.onPassive; i++) result.push({ type: 'empty', slot: 'onPassive' })
+  return result
 }
 
 function allEffects(card: ExpeditionCard): (EffectModule & { slot: EffectSlot })[] {
@@ -431,8 +477,19 @@ function isStatUpgrade(r: Reward): boolean {
   return 'apply' in r && !('slot' in r) && r.id.startsWith('stat_')
 }
 
+function isDiceMinUpgrade(r: Reward): boolean {
+  return 'apply' in r && !('slot' in r) && r.id.endsWith('_min1')
+}
+
 function canApplyToCard(card: ExpeditionCard, r: Reward, extraCost: number = 0): boolean {
   if (isRefreshItem(r)) return false
+  if (isDiceMinUpgrade(r) && 'apply' in r) {
+    const du = r as DiceUpgrade
+    const target = du.id.startsWith('dice_atk') ? card.atkPoint
+      : du.id.startsWith('dice_def') ? card.defPoint
+      : card.dodPoint
+    if (isDiceFixed(target)) return false
+  }
   if (card.isNonCard) {
     if (state.value.spirit < 3 + extraCost) return false
     if (isSlotReward(r)) return true
@@ -440,7 +497,7 @@ function canApplyToCard(card: ExpeditionCard, r: Reward, extraCost: number = 0):
     if (isStatUpgrade(r)) return true
     if (isDiceUpgrade(r)) return true
     if ('slot' in r && 'apply' in r) {
-      return canAddEffectToSlot(card, r.slot)
+      return card.slotCapacity[r.slot] > 0
     }
     return false
   }
@@ -451,7 +508,7 @@ const slotLabel = (slot: EffectSlot) => slot === 'onCardSet' ? '宣言' : slot =
 const slotTagType = (slot: EffectSlot) => slot === 'onCardSet' ? 'success' : slot === 'onCardBreak' ? 'danger' : 'warning'
 
 function createInitialState(): ExpeditionState {
-  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0 }
+  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false }
 }
 
 function startExpedition() {
@@ -468,9 +525,44 @@ function startExpedition() {
   phase.value = 'encounter'
 }
 
+function startExDebug() {
+  if (selectedPanelIdx.value === -1) return
+  const panel = BASE_PANELS[selectedPanelIdx.value]
+  const nonCard = createNonCard()
+  const spellCard = createSpellCard(panel)
+  const initEffects = INITIAL_CARD_EFFECTS[panel.name]
+  if (initEffects) {
+    for (const eff of initEffects) { addEffectToCard(spellCard, eff) }
+  }
+  spellCard.atkPoint = '2d6'
+  spellCard.defPoint = '1d4'
+  spellCard.dodPoint = '1d4'
+  spellCard.maxCardHp = 15
+  spellCard.cardHp = 15
+  spellCard.currentHp = 15
+  const card2 = createSpellCard({ name: '副卡A', cardHp: 10, maxCardHp: 10, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' })
+  const card3 = createSpellCard({ name: '副卡B', cardHp: 10, maxCardHp: 10, atkPoint: '1d5', defPoint: '1d4', dodPoint: '1d2' })
+  const card4 = createSpellCard({ name: '副卡C', cardHp: 8, maxCardHp: 8, atkPoint: '1d6', defPoint: '1d2', dodPoint: '1d4' })
+  state.value = {
+    ...createInitialState(),
+    cards: [nonCard, spellCard, card2, card3, card4],
+    spirit: 500,
+    exActive: true,
+    exBattle: 0,
+    exCardsBroken: 0,
+    exFinished: false,
+  }
+  healAllForNewStage(state.value.cards)
+  shopItems.value = generateShopItems(() => Math.random())
+  shopRefreshCount.value = 0
+  phase.value = 'shop'
+}
+
 function loadEncounter() {
   const rng = () => Math.random()
-  const enc = generateEncounter(state.value.currentStage, state.value.currentBattle, rng)
+  const enc = state.value.exActive
+    ? generateExEncounter(state.value.exBattle, rng)
+    : generateEncounter(state.value.currentStage, state.value.currentBattle, rng)
   encounterType.value = enc.type
   enemyCards.value = enc.enemyCards
   currentEncounterEnemyCards.value = enc.enemyCards
@@ -550,8 +642,28 @@ function startBattle() {
 }
 
 function goToReward() {
-  if (!battleWon.value) { phase.value = 'defeated'; return }
-  if (encounterType.value === 'boss' && state.value.currentStage >= state.value.totalStages) {
+  if (!battleWon.value) {
+    if (state.value.exActive) {
+      state.value.exFinished = true
+      if (encounterType.value === 'boss') {
+        const brokenCount = battleLog.value.filter(l => l.phase === 'card_break' && l.message.includes('[敌方]')).length
+        state.value.exCardsBroken = brokenCount
+        state.value.exBattle = 7
+      }
+      phase.value = 'victory'
+    } else {
+      phase.value = 'defeated'
+    }
+    return
+  }
+  if (state.value.exActive) {
+    if (encounterType.value === 'boss') {
+      state.value.exBattle = 8
+      state.value.exFinished = true
+      phase.value = 'victory'
+      return
+    }
+  } else if (encounterType.value === 'boss' && state.value.currentStage >= state.value.totalStages) {
     phase.value = 'victory'
     return
   }
@@ -667,7 +779,17 @@ function confirmReplaceEffect() {
     state.value.spirit -= 3
   }
   replaceConfirmVisible.value = false
-  advanceAfterReward()
+
+  if (pendingShopBuy) {
+    const item = shopItems.value[pendingShopBuy.itemIdx]
+    if (item) {
+      state.value.spirit -= item.price
+      shopItems.value = shopItems.value.filter((_, i) => i !== pendingShopBuy!.itemIdx)
+    }
+    pendingShopBuy = null
+  } else {
+    advanceAfterReward()
+  }
 }
 
 function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
@@ -682,6 +804,27 @@ function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
 function skipReward() { advanceAfterReward() }
 
 function advanceAfterReward() {
+  if (state.value.exActive) {
+    const exTemplate = getExStageTemplate()
+    if (state.value.exBattle >= exTemplate.length) {
+      state.value.exFinished = true
+      phase.value = 'victory'
+      return
+    }
+    state.value.exBattle++
+    const nextType = exTemplate[Math.min(state.value.exBattle - 1, exTemplate.length - 1)].type
+    if (nextType === 'shop') {
+      shopRefreshCount.value = 0
+      shopItems.value = generateShopItems(() => Math.random())
+      const initRefreshItem = shopItems.value.find(si => isRefreshItem(si.reward))
+      if (initRefreshItem) initRefreshItem.price = 1 + shopRefreshCount.value
+      phase.value = 'shop'
+    } else {
+      loadEncounter()
+      phase.value = 'encounter'
+    }
+    return
+  }
   const template = getStageTemplate(state.value.currentStage)
   if (state.value.currentBattle >= template.length) {
     healAllForNewStage(state.value.cards)
@@ -691,7 +834,10 @@ function advanceAfterReward() {
     }
     state.value.currentStage++
     state.value.currentBattle = 1
+    shopRefreshCount.value = 0
     shopItems.value = generateShopItems(() => Math.random())
+    const initRefreshItem = shopItems.value.find(si => isRefreshItem(si.reward))
+    if (initRefreshItem) initRefreshItem.price = 1 + shopRefreshCount.value
     phase.value = 'shop'
   } else {
     state.value.currentBattle++
@@ -706,7 +852,10 @@ function openShopBuy(idx: number) {
 
   if (isRefreshItem(item.reward)) {
     state.value.spirit -= item.price
+    shopRefreshCount.value++
     shopItems.value = generateShopItems(() => Math.random())
+    const refreshItem = shopItems.value.find(si => isRefreshItem(si.reward))
+    if (refreshItem) refreshItem.price = 1 + shopRefreshCount.value
     return
   }
 
@@ -726,20 +875,62 @@ function confirmShopBuyDirect(idx: number) {
 function confirmShopBuy() {
   if (shopTargetIdx.value === -1 || shopBuyingIdx.value === -1) return
   const item = shopItems.value[shopBuyingIdx.value]
+  if (!item) return
   const card = state.value.cards[shopTargetIdx.value]
+  const reward = item.reward
 
+  if ('slot' in reward && 'apply' in reward) {
+    if (!canAddEffectToSlot(card, reward.slot)) {
+      const existing = card.effects[reward.slot]
+      if (existing.length > 0) {
+        replaceSlotInfo.value = { cardIdx: shopTargetIdx.value, slot: reward.slot, existingEffects: [...existing], newEffect: reward as EffectModule }
+        replaceChoiceIdx.value = -1
+        replaceConfirmVisible.value = true
+        shopTargetVisible.value = false
+        pendingShopBuy = { itemIdx: shopBuyingIdx.value, cardIdx: shopTargetIdx.value }
+        return
+      }
+    }
+  }
+
+  doShopBuy(card, item)
+}
+
+let pendingShopBuy: { itemIdx: number; cardIdx: number } | null = null
+
+function doShopBuy(card: ExpeditionCard, item: ShopItem) {
   if (card.isNonCard) {
     if (state.value.spirit < item.price + 3) return
     state.value.spirit -= 3
   }
-
   state.value.spirit -= item.price
   applyRewardToCard(card, item.reward)
   shopItems.value = shopItems.value.filter((_, i) => i !== shopBuyingIdx.value)
   shopTargetVisible.value = false
+  pendingShopBuy = null
 }
 
-function leaveShop() { loadEncounter(); phase.value = 'encounter' }
+function leaveShop() {
+  if (state.value.exActive) {
+    state.value.exBattle++
+    loadEncounter()
+    phase.value = 'encounter'
+  } else {
+    loadEncounter()
+    phase.value = 'encounter'
+  }
+}
+function enterExStage() {
+  state.value.exActive = true
+  state.value.exBattle = 0
+  state.value.exCardsBroken = 0
+  state.value.exFinished = false
+  healAllForNewStage(state.value.cards)
+  shopItems.value = generateShopItems(() => Math.random())
+  shopRefreshCount.value = 0
+  phase.value = 'shop'
+}
+
 function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1; state.value = createInitialState(); currentFixedDrop.value = null }
 </script>
 
@@ -756,6 +947,8 @@ function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1;
 .panel-effect { margin-top: 6px; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; font-size: 12px; color: #909399; }
 .panel-effect .el-tag { font-size: 11px; white-space: normal; height: auto; line-height: 1.4; }
 .panel-effect-text { font-size: 12px; color: #909399; }
+
+.empty-slot-tag { opacity: 0.5; }
 
 .stage-info { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; }
 
@@ -825,6 +1018,8 @@ function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1;
 .vs-row { display: flex; justify-content: space-between; gap: 32px; font-size: 15px; padding: 4px 0; }
 .vs-row span:first-child { color: #606266; }
 .vs-row span:last-child { font-weight: bold; }
+.ex-result-info { margin: 12px 0; }
+.victory-actions { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
 .victory-cards { margin: 16px 0; }
 .victory-cards h4 { margin: 0 0 12px 0; }
 .summary-card.noncard { background: #fafafa; border: 1px dashed #dcdfe6; }
