@@ -154,7 +154,7 @@ class CantDodgeEffect extends Effect {
 class StrengthBorder extends Border {
   id = 'StrengthBorder'; displayName = '强化结界'
   onAttackCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]攻击增加了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]攻击增加了${this.strength}点！\n`
     return value + this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -163,7 +163,7 @@ class StrengthBorder extends Border {
 class WeakenBorder extends Border {
   id = 'WeakenBorder'; displayName = '弱化结界'
   onAttackCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]攻击减少了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]攻击减少了${this.strength}点！\n`
     return value - this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -172,7 +172,7 @@ class WeakenBorder extends Border {
 class StableBorder extends Border {
   id = 'StableBorder'; displayName = '稳固结界'
   onDefenceCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]防御增加了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]防御增加了${this.strength}点！\n`
     return value + this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -181,7 +181,7 @@ class StableBorder extends Border {
 class FragileBorder extends Border {
   id = 'FragileBorder'; displayName = '脆弱结界'
   onDefenceCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]防御减少了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]防御减少了${this.strength}点！\n`
     return value - this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -190,7 +190,7 @@ class FragileBorder extends Border {
 class AgileBorder extends Border {
   id = 'AgileBorder'; displayName = '灵动结界'
   onDodgeCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]回避增加了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]回避增加了${this.strength}点！\n`
     return value + this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -199,7 +199,7 @@ class AgileBorder extends Border {
 class SluggishBorder extends Border {
   id = 'SluggishBorder'; displayName = '迟缓结界'
   onDodgeCalc(value: number): number {
-    this.infoMsg = `[${this.userName}]回避减少了${this.strength}点！\n`
+    this.infoMsg = `[结界][${this.userName}]回避减少了${this.strength}点！\n`
     return value - this.strength
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }
@@ -208,7 +208,7 @@ class SluggishBorder extends Border {
 class DamageBorder extends Border {
   id = 'DamageBorder'; displayName = '伤害结界'
   onTurnStart(_user: Battler, enemy: Battler): void {
-    this.infoMsg = `伤害结界：[${enemy.name}]受到${this.strength}点直接伤害\n`
+    this.infoMsg = `[结界]伤害结界：[${enemy.name}]受到${this.strength}点直接伤害\n`
     this.infoMsg += enemy.effectHurt(this.strength)
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void { this.reduce() }

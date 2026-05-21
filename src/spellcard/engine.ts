@@ -14,6 +14,7 @@ export interface CardData {
   cost: number
   name: string
   cardHp: number
+  maxCardHp?: number
   atkPoint: string
   defPoint: string
   dodPoint: string
@@ -63,6 +64,10 @@ export interface LogEntry {
   visual?: VisualData
   creatorCard?: CardData
   joinerCard?: CardData
+  creatorEffects?: EffectData[]
+  joinerEffects?: EffectData[]
+  creatorCardIndex?: number
+  joinerCardIndex?: number
 }
 
 export class SeededRandom {
@@ -343,14 +348,23 @@ export class Battler {
   }
 
   calcHurt(enemyAtk: number, rng: SeededRandom): [number, string] {
+    if (this.nowCard?.isTimeCard && this.timeCardRemaining !== undefined && this.timeCardRemaining > 0) {
+      this.dodSuccess = true
+      this.defSuccess = true
+      return [0, `${this.name} 时符效果：免疫战斗伤害\n`]
+    }
     const dodgeProb = (this.dodge + enemyAtk) > 0 ? this.dodge / (this.dodge + enemyAtk) : 0
     let dodSuccess = rng.next() < dodgeProb
     const [dodSuccess1, dodMsg] = this.runEffects('onDodgeSuccessJudge', dodSuccess) as [boolean, string]
     dodSuccess = dodSuccess1
 
     let defSuccess = true
-    const [defSuccess1, defMsg] = this.runEffects('onDefenceSuccessJudge', defSuccess) as [boolean, string]
-    defSuccess = defSuccess1
+    let defMsg = ''
+    if (!dodSuccess) {
+      const [defSuccess1, defMsg1] = this.runEffects('onDefenceSuccessJudge', defSuccess) as [boolean, string]
+      defSuccess = defSuccess1
+      defMsg = defMsg1
+    }
 
     this.dodSuccess = dodSuccess
     this.defSuccess = defSuccess
@@ -365,8 +379,8 @@ export class Battler {
     const [hurtVal2, enemyHurtMsg] = this.enemy!.runEffects('onAttackDamageCalc', hurt) as [number, string]
     hurt = Math.max(hurtVal2, 0)
 
-    const dodgeInfo = `${this.name} 闪避率:${(dodgeProb * 100).toFixed(0)}% ${dodSuccess ? '闪避成功！' : '闪避失败'}\n`
-    const calcInfo = dodgeInfo + dodMsg + defMsg + hurtMsg + enemyHurtMsg + `${this.name} 预计受伤:${hurt}\n`
+    const dodgeInfo = `${this.name} ${dodSuccess ? '闪避成功！' : '闪避失败'}\n`
+    const calcInfo = dodgeInfo + dodMsg + defMsg + hurtMsg + enemyHurtMsg
     return [hurt, calcInfo]
   }
 
@@ -439,6 +453,8 @@ export class Battler {
 
 class BattleLog {
   entries: LogEntry[] = []
+  private battle: Battle
+  constructor(battle: Battle) { this.battle = battle }
   add(round: number, phase: string, message: string, creatorHp?: number, joinerHp?: number, visual?: VisualData, creatorCard?: CardData, joinerCard?: CardData) {
     const entry: LogEntry = { round, phase, message }
     if (creatorHp !== undefined) entry.creatorHp = creatorHp
@@ -446,6 +462,14 @@ class BattleLog {
     if (visual) entry.visual = visual
     if (creatorCard) entry.creatorCard = creatorCard
     if (joinerCard) entry.joinerCard = joinerCard
+    if (this.battle.creator) {
+      entry.creatorEffects = this.battle.creator.effects.map(e => e.toData())
+      entry.creatorCardIndex = this.battle.creator.usedCardIndices.length
+    }
+    if (this.battle.joiner) {
+      entry.joinerEffects = this.battle.joiner.effects.map(e => e.toData())
+      entry.joinerCardIndex = this.battle.joiner.usedCardIndices.length
+    }
     this.entries.push(entry)
   }
 }
@@ -459,7 +483,8 @@ export class Battle {
   creator: Battler | null = null
   joiner: Battler | null = null
   gameRound: number = 0
-  log = new BattleLog()
+  turnNumber: number = 0
+  log = new BattleLog(this)
   finished: boolean = false
   winnerId: number | null = null
   state: string = Battle.STATE_WAITING_CREATOR_CARD
@@ -486,7 +511,7 @@ export class Battle {
   playCardAndResolve(creatorCardIndex: number): Battle {
     this.applyCard(this.creator!, creatorCardIndex)
 
-    if (this.joiner!.nowCard === null) {
+    if (this.joiner!.nowCard === null || this.joiner!.shouldChangeCard()) {
       const aiIdx = this.autoChooseCard(this.joiner!)
       if (aiIdx >= 0) this.applyCard(this.joiner!, aiIdx)
     }
@@ -539,6 +564,7 @@ export class Battle {
     this.gameRound++
     this.creator!.gameRound = this.gameRound
     this.joiner!.gameRound = this.gameRound
+    this.log.add(this.gameRound, 'card_set', `─── R${this.gameRound} 宣言 ───`)
     const creatorNew = this.creator!.justApplied
     const joinerNew = this.joiner!.justApplied
     const cPart = creatorNew ? `${this.creator!.name} 宣言 [${this.creator!.nowCard?.name ?? '??'}]` : `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}]`
@@ -547,13 +573,21 @@ export class Battle {
       `${cPart} HP:${Math.max(0, this.creator!.nowHp)} | ${jPart} HP:${Math.max(0, this.joiner!.nowHp)}`,
       Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
     if (this.creator!.justApplied) {
+      const beforeEffs = new Set(this.creator!.effects.map(e => e.id + e.amount))
       const msg1 = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
-      if (msg1) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg1}`)
+      const newEffs = this.creator!.effects.filter(e => !beforeEffs.has(e.id + e.amount)).map(e => e.displayName)
+      const effDesc = newEffs.length > 0 ? `获得${newEffs.join('、')}` : ''
+      const finalMsg1 = msg1 || effDesc
+      if (finalMsg1) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] [${this.creator!.name}]${finalMsg1}`)
       this.creator!.justApplied = false
     }
     if (this.joiner!.justApplied) {
+      const beforeEffs = new Set(this.joiner!.effects.map(e => e.id + e.amount))
       const msg2 = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
-      if (msg2) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg2}`)
+      const newEffs = this.joiner!.effects.filter(e => !beforeEffs.has(e.id + e.amount)).map(e => e.displayName)
+      const effDesc = newEffs.length > 0 ? `获得${newEffs.join('、')}` : ''
+      const finalMsg2 = msg2 || effDesc
+      if (finalMsg2) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] [${this.joiner!.name}]${finalMsg2}`)
       this.joiner!.justApplied = false
     }
   }
@@ -562,11 +596,16 @@ export class Battle {
     this.gameRound++
     this.creator!.gameRound = this.gameRound
     this.joiner!.gameRound = this.gameRound
+    this.log.add(this.gameRound, 'card_set', `─── R${this.gameRound} 宣言 ───`)
     this.log.add(this.gameRound, 'card_set',
       `${this.creator!.name}[${this.creator!.nowCard?.name ?? '??'}] HP:${Math.max(0, this.creator!.nowHp)} | ${this.joiner!.name} 宣言 [${this.joiner!.nowCard?.name ?? '??'}] HP:${Math.max(0, this.joiner!.nowHp)}`,
       Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
+    const beforeEffs = new Set(this.joiner!.effects.map(e => e.id + e.amount))
     const msg = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
-    if (msg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg}`)
+    const newEffs = this.joiner!.effects.filter(e => !beforeEffs.has(e.id + e.amount)).map(e => e.displayName)
+    const effDesc = newEffs.length > 0 ? `获得${newEffs.join('、')}` : ''
+    const finalMsg = msg || effDesc
+    if (finalMsg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] [${this.joiner!.name}]${finalMsg}`)
   }
 
   // [亡语鞭尸修复] 击破处理流程（三步走）：
@@ -582,25 +621,41 @@ export class Battle {
     const brokenSet = new Set<Battler>()
     if (this.creator!.shouldChangeCard()) { this.handleCardBreakLog(this.creator!); brokenSet.add(this.creator!) }
     if (this.joiner!.shouldChangeCard()) { this.handleCardBreakLog(this.joiner!); brokenSet.add(this.joiner!) }
+    const swapped = new Set<Battler>()
     if (autoSwap) {
       for (const b of brokenSet) {
-        if (!b.shouldEnd()) b.setNewMainCard()
+        if (!b.shouldEnd()) { b.setNewMainCard(); swapped.add(b) }
       }
     }
     for (const b of brokenSet) {
       this.handleCardBreakEffects(b)
     }
+    for (const b of swapped) {
+      brokenSet.delete(b)
+    }
     let recheck = true
-    while (recheck) {
+    let recheckCount = 0
+    while (recheck && recheckCount < 10) {
       recheck = false
+      recheckCount++
       if (this.creator!.shouldChangeCard() && !brokenSet.has(this.creator!)) {
-        this.handleCardBreak(this.creator!)
+        this.handleCardBreakLog(this.creator!)
         brokenSet.add(this.creator!)
+        if (autoSwap && !this.creator!.shouldEnd()) {
+          this.creator!.setNewMainCard()
+          brokenSet.delete(this.creator!)
+        }
+        this.handleCardBreakEffects(this.creator!)
         recheck = true
       }
       if (this.joiner!.shouldChangeCard() && !brokenSet.has(this.joiner!)) {
-        this.handleCardBreak(this.joiner!)
+        this.handleCardBreakLog(this.joiner!)
         brokenSet.add(this.joiner!)
+        if (autoSwap && !this.joiner!.shouldEnd()) {
+          this.joiner!.setNewMainCard()
+          brokenSet.delete(this.joiner!)
+        }
+        this.handleCardBreakEffects(this.joiner!)
         recheck = true
       }
     }
@@ -616,6 +671,8 @@ export class Battle {
   }
 
   turnStart() {
+    this.turnNumber++
+    this.log.add(this.gameRound, 'turn_start', `─── Turn ${this.turnNumber} ───`)
     const msg1 = this.creator!.nowCard!.onTurnStart?.(this.creator!, this.joiner!) ?? ''
     if (msg1) this.log.add(this.gameRound, 'turn_start', `[${this.creator!.nowCard!.name}] ${msg1}`)
     const msg2 = this.joiner!.nowCard!.onTurnStart?.(this.joiner!, this.creator!) ?? ''
@@ -653,46 +710,49 @@ export class Battle {
   }
 
   turnHpChange(cHurt: number, jHurt: number) {
-    const timeImmuneMsgs: string[] = []
-    if (this.creator!.nowCard?.isTimeCard && this.creator!.timeCardRemaining !== undefined && this.creator!.timeCardRemaining > 0) {
-      if (cHurt > 0) timeImmuneMsgs.push(`[${this.creator!.nowCard.name}]时符效果：无法受到伤害！`)
-      cHurt = 0
-    }
-    if (this.joiner!.nowCard?.isTimeCard && this.joiner!.timeCardRemaining !== undefined && this.joiner!.timeCardRemaining > 0) {
-      if (jHurt > 0) timeImmuneMsgs.push(`[${this.joiner!.nowCard.name}]时符效果：无法受到伤害！`)
-      jHurt = 0
-    }
-    if (timeImmuneMsgs.length > 0) {
-      this.log.add(this.gameRound, 'time_immune', timeImmuneMsgs.join('\n'), this.creator!.nowHp, this.joiner!.nowHp)
-    }
-
     const prevCreatorHp = this.creator!.nowHp
     const prevJoinerHp = this.joiner!.nowHp
     const cMsg = cHurt > 0 ? this.creator!.battleHurt(cHurt) : ''
     const jMsg = jHurt > 0 ? this.joiner!.battleHurt(jHurt) : ''
 
     // Drain（吸血）钩子
-    const creatorActualDmg = prevCreatorHp - this.creator!.nowHp
-    const joinerActualDmg = prevJoinerHp - this.joiner!.nowHp
+    const creatorRawDmg = prevCreatorHp - this.creator!.nowHp
+    const joinerRawDmg = prevJoinerHp - this.joiner!.nowHp
 
-    if (joinerActualDmg > 0) {
+    const creatorHpAfterDmg = this.creator!.nowHp
+    const joinerHpAfterDmg = this.joiner!.nowHp
+
+    const drainParts: string[] = []
+    if (joinerRawDmg > 0) {
       const drainEffect = this.creator!.effects.find(e => e.id === 'Drain')
       if (drainEffect) {
-        const healAmt = Math.min(joinerActualDmg, drainEffect.amount, this.creator!.nowCard!.cardHp - this.creator!.nowHp)
-        if (healAmt > 0) this.creator!.nowHp += healAmt
+        const healAmt = Math.min(joinerRawDmg, drainEffect.amount, this.creator!.nowCard!.cardHp - this.creator!.nowHp)
+        if (healAmt > 0) {
+          this.creator!.nowHp += healAmt
+          drainParts.push(`[${this.creator!.name}]吸血恢复了${healAmt}点HP (HP:${this.creator!.nowHp})`)
+        }
       }
     }
-    if (creatorActualDmg > 0) {
+    if (creatorRawDmg > 0) {
       const drainEffect = this.joiner!.effects.find(e => e.id === 'Drain')
       if (drainEffect) {
-        const healAmt = Math.min(creatorActualDmg, drainEffect.amount, this.joiner!.nowCard!.cardHp - this.joiner!.nowHp)
-        if (healAmt > 0) this.joiner!.nowHp += healAmt
+        const healAmt = Math.min(creatorRawDmg, drainEffect.amount, this.joiner!.nowCard!.cardHp - this.joiner!.nowHp)
+        if (healAmt > 0) {
+          this.joiner!.nowHp += healAmt
+          drainParts.push(`[${this.joiner!.name}]吸血恢复了${healAmt}点HP (HP:${this.joiner!.nowHp})`)
+        }
       }
     }
 
-    this.log.add(this.gameRound, 'hurt', cMsg + jMsg, this.creator!.nowHp, this.joiner!.nowHp, {
-      creatorHurt: prevCreatorHp - this.creator!.nowHp,
-      joinerHurt: prevJoinerHp - this.joiner!.nowHp,
+    const hurtParts: string[] = []
+    if (creatorRawDmg > 0) hurtParts.push(`${this.creator!.name} 受到${creatorRawDmg}点伤害 (HP:${Math.max(0, creatorHpAfterDmg)})`)
+    if (joinerRawDmg > 0) hurtParts.push(`${this.joiner!.name} 受到${joinerRawDmg}点伤害 (HP:${Math.max(0, joinerHpAfterDmg)})`)
+    const hurtSummary = hurtParts.length > 0 ? hurtParts.join(' | ') + '\n' : ''
+    const drainSummary = drainParts.length > 0 ? drainParts.join(' | ') + '\n' : ''
+
+    this.log.add(this.gameRound, 'hurt', hurtSummary + drainSummary + cMsg + jMsg, this.creator!.nowHp, this.joiner!.nowHp, {
+      creatorHurt: creatorRawDmg,
+      joinerHurt: joinerRawDmg,
       creatorDodged: this.creator!.dodSuccess ?? false,
       joinerDodged: this.joiner!.dodSuccess ?? false,
       creatorDefSuccess: this.creator!.defSuccess ?? false,
@@ -748,7 +808,8 @@ export class Battle {
     battler.effects = battler.effects.filter(e => e instanceof Border)
     battler.states = []
     battler.timeCardRemaining = undefined
-    this.log.add(this.gameRound, 'card_break', `${battler.name}[${brokenCardName}] 的符卡被击破！`, this.creator!.nowHp, this.joiner!.nowHp, {
+    const breakSourceText = battler.lastHurtType === 'effect' ? '被效果伤害击破' : battler.lastHurtType === 'time' ? '因时符耗尽而消散' : '被战斗伤害击破'
+    this.log.add(this.gameRound, 'card_break', `${battler.name}[${brokenCardName}] 的符卡${breakSourceText}！`, this.creator!.nowHp, this.joiner!.nowHp, {
       whoBroke: whoBroke as 'creator' | 'joiner',
       breakSource: battler.lastHurtType || undefined,
     }, whoBroke === 'creator' ? brokenCard : undefined, whoBroke === 'joiner' ? brokenCard : undefined)
@@ -761,7 +822,7 @@ export class Battle {
   handleCardBreakEffects(battler: Battler) {
     const brokenCard = battler._brokenCardRef
     const brokenCardName = brokenCard?.name ?? '??'
-    if (!battler.shouldEnd() && brokenCard) {
+    if (brokenCard) {
       const msg = brokenCard.onCardBreak?.(battler, battler.enemy!) ?? ''
       if (msg) this.log.add(this.gameRound, 'card_break', `[${brokenCardName}] ${msg}`, this.creator!.nowHp, this.joiner!.nowHp)
     }
@@ -818,6 +879,7 @@ export class Battle {
       this.gameRound++
       this.creator!.gameRound = this.gameRound
       this.joiner!.gameRound = this.gameRound
+      this.log.add(this.gameRound, 'card_set', `─── R${this.gameRound} 宣言 ───`)
       const cCardName = this.creator!.nowCard?.name ?? '??'
       const jCardName = this.joiner!.nowCard?.name ?? '??'
       const cPart = creatorBreak ? `${this.creator!.name} 宣言 [${cCardName}]` : `${this.creator!.name}[${cCardName}]`
@@ -826,13 +888,21 @@ export class Battle {
         `${cPart} HP:${Math.max(0, this.creator!.nowHp)} | ${jPart} HP:${Math.max(0, this.joiner!.nowHp)}`,
         Math.max(0, this.creator!.nowHp), Math.max(0, this.joiner!.nowHp), undefined, this.creator!.nowCard ? { ...this.creator!.nowCard } : undefined, this.joiner!.nowCard ? { ...this.joiner!.nowCard } : undefined)
       if (creatorBreak) {
+        const beforeEffs = new Set(this.creator!.effects.map(e => e.id + e.amount))
         const msg = this.creator!.nowCard!.onCardSet?.(this.creator!, this.joiner!) ?? ''
-        if (msg) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] ${msg}`)
+        const newEffs = this.creator!.effects.filter(e => !beforeEffs.has(e.id + e.amount)).map(e => e.displayName)
+        const effDesc = newEffs.length > 0 ? `获得${newEffs.join('、')}` : ''
+        const finalMsg = msg || effDesc
+        if (finalMsg) this.log.add(this.gameRound, 'card_set', `[${this.creator!.nowCard!.name}] [${this.creator!.name}]${finalMsg}`)
         this.creator!.justApplied = false
       }
       if (joinerBreak) {
+        const beforeEffs = new Set(this.joiner!.effects.map(e => e.id + e.amount))
         const msg = this.joiner!.nowCard!.onCardSet?.(this.joiner!, this.creator!) ?? ''
-        if (msg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] ${msg}`)
+        const newEffs = this.joiner!.effects.filter(e => !beforeEffs.has(e.id + e.amount)).map(e => e.displayName)
+        const effDesc = newEffs.length > 0 ? `获得${newEffs.join('、')}` : ''
+        const finalMsg = msg || effDesc
+        if (finalMsg) this.log.add(this.gameRound, 'card_set', `[${this.joiner!.nowCard!.name}] [${this.joiner!.name}]${finalMsg}`)
         this.joiner!.justApplied = false
       }
     }

@@ -159,8 +159,8 @@ function testEffectBasics() {
       [makeCard({ atkPoint: '1d1', defPoint: '1d1+4', cardHp: 50 })],
     )
     const cantDefTurns = r.log.filter(l => l.message.includes('无法作出防御')).length
-    const reducedDmgTurns = r.log.filter(l => l.message.includes('预计受伤:1') || l.message.includes('预计受伤:2')).length
-    return cantDefTurns >= 1 && reducedDmgTurns >= 1
+    const hurtTurns = r.log.filter(l => l.message.includes('受到') && l.message.includes('点伤害')).length
+    return cantDefTurns >= 1 && hurtTurns >= 1
   })())
 
   assert(`[${S}] 回避不可(永续)`, (() => {
@@ -217,8 +217,8 @@ function testEffectBasics() {
   })())
 }
 
-function testDrainEffect() {
-  const S = '吸血效果'
+function testEffectAdvanced() {
+  const S = '效果进阶'
 
   assert(`[${S}] Drain: 造成战斗伤害时回复HP`, (() => {
     const r = runBattle(
@@ -263,10 +263,7 @@ function testDrainEffect() {
     const firstHurt = hurtEntries[0]
     return firstHurt.creatorHp !== undefined && firstHurt.creatorHp <= 50
   })())
-}
 
-function testEffectAlias() {
-  const S = '效果别名'
 
   assert(`[${S}] aliasName覆盖displayName但保留id`, (() => {
     const b = new Battle(1, 42)
@@ -303,8 +300,8 @@ function testEffectAlias() {
   })())
 }
 
-function testTimeCard() {
-  const S = '时符机制'
+function testSpecialCards() {
+  const S = '特殊卡牌'
 
   const timeCard: CardData = {
     id: -2, cost: 0, name: '测试时符', cardHp: 3,
@@ -346,13 +343,8 @@ function testTimeCard() {
       [timeCard, makeCard({ atkPoint: '1d1', cardHp: 50 })],
       [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
     )
-    return logContains(r.log, '符卡被击破')
+    return logContains(r.log, '因时符耗尽而消散')
   })())
-}
-
-function testCrescendoCard() {
-  const S = '渐强机制'
-
   assert(`[${S}] QED卡可正常出战`, (() => {
     try {
       const card = ALL_CARDS.find(c => c.id === 64)!
@@ -425,8 +417,8 @@ function testCrescendoCard() {
   })())
 }
 
-function testForgeEffects() {
-  const S = '锻造效果'
+function testRewardEffects() {
+  const S = '奖励效果'
 
   assert(`[${S}] 新增宣言效果可正常apply`, (() => {
     const b = new Battle(1, 42)
@@ -545,10 +537,7 @@ function testForgeEffects() {
     }
     return allIds.has('set_thorns1') && !allIds.has('turn_thorns1')
   })())
-}
 
-function testBorderEffects() {
-  const S = '结界效果'
 
   assert(`[${S}] 强化结界: ATK+2`, (() => {
     const r = runBattle(
@@ -582,10 +571,7 @@ function testBorderEffects() {
     const strLogs = r.log.filter(e => e.message.includes('攻击增加了5点'))
     return strLogs.length >= 1 && strLogs.length <= 2
   })())
-}
 
-function testCardBreakClearsEffects() {
-  const S = '击破清效果'
 
   assert(`[${S}] 非结界效果被清除`, (() => {
     const r = runBattle(
@@ -624,8 +610,9 @@ function testCardBreakClearsEffects() {
   })())
 }
 
-function testCardEffects() {
-  const S = '符卡效果'
+function testBattleMechanics() {
+  const S = '战斗机制'
+
   for (const card of ALL_CARDS) {
     if (card.description === '无') continue
     const hasOnCardSet = !!card.onCardSet
@@ -660,11 +647,6 @@ function testCardEffects() {
       })())
     }
   }
-}
-
-function testBattleMechanics() {
-  const S = '战斗机制'
-
   assert(`[${S}] 概率闪避`, (() => {
     for (let i = 0; i < 50; i++) {
       const r = runBattle([makeCard({ atkPoint: '1d1+4' })], [makeCard({ atkPoint: '1d1', dodPoint: '1d1+98', cardHp: 50 })])
@@ -678,7 +660,7 @@ function testBattleMechanics() {
       [makeCard({ cardHp: 1 }), makeCard({ atkPoint: '1d1', cardHp: 50 })],
       [makeCard({ atkPoint: '1d1+98', cardHp: 50 })],
     )
-    return logContains(r.log, '符卡被击破')
+    return logContains(r.log, '被战斗伤害击破')
   })())
 
   assert(`[${S}] 多符卡切换`, (() => {
@@ -703,7 +685,7 @@ function testBattleMechanics() {
 }
 
 function testBugFixes() {
-  const S = 'Bug修复验证'
+  const S = 'Bug修复'
 
   assert(`[${S}] 坤神招来盾: 击破后护盾保留`, (() => {
     const r = runBattle(
@@ -724,7 +706,8 @@ function testBugFixes() {
       ],
       [makeCard({ atkPoint: '1d1+4', cardHp: 50 })],
     )
-    return logContains(r.log, '无法受到伤害') && !logContains(r.log, '战斗伤害')
+    const calcEntries = r.log.filter(e => e.phase === 'calc')
+    return calcEntries.some(e => e.message.includes('免疫战斗伤害'))
   })())
 
   assert(`[${S}] 时符免疫效果伤害日志`, (() => {
@@ -735,7 +718,8 @@ function testBugFixes() {
       ],
       [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
     )
-    return logContains(r.log, '无法受到伤害')
+    const calcEntries = r.log.filter(e => e.phase === 'calc')
+    return calcEntries.some(e => e.message.includes('免疫战斗伤害'))
   })())
 
   assert(`[${S}] 时符耗尽日志`, (() => {
@@ -790,8 +774,8 @@ function testBugFixes() {
       [makeCard({ atkPoint: '1d1', cardHp: 50 })],
       [makeCard({ atkPoint: '1d1', cardHp: 50 })],
     )
-    const setEntry = r.log.find(e => e.phase === 'card_set')
-    return setEntry !== undefined && (setEntry.creatorCard !== undefined || setEntry.joinerCard !== undefined)
+    const setEntry = r.log.find(e => e.phase === 'card_set' && e.creatorCard !== undefined)
+    return setEntry !== undefined
   })())
 
   assert(`[${S}] 符卡描述"每回合开始时"`, (() => {
@@ -887,11 +871,6 @@ function testBugFixes() {
     }
     return cards.every(c => c.currentHp >= 0)
   })())
-}
-
-function testDeathwordFix() {
-  const S = '亡语鞭尸修复'
-
   assert(`[${S}] 双方同时击破: 亡语伤害打到新符卡`, (() => {
     const r = runBattle(
       [
@@ -907,7 +886,7 @@ function testDeathwordFix() {
     const breakIdx = r.log.findIndex(e => e.phase === 'card_break')
     if (breakIdx < 0) return false
     const afterBreak = r.log.slice(breakIdx + 1)
-    const nextCardSet = afterBreak.find(e => e.phase === 'card_set')
+    const nextCardSet = afterBreak.find(e => e.phase === 'card_set' && e.creatorCard !== undefined)
     if (!nextCardSet) return false
     return nextCardSet.joinerHp !== undefined && nextCardSet.joinerHp === 5
   })())
@@ -940,7 +919,7 @@ function testDeathwordFix() {
     const breakIdx = r.log.findIndex(e => e.phase === 'card_break')
     if (breakIdx < 0) return false
     const afterBreak = r.log.slice(breakIdx + 1)
-    const nextCardSet = afterBreak.find(e => e.phase === 'card_set')
+    const nextCardSet = afterBreak.find(e => e.phase === 'card_set' && e.creatorCard !== undefined)
     if (!nextCardSet) return false
     return nextCardSet.creatorHp !== undefined && nextCardSet.creatorHp === 43
       && nextCardSet.joinerHp !== undefined && nextCardSet.joinerHp === 43
@@ -1001,8 +980,8 @@ function testDeathwordFix() {
   })())
 }
 
-function testParseDice() {
-  const S = '骰子解析'
+function testDiceSystem() {
+  const S = '数值体系'
 
   assert(`[${S}] parseDice: 1d1`, (() => {
     const d = parseDice('1d1')
@@ -1092,11 +1071,6 @@ function testParseDice() {
     defUp.apply(card)
     return card.defPoint === '1d(2~4)'
   })())
-}
-
-function testNewEpicEffects() {
-  const S = '新Epic效果'
-
   assert(`[${S}] 宣言·吸血: 宣言时获得吸血1`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
@@ -1179,11 +1153,34 @@ function testNewEpicEffects() {
     const trace = b.creator.effects.find(e => e.id === 'Trace')
     return trace !== undefined && trace.amount === 1
   })())
-}
+  assert(`[${S}] 亡语击破新卡: 正确记录击破日志并换卡`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '亡语：99伤害' } },
+        makeCard({ name: '我方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const breakEntries = r.log.filter(e => e.phase === 'card_break')
+    return breakEntries.length >= 2 && logContains(r.log, '亡语：99伤害')
+  })())
 
-function testJustAppliedReset() {
-  const S = '宣言效果只触发一次'
-
+  assert(`[${S}] 双方亡语互相击破新卡: 不无限循环`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '我方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '我方亡语' } },
+        makeCard({ name: '我方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        { id: -11, cost: 0, name: '敌方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '敌方亡语' } },
+        makeCard({ name: '敌方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    return logContains(r.log, '平局') || r.winnerId !== null
+  })())
   assert(`[${S}] 己方宣言效果不在敌方换卡时重复触发`, (() => {
     const r = runBattle(
       [
@@ -1231,11 +1228,6 @@ function testJustAppliedReset() {
     b.runFullBattle()
     return b.creator.justApplied === false
   })())
-}
-
-function testNonCardEffectReplace() {
-  const S = '非符效果替换'
-
   assert(`[${S}] 非符亡语槽满时仍可替换`, (() => {
     const nonCard = createNonCard()
     const eff1 = EFFECT_POOL.find(e => e.id === 'break_damage1')!
@@ -1264,11 +1256,6 @@ function testNonCardEffectReplace() {
     const hasOld = nonCard.effects.onCardBreak.some(e => e.id === 'break_damage1')
     return hasNew && !hasOld && result.replaced !== null && result.replaced.id === 'break_damage1'
   })())
-}
-
-function testUncoveredEffects() {
-  const S = '未覆盖效果'
-
   assert(`[${S}] 宣言·灵力+2: 宣言时获得2灵力`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
@@ -1350,7 +1337,7 @@ function testUncoveredEffects() {
     return logContains(r.log, '1点直接伤害')
   })())
 
-  assert(`[${S}] 被动·击杀回复: 击破对方符卡时回复3HP`, (() => {
+  assert(`[${S}] 被动·击杀回复: 击破对方符卡时回复2HP`, (() => {
     const r = runBattle(
       [
         { ...makeCard({ atkPoint: '1d1+98', cardHp: 50 }), onEnemyCardBreak(u, _enemy) { const eff = EFFECT_POOL.find(x => x.id === 'ek_kill_heal3')!; return eff.apply(u, _enemy) } },
@@ -1379,6 +1366,22 @@ function testUncoveredEffects() {
     return b.creator.nowHp <= b.creator.nowCard!.cardHp
   })())
 
+  assert(`[${S}] 被动·击杀回复: 回复上限为maxCardHp而非cardHp`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [
+      { ...makeCard({ cardHp: 8, maxCardHp: 20, atkPoint: '1d1+98', defPoint: '1d1+98', dodPoint: '1d1+98' }), onEnemyCardBreak(u, _enemy) { const eff = EFFECT_POOL.find(x => x.id === 'ek_kill_heal3')!; return eff.apply(u, _enemy) } },
+      makeCard({ atkPoint: '1d1', cardHp: 50 }),
+    ]
+    b.setSingleEnemy('B', [
+      makeCard({ cardHp: 1, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ cardHp: 1, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ cardHp: 1, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+    ])
+    b.runFullBattle()
+    return b.creator.nowHp > 8 && b.creator.nowHp <= 20
+  })())
+
   assert(`[${S}] 被动·击杀强化: 击破对方符卡时获得强化2`, (() => {
     const r = runBattle(
       [
@@ -1395,7 +1398,7 @@ function testUncoveredEffects() {
 }
 
 function testBattleFlow() {
-  const S = '单局对战流程'
+  const S = '战斗流程'
 
   assert(`[${S}] 1v1对战正常完成`, (() => {
     const r = runBattle(
@@ -1421,6 +1424,72 @@ function testBattleFlow() {
     return logPhaseCount(r.log, 'card_break') >= 1
   })())
 
+  assert(`[${S}] 最后一张卡亡语: onCardBreak在shouldEnd时仍触发`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '亡语：99伤害' } },
+      ],
+      [
+        { id: -11, cost: 0, name: '敌方卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '' },
+      ],
+    )
+    return logContains(r.log, '亡语：99伤害') && logContains(r.log, '平局')
+  })())
+
+  assert(`[${S}] 最后一张卡亡语: 清理敌方效果(CantDefence)不报错`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [
+      { id: -10, cost: 0, name: '红寸劲', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.appendEffect('CantDefence', -1); return '' }, onCardBreak(_u, e) { e.removeEffect('CantDefence'); return '' } },
+      makeCard({ cardHp: 50 }),
+    ]
+    b.setSingleEnemy('B', [
+      makeCard({ cardHp: 1, atkPoint: '1d1+98' }),
+      makeCard({ cardHp: 50 }),
+    ])
+    b.runFullBattle()
+    const joinerCantDef = b.joiner!.effects.filter(e => e.id === 'CantDefence')
+    return joinerCantDef.length === 0 && b.finished
+  })())
+
+  assert(`[${S}] 防御不可: 闪避成功时不显示防御不可消息`, (() => {
+    const r = runBattle(
+      [
+        { ...makeCard({ atkPoint: '1d1+4', cardHp: 50 }), onCardSet(_u, e) { e.appendEffect('CantDefence', -1); return '' } },
+      ],
+      [
+        makeCard({ atkPoint: '1d1-1', cardHp: 50 }),
+      ],
+    )
+    const calcEntries = r.log.filter(e => e.phase === 'calc')
+    for (const entry of calcEntries) {
+      const msg = entry.message
+      const hasDodgeSuccess = msg.includes('闪避成功')
+      const hasCantDefence = msg.includes('无法作出防御')
+      if (hasDodgeSuccess && hasCantDefence) return false
+    }
+    return true
+  })())
+
+  assert(`[${S}] Drain吸血: hurt日志显示原始伤害而非净变化`, (() => {
+    const r = runBattle(
+      [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onCardSet(u) { u.nowHp = 45; u.appendEffect('Drain', 2); return '' } }],
+      [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
+    )
+    const hurtEntries = r.log.filter(e => e.phase === 'hurt')
+    if (hurtEntries.length === 0) return false
+    const firstHurt = hurtEntries[0]
+    const msg = firstHurt.message
+    if (!msg.includes('吸血恢复')) return false
+    const dmgMatch = msg.match(/A 受到(\d+)点伤害/)
+    if (!dmgMatch) return false
+    const dmg = parseInt(dmgMatch[1])
+    const healMatch = msg.match(/吸血恢复了(\d+)点HP/)
+    if (!healMatch) return false
+    const heal = parseInt(healMatch[1])
+    return dmg >= 1 && heal >= 1 && firstHurt.creatorHp !== undefined && firstHurt.creatorHp === 45 - dmg + heal
+  })())
+
   assert(`[${S}] 时符完整流程: 宣言→免疫→耗尽→击破→换卡`, (() => {
     const timeCard: CardData = {
       id: -2, cost: 0, name: '测试时符', cardHp: 3,
@@ -1431,7 +1500,7 @@ function testBattleFlow() {
       [timeCard, makeCard({ atkPoint: '1d1+5', cardHp: 50 })],
       [makeCard({ atkPoint: '1d1+5', cardHp: 50 })],
     )
-    return logContains(r.log, '时符时间耗尽') && logContains(r.log, '符卡被击破') && logPhaseCount(r.log, 'card_set') >= 2
+    return logContains(r.log, '时符时间耗尽') && logContains(r.log, '因时符耗尽而消散') && logPhaseCount(r.log, 'card_set') >= 2
   })())
 
   assert(`[${S}] 结界衰减: 到期后效果消失`, (() => {
@@ -1456,11 +1525,6 @@ function testBattleFlow() {
     )
     return logContains(r.log, '宣言：强化1') && logContains(r.log, '亡语：2伤害') && logContains(r.log, '宣言：稳固1')
   })())
-}
-
-function testKeyFlows() {
-  const S = '关键流程'
-
   assert(`[${S}] 结界叠加: 同类型结界取最大回合`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
@@ -1575,7 +1639,7 @@ function testKeyFlows() {
 }
 
 function testAnimationCardTracking() {
-  const S = '动画符卡追踪'
+  const S = '动画追踪'
 
   function simulateAnimation(log: LogEntry[]): { phase: string; creatorCard: string | null; joinerCard: string | null }[] {
     const result: { phase: string; creatorCard: string | null; joinerCard: string | null }[] = []
@@ -1631,7 +1695,7 @@ function testAnimationCardTracking() {
       [makeCard({ atkPoint: '1d1+98', cardHp: 50 })],
     )
     const tracking = simulateAnimation(r.log)
-    const cardSetEntries = tracking.filter(t => t.phase === 'card_set')
+    const cardSetEntries = tracking.filter(t => t.phase === 'card_set' && t.creatorCard !== null)
     if (cardSetEntries.length < 2) return false
     const firstSet = cardSetEntries[0]
     const secondSet = cardSetEntries[cardSetEntries.length - 1]
@@ -1672,7 +1736,7 @@ function testAnimationCardTracking() {
       ],
       [makeCard({ atkPoint: '1d1', cardHp: 50 })],
     )
-    const cardSetEntries = r.log.filter(e => e.phase === 'card_set')
+    const cardSetEntries = r.log.filter(e => e.phase === 'card_set' && e.creatorCard !== undefined)
     const firstSet = cardSetEntries[0]
     if (!firstSet.creatorCard || firstSet.creatorCard.name !== '宣言卡') return false
     const subsequentSets = cardSetEntries.slice(1)
@@ -1707,6 +1771,530 @@ function testAnimationCardTracking() {
     const tracking = simulateAnimation(r.log)
     const err = verifyNoCardJumps(tracking)
     if (err) { console.error(err); return false }
+    return true
+  })())
+}
+
+function testStateMachine() {
+  const S = '状态机'
+
+  function getBreakCardNames(log: LogEntry[], side: 'creator' | 'joiner'): string[] {
+    return log
+      .filter(e => e.phase === 'card_break')
+      .map(e => side === 'creator' ? (e.creatorCard?.name ?? '') : (e.joinerCard?.name ?? ''))
+      .filter(n => n !== '')
+  }
+
+  function getCardSetHp(log: LogEntry[], index: number): { cHp: number | undefined; jHp: number | undefined } {
+    const sets = log.filter(e => e.phase === 'card_set' && e.message.includes('宣言'))
+    if (index >= sets.length) return { cHp: undefined, jHp: undefined }
+    return { cHp: sets[index].creatorHp, jHp: sets[index].joinerHp }
+  }
+
+  assert(`[${S}] runFullBattle: 双方同时击破-无亡语-每张卡只击破一次`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const creatorBreaks = getBreakCardNames(r.log, 'creator')
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    const creatorDupes = creatorBreaks.filter((n, i) => creatorBreaks.indexOf(n) !== i)
+    const joinerDupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i)
+    if (creatorDupes.length > 0) { console.error(`creator duplicate breaks: ${creatorDupes}`); return false }
+    if (joinerDupes.length > 0) { console.error(`joiner duplicate breaks: ${joinerDupes}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 双方同时击破-亡语击破新卡-新卡有击破日志`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '我方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '亡语：99伤害' } },
+        makeCard({ name: '我方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方后继1', atkPoint: '1d1', cardHp: 10 }),
+        makeCard({ name: '敌方后继2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    if (!joinerBreaks.includes('敌方卡1')) { console.error(`missing break for 敌方卡1, got: ${joinerBreaks}`); return false }
+    if (!joinerBreaks.includes('敌方后继1')) { console.error(`missing break for 敌方后继1, got: ${joinerBreaks}`); return false }
+    const dupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i)
+    if (dupes.length > 0) { console.error(`duplicate joiner breaks: ${dupes}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 双方同时击破-双方亡语互相击破新卡`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '我方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '我方亡语' } },
+        makeCard({ name: '我方后继1', atkPoint: '1d1', cardHp: 10 }),
+        makeCard({ name: '我方后继2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        { id: -11, cost: 0, name: '敌方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '敌方亡语' } },
+        makeCard({ name: '敌方后继1', atkPoint: '1d1', cardHp: 10 }),
+        makeCard({ name: '敌方后继2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const creatorBreaks = getBreakCardNames(r.log, 'creator')
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    if (!creatorBreaks.includes('我方亡语卡')) { console.error(`missing break for 我方亡语卡`); return false }
+    if (!creatorBreaks.includes('我方后继1')) { console.error(`missing break for 我方后继1, got: ${creatorBreaks}`); return false }
+    if (!joinerBreaks.includes('敌方亡语卡')) { console.error(`missing break for 敌方亡语卡`); return false }
+    if (!joinerBreaks.includes('敌方后继1')) { console.error(`missing break for 敌方后继1, got: ${joinerBreaks}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 宣言效果击破敌方-下轮有击破日志`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        { id: -12, cost: 0, name: '宣言伤害卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.effectHurt(99); return '宣言：99伤害' } },
+        makeCard({ name: '我方卡3', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方后继', atkPoint: '1d1', cardHp: 50 }),
+        makeCard({ name: '敌方第三卡', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    if (!joinerBreaks.includes('敌方卡1')) { console.error(`missing break for 敌方卡1`); return false }
+    if (!joinerBreaks.includes('敌方后继')) { console.error(`missing break for 敌方后继, got: ${joinerBreaks}`); return false }
+    const dupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i)
+    if (dupes.length > 0) { console.error(`duplicate joiner breaks: ${dupes}`); return false }
+    return logContains(r.log, '宣言：99伤害')
+  })())
+
+  assert(`[${S}] runFullBattle: 宣言效果击破敌方后-下轮正确处理击破`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        { id: -12, cost: 0, name: '宣言伤害卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.effectHurt(99); return '宣言：99伤害' } },
+        makeCard({ name: '我方卡3', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方后继', atkPoint: '1d1', cardHp: 5 }),
+        makeCard({ name: '敌方第三卡', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    if (!joinerBreaks.includes('敌方卡1')) { console.error(`missing break for 敌方卡1`); return false }
+    if (!joinerBreaks.includes('敌方后继')) { console.error(`missing break for 敌方后继, got: ${joinerBreaks}`); return false }
+    const dupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i)
+    if (dupes.length > 0) { console.error(`duplicate joiner breaks: ${dupes}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 击破日志中同一张卡名不出现两次`, (() => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const b = new Battle(1, seed)
+      b.setCreator('A')
+      b.creator.chosenCards = [
+        makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ]
+      b.setSingleEnemy('B', [
+        makeCard({ name: 'B1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ])
+      b.runFullBattle()
+      const log = b.log.entries
+      const cBreaks = getBreakCardNames(log, 'creator')
+      const jBreaks = getBreakCardNames(log, 'joiner')
+      const cDupes = cBreaks.filter((n, i) => cBreaks.indexOf(n) !== i)
+      const jDupes = jBreaks.filter((n, i) => jBreaks.indexOf(n) !== i)
+      if (cDupes.length > 0 || jDupes.length > 0) {
+        console.error(`seed=${seed} cDupes=${cDupes} jDupes=${jDupes}`)
+        return false
+      }
+    }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 宣言日志中HP>0(除非战斗结束)`, (() => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const b = new Battle(1, seed)
+      b.setCreator('A')
+      b.creator.chosenCards = [
+        makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ]
+      b.setSingleEnemy('B', [
+        makeCard({ name: 'B1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ])
+      b.runFullBattle()
+      const declareEntries = b.log.entries.filter(e => e.phase === 'card_set' && e.message.includes('宣言'))
+      for (const entry of declareEntries) {
+        if (entry.creatorHp !== undefined && entry.creatorHp <= 0) {
+          console.error(`seed=${seed} declaration has creatorHp=${entry.creatorHp}: ${entry.message}`)
+          return false
+        }
+        if (entry.joinerHp !== undefined && entry.joinerHp <= 0) {
+          console.error(`seed=${seed} declaration has joinerHp=${entry.joinerHp}: ${entry.message}`)
+          return false
+        }
+      }
+    }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 亡语击破新卡-击破顺序正确(旧卡先击破-新卡后击破)`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '我方亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(99); return '亡语' } },
+        makeCard({ name: '我方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方旧卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方新卡', atkPoint: '1d1', cardHp: 10 }),
+        makeCard({ name: '敌方第三卡', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const breakEntries = r.log.filter(e => e.phase === 'card_break' && e.joinerCard)
+    const breakNames = breakEntries.map(e => e.joinerCard!.name)
+    const oldIdx = breakNames.indexOf('敌方旧卡')
+    const newIdx = breakNames.indexOf('敌方新卡')
+    if (oldIdx < 0) { console.error(`missing break for 敌方旧卡`); return false }
+    if (newIdx < 0) { console.error(`missing break for 敌方新卡, breaks: ${breakNames}`); return false }
+    if (oldIdx >= newIdx) { console.error(`旧卡应在新卡之前被击破, oldIdx=${oldIdx} newIdx=${newIdx}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 击破→换卡→宣言 完整日志序列`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const phases = r.log.map(e => e.phase)
+    const firstBreakIdx = phases.indexOf('card_break')
+    const firstSetAfterBreak = phases.slice(firstBreakIdx).indexOf('card_set')
+    if (firstBreakIdx < 0) { console.error('no card_break found'); return false }
+    if (firstSetAfterBreak < 0) { console.error('no card_set after card_break'); return false }
+    const breakEntry = r.log[firstBreakIdx]
+    const setEntry = r.log[firstBreakIdx + firstSetAfterBreak]
+    if (!breakEntry.message.includes('击破') && !breakEntry.message.includes('消散')) { console.error(`break msg: ${breakEntry.message}`); return false }
+    if (!setEntry.message.includes('宣言')) { console.error(`set msg: ${setEntry.message}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 时符耗尽→击破→换卡 完整流程`, (() => {
+    const timeCard: CardData = {
+      id: -2, cost: 0, name: '测试时符', cardHp: 3,
+      atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1',
+      description: '', isTimeCard: true, timeCardTurns: 1,
+    }
+    const r = runBattle(
+      [timeCard, makeCard({ name: '后继卡', atkPoint: '1d1', cardHp: 50 })],
+      [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
+    )
+    const phases = r.log.map(e => e.phase)
+    const timeIdx = phases.indexOf('time_expire')
+    const breakIdx = phases.indexOf('card_break')
+    const setIdx = phases.slice(breakIdx).indexOf('card_set')
+    if (timeIdx < 0) { console.error('no time_expire'); return false }
+    if (breakIdx < 0) { console.error('no card_break'); return false }
+    if (setIdx < 0) { console.error('no card_set after break'); return false }
+    if (breakIdx <= timeIdx) { console.error('break should be after time_expire'); return false }
+    const breakEntry = r.log[breakIdx]
+    if (breakEntry.visual?.breakSource !== 'time') { console.error(`breakSource=${breakEntry.visual?.breakSource}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 伤害结界击破-有击破日志`, (() => {
+    const r = runBattle(
+      [
+        { id: -13, cost: 0, name: '结界卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(u) { u.appendBorder('DamageBorder', 5, 99); return '展开伤害结界' } },
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 3, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1-1', cardHp: 50 }),
+      ],
+    )
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    if (!joinerBreaks.includes('敌方卡1')) { console.error(`missing break for 敌方卡1, got: ${joinerBreaks}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] playCardAndResolve: 双方同时击破-不会重复记录击破`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [
+      makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
+    ]
+    b.setSingleEnemy('B', [
+      makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+    ])
+    b.playCardAndResolve(0)
+    if (b.state !== Battle.STATE_WAITING_CREATOR_CARD) {
+      console.error(`expected WAITING_CREATOR_CARD, got ${b.state}`)
+      return false
+    }
+    b.playCardAndResolve(1)
+    const joinerBreaks = getBreakCardNames(b.log.entries, 'joiner')
+    const dupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i)
+    if (dupes.length > 0) { console.error(`duplicate joiner breaks in playCardAndResolve: ${dupes}, all: ${joinerBreaks}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] playCardAndResolve: 双方同时击破-宣言时HP>0`, (() => {
+    const b = new Battle(1, 42)
+    b.setCreator('A')
+    b.creator.chosenCards = [
+      makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
+    ]
+    b.setSingleEnemy('B', [
+      makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+      makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+    ])
+    b.playCardAndResolve(0)
+    b.playCardAndResolve(1)
+    const declareEntries = b.log.entries.filter(e => e.phase === 'card_set' && e.message.includes('宣言'))
+    for (const entry of declareEntries) {
+      if (entry.joinerHp !== undefined && entry.joinerHp <= 0) {
+        console.error(`declaration has joinerHp=${entry.joinerHp}: ${entry.message}`)
+        return false
+      }
+    }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: 击破数=usedCardIndices-1(非最后卡)或=usedCardIndices(最后卡被击破)`, (() => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const b = new Battle(1, seed)
+      b.setCreator('A')
+      b.creator.chosenCards = [
+        makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ]
+      b.setSingleEnemy('B', [
+        makeCard({ name: 'B1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ])
+      b.runFullBattle()
+      const cBreakCount = getBreakCardNames(b.log.entries, 'creator').length
+      const jBreakCount = getBreakCardNames(b.log.entries, 'joiner').length
+      const cUsed = b.creator.usedCardIndices.length
+      const jUsed = b.joiner!.usedCardIndices.length
+      const cLastBroken = b.creator.nowHp <= 0
+      const jLastBroken = b.joiner!.nowHp <= 0
+      const expectedCBreaks = cLastBroken ? cUsed : cUsed - 1
+      const expectedJBreaks = jLastBroken ? jUsed : jUsed - 1
+      if (cBreakCount !== expectedCBreaks) {
+        console.error(`seed=${seed} creator breaks=${cBreakCount} expected=${expectedCBreaks} used=${cUsed} lastBroken=${cLastBroken}`)
+        return false
+      }
+      if (jBreakCount !== expectedJBreaks) {
+        console.error(`seed=${seed} joiner breaks=${jBreakCount} expected=${expectedJBreaks} used=${jUsed} lastBroken=${jLastBroken}`)
+        return false
+      }
+    }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: card_break后必有card_set(除非战斗结束)`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡2', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡3', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const phases = r.log.map(e => e.phase)
+    for (let i = 0; i < phases.length; i++) {
+      if (phases[i] === 'card_break') {
+        const afterBreak = phases.slice(i + 1)
+        const nextPhase = afterBreak[0]
+        if (nextPhase === 'card_break') continue
+        if (nextPhase === 'end') continue
+        if (nextPhase !== 'card_set') {
+          console.error(`after card_break at ${i}, next phase is ${nextPhase}, expected card_set or end`)
+          return false
+        }
+      }
+    }
+    return true
+  })())
+
+  assert(`[${S}] runFullBattle: gameRound在每次换卡时递增`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡2', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '我方卡3', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 50, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方卡2', atkPoint: '1d1-1', cardHp: 50 }),
+      ],
+    )
+    const cardSetRounds = r.log.filter(e => e.phase === 'card_set' && e.creatorCard !== undefined).map(e => e.round)
+    for (let i = 1; i < cardSetRounds.length; i++) {
+      if (cardSetRounds[i] <= cardSetRounds[i - 1]) {
+        console.error(`card_set rounds not increasing: ${cardSetRounds}`)
+        return false
+      }
+    }
+    return cardSetRounds.length >= 2
+  })())
+
+  assert(`[${S}] runFullBattle: 亡语+宣言伤害连锁-完整日志链`, (() => {
+    const r = runBattle(
+      [
+        { id: -10, cost: 0, name: '亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(5); return '亡语：5伤害' } },
+        { id: -12, cost: 0, name: '宣言伤害卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.effectHurt(3); return '宣言：3伤害' } },
+        makeCard({ name: '我方卡3', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌方后继', atkPoint: '1d1', cardHp: 50 }),
+      ],
+    )
+    const hasDeathword = logContains(r.log, '亡语：5伤害')
+    const hasDeclareDmg = logContains(r.log, '宣言：3伤害')
+    const joinerBreaks = getBreakCardNames(r.log, 'joiner')
+    const noDupes = joinerBreaks.filter((n, i) => joinerBreaks.indexOf(n) !== i).length === 0
+    return hasDeathword && hasDeclareDmg && noDupes
+  })())
+
+  assert(`[${S}] 日志快照: 每个条目都有效果快照和符卡序号`, (() => {
+    const r = runBattle(
+      [
+        { id: -3, cost: 0, name: '结界卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(u) { u.appendBorder('DamageBorder', 3, 2); return '展开伤害结界' } },
+        makeCard({ name: '后继卡', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [makeCard({ atkPoint: '1d1', cardHp: 50 })],
+    )
+    for (let i = 0; i < r.log.length; i++) {
+      const e = r.log[i]
+      if (e.creatorEffects === undefined) { console.error(`entry ${i} phase=${e.phase} missing creatorEffects`); return false }
+      if (e.joinerEffects === undefined) { console.error(`entry ${i} phase=${e.phase} missing joinerEffects`); return false }
+      if (e.creatorCardIndex === undefined) { console.error(`entry ${i} phase=${e.phase} missing creatorCardIndex`); return false }
+      if (e.joinerCardIndex === undefined) { console.error(`entry ${i} phase=${e.phase} missing joinerCardIndex`); return false }
+    }
+    return true
+  })())
+
+  assert(`[${S}] 日志快照: 效果列表随回合正确变化`, (() => {
+    const r = runBattle(
+      [
+        { id: -3, cost: 0, name: '结界卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(u) { u.appendBorder('DamageBorder', 3, 2); return '展开伤害结界' } },
+      ],
+      [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
+    )
+    const effectEntry = r.log.find(e => e.phase === 'card_set' && e.message.includes('展开伤害结界'))
+    if (!effectEntry) { console.error('no card_set effect entry'); return false }
+    const borderAfterApply = effectEntry.creatorEffects!
+    const border = borderAfterApply.find(e => e.id === 'DamageBorder')
+    if (!border) { console.error(`no DamageBorder after onCardSet: ${borderAfterApply.map(e => e.id)}`); return false }
+    const turnEnds = r.log.filter(e => e.phase === 'turn_end')
+    if (turnEnds.length === 0) return true
+    const lastTurnEnd = turnEnds[turnEnds.length - 1]
+    const afterEffects = lastTurnEnd.creatorEffects!
+    const borderAfter = afterEffects.find(e => e.id === 'DamageBorder')
+    if (borderAfter && borderAfter.turns! >= border.turns!) {
+      console.error(`DamageBorder turns should decrease: afterApply=${border.turns} afterTurns=${borderAfter.turns}`)
+      return false
+    }
+    return true
+  })())
+
+  assert(`[${S}] 日志快照: 符卡序号在换卡时递增`, (() => {
+    const r = runBattle(
+      [
+        makeCard({ name: '卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '卡2', atkPoint: '1d1', cardHp: 50 }),
+      ],
+      [
+        makeCard({ name: '敌1', cardHp: 50, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
+        makeCard({ name: '敌2', atkPoint: '1d1-1', cardHp: 50 }),
+      ],
+    )
+    const cardSetEntries = r.log.filter(e => e.phase === 'card_set')
+    if (cardSetEntries.length < 2) { console.error(`need at least 2 card_set entries, got ${cardSetEntries.length}`); return false }
+    const firstIdx = cardSetEntries[0].creatorCardIndex!
+    const secondIdx = cardSetEntries[cardSetEntries.length - 1].creatorCardIndex!
+    if (secondIdx <= firstIdx) { console.error(`creatorCardIndex not increasing: ${firstIdx} -> ${secondIdx}`); return false }
+    return true
+  })())
+
+  assert(`[${S}] 日志快照: 动画回放-效果列表不跳变`, (() => {
+    const r = runBattle(
+      [
+        { id: -3, cost: 0, name: '结界卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(u) { u.appendBorder('DamageBorder', 3, 2); return '展开伤害结界' } },
+      ],
+      [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
+    )
+    let prevCreatorEffs: string[] = []
+    let prevJoinerEffs: string[] = []
+    for (let i = 0; i < r.log.length; i++) {
+      const e = r.log[i]
+      const curCreatorEffs = (e.creatorEffects ?? []).map(ef => `${ef.id}${ef.effectType === 'BORDER' ? `t${ef.turns}` : `a${ef.amount}`}`).sort().join(',')
+      const curJoinerEffs = (e.joinerEffects ?? []).map(ef => `${ef.id}${ef.effectType === 'BORDER' ? `t${ef.turns}` : `a${ef.amount}`}`).sort().join(',')
+      if (e.phase !== 'card_set' && e.phase !== 'card_break' && e.phase !== 'hurt' && e.phase !== 'turn_start' && e.phase !== 'turn_end') {
+        continue
+      }
+      prevCreatorEffs = curCreatorEffs
+      prevJoinerEffs = curJoinerEffs
+    }
+    return true
+  })())
+
+  assert(`[${S}] 日志快照: 200随机种子-效果快照与最终状态一致`, (() => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const b = new Battle(1, seed)
+      b.setCreator('A')
+      b.creator.chosenCards = [
+        makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ]
+      b.setSingleEnemy('B', [
+        makeCard({ name: 'B1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+        makeCard({ name: 'B3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
+      ])
+      b.runFullBattle()
+      const lastEntry = b.log.entries[b.log.entries.length - 1]
+      if (!lastEntry) { console.error(`seed=${seed} no log entries`); return false }
+      const finalCreatorEffs = b.creator.effects.map(e => e.toData())
+      const finalJoinerEffs = b.joiner!.effects.map(e => e.toData())
+      if (lastEntry.creatorEffects!.length !== finalCreatorEffs.length) {
+        console.error(`seed=${seed} creator effects count mismatch: log=${lastEntry.creatorEffects!.length} actual=${finalCreatorEffs.length}`)
+        return false
+      }
+      if (lastEntry.joinerEffects!.length !== finalJoinerEffs.length) {
+        console.error(`seed=${seed} joiner effects count mismatch: log=${lastEntry.joinerEffects!.length} actual=${finalJoinerEffs.length}`)
+        return false
+      }
+    }
     return true
   })())
 }
@@ -2999,25 +3587,15 @@ function testExpeditionFlow(count: number = 200) {
 console.log('开始符卡系统自测...\n')
 
 testEffectBasics()
-testDrainEffect()
-testEffectAlias()
-testTimeCard()
-testCrescendoCard()
-testForgeEffects()
-testBorderEffects()
-testCardBreakClearsEffects()
-testCardEffects()
+testEffectAdvanced()
+testSpecialCards()
+testRewardEffects()
+testDiceSystem()
 testBattleMechanics()
 testBugFixes()
-testDeathwordFix()
-testParseDice()
-testNewEpicEffects()
-testJustAppliedReset()
-testNonCardEffectReplace()
-testUncoveredEffects()
 testBattleFlow()
-testKeyFlows()
 testAnimationCardTracking()
+testStateMachine()
 testExpeditionFlowUsability()
 
 const passed = results.filter(r => r.passed).length

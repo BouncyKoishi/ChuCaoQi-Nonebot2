@@ -251,9 +251,10 @@ const EFFECT_POOL: EffectModule[] = [
   },
   {
     id: 'ek_kill_heal3', displayName: '被动·击杀回复', slot: 'onPassive', rarity: 'rare', trigger: 'enemyCardBreak',
-    description: '击破对方符卡时回复3HP',
+    description: '击破对方符卡时回复2HP',
     apply(user: Battler, _enemy: Battler) {
-      const heal = Math.min(3, user.nowCard!.cardHp - user.nowHp)
+      const maxHp = user.nowCard!.maxCardHp ?? user.nowCard!.cardHp
+      const heal = Math.min(2, maxHp - user.nowHp)
       if (heal > 0) { user.nowHp += heal; return `[${user.name}]击杀回复，恢复${heal}HP！\n` }
       return ''
     },

@@ -183,6 +183,7 @@ export function toCardData(ec: ExpeditionCard): CardData {
     cost: 0,
     name: ec.name,
     cardHp: ec.currentHp,
+    maxCardHp: ec.maxCardHp,
     atkPoint: ec.atkPoint,
     defPoint: ec.defPoint,
     dodPoint: ec.dodPoint,

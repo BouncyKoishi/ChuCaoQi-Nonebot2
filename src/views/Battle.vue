@@ -333,8 +333,6 @@ const animPaused = ref(false)
 let animEntries: LogEntry[] = []
 let animIndex = 0
 let animFullLog: LogEntry[] = []
-let animFinalCreator: any = null
-let animFinalJoiner: any = null
 const logCollapsed = ref(false)
 
 interface TurnVisualState {
@@ -352,8 +350,8 @@ let _statsKey = 0, _damageKey = 0, _breakKey = 0
 
 const creatorHpPercent = computed(() => animCreatorMaxHp.value > 0 ? Math.max(0, Math.round(animCreatorHp.value / animCreatorMaxHp.value * 100)) : 0)
 const joinerHpPercent = computed(() => animJoinerMaxHp.value > 0 ? Math.max(0, Math.round(animJoinerHp.value / animJoinerMaxHp.value * 100)) : 0)
-const creatorCardIndex = computed(() => battle.value?.creator?.usedCardIndices?.length ?? 0)
-const joinerCardIndex = computed(() => battle.value?.joiner?.usedCardIndices?.length ?? 0)
+const creatorCardIndex = ref(0)
+const joinerCardIndex = ref(0)
 
 const myAvailableCards = computed(() => {
   if (!selectedCards.value.length || !battle.value?.creator) return []
@@ -426,8 +424,6 @@ const startAnimation = (prevLogLen: number) => {
   animEntries = animFullLog.slice(prevLogLen)
   animIndex = 0
   displayedLog.value = animFullLog.slice(0, prevLogLen)
-  animFinalCreator = battle.value!.creator!
-  animFinalJoiner = battle.value!.joiner!
 
   if (animEntries.length === 0) { finishAnimation(); return }
   processNextAnimEntry()
@@ -435,14 +431,17 @@ const startAnimation = (prevLogLen: number) => {
 
 const processNextAnimEntry = () => {
   if (animIndex >= animEntries.length) {
-    animCreatorHp.value = animFinalCreator.nowHp
-    animJoinerHp.value = animFinalJoiner.nowHp
-    animCreatorMaxHp.value = animFinalCreator.nowCard?.cardHp ?? 1
-    animJoinerMaxHp.value = animFinalJoiner.nowCard?.cardHp ?? 1
-    animCreatorCard.value = animFinalCreator.nowCard
-    animJoinerCard.value = animFinalJoiner.nowCard
-    animCreatorEffects.value = animFinalCreator.effects.map((e: any) => e.toData())
-    animJoinerEffects.value = animFinalJoiner.effects.map((e: any) => e.toData())
+    const lastEntry = animFullLog[animFullLog.length - 1]
+    if (lastEntry) {
+      animCreatorHp.value = lastEntry.creatorHp ?? animCreatorHp.value
+      animJoinerHp.value = lastEntry.joinerHp ?? animJoinerHp.value
+      if (lastEntry.creatorCard) { animCreatorCard.value = lastEntry.creatorCard; animCreatorMaxHp.value = lastEntry.creatorCard.cardHp }
+      if (lastEntry.joinerCard) { animJoinerCard.value = lastEntry.joinerCard; animJoinerMaxHp.value = lastEntry.joinerCard.cardHp }
+      if (lastEntry.creatorEffects) animCreatorEffects.value = lastEntry.creatorEffects
+      if (lastEntry.joinerEffects) animJoinerEffects.value = lastEntry.joinerEffects
+      if (lastEntry.creatorCardIndex !== undefined) creatorCardIndex.value = lastEntry.creatorCardIndex
+      if (lastEntry.joinerCardIndex !== undefined) joinerCardIndex.value = lastEntry.joinerCardIndex
+    }
     displayedLog.value = [...animFullLog]
     nextTick(() => { const el = document.querySelector('.battle-log'); if (el) el.scrollTop = el.scrollHeight })
     finishAnimation()
@@ -453,6 +452,10 @@ const processNextAnimEntry = () => {
   displayedLog.value.push(entry)
   if (entry.creatorHp !== undefined) animCreatorHp.value = entry.creatorHp
   if (entry.joinerHp !== undefined) animJoinerHp.value = entry.joinerHp
+  if (entry.creatorCardIndex !== undefined) creatorCardIndex.value = entry.creatorCardIndex
+  if (entry.joinerCardIndex !== undefined) joinerCardIndex.value = entry.joinerCardIndex
+  if (entry.creatorEffects) animCreatorEffects.value = entry.creatorEffects
+  if (entry.joinerEffects) animJoinerEffects.value = entry.joinerEffects
   if (entry.phase === 'card_set') {
     if (entry.creatorCard) { animCreatorCard.value = entry.creatorCard; animCreatorMaxHp.value = entry.creatorCard.cardHp }
     if (entry.joinerCard) { animJoinerCard.value = entry.joinerCard; animJoinerMaxHp.value = entry.joinerCard.cardHp }
@@ -465,9 +468,6 @@ const processNextAnimEntry = () => {
   }
 
   updateTurnVisual(entry)
-
-  animCreatorEffects.value = animFinalCreator.effects.map((e: any) => e.toData())
-  animJoinerEffects.value = animFinalJoiner.effects.map((e: any) => e.toData())
 
   nextTick(() => { const el = document.querySelector('.battle-log'); if (el) el.scrollTop = el.scrollHeight })
   animIndex++
@@ -582,14 +582,17 @@ const handleQuickBattle = () => {
     b.runFullBattle()
     battle.value = b
     displayedLog.value = b.log.entries
-    animCreatorHp.value = b.creator.nowHp
-    animJoinerHp.value = b.joiner.nowHp
-    animCreatorMaxHp.value = b.creator.nowCard?.cardHp ?? 1
-    animJoinerMaxHp.value = b.joiner.nowCard?.cardHp ?? 1
-    animCreatorCard.value = b.creator.nowCard
-    animJoinerCard.value = b.joiner.nowCard
-    animCreatorEffects.value = b.creator.effects.map(e => e.toData())
-    animJoinerEffects.value = b.joiner.effects.map(e => e.toData())
+    const lastEntry = b.log.entries[b.log.entries.length - 1]
+    animCreatorHp.value = lastEntry?.creatorHp ?? b.creator.nowHp
+    animJoinerHp.value = lastEntry?.joinerHp ?? b.joiner.nowHp
+    animCreatorMaxHp.value = lastEntry?.creatorCard?.cardHp ?? b.creator.nowCard?.cardHp ?? 1
+    animJoinerMaxHp.value = lastEntry?.joinerCard?.cardHp ?? b.joiner.nowCard?.cardHp ?? 1
+    animCreatorCard.value = lastEntry?.creatorCard ?? b.creator.nowCard
+    animJoinerCard.value = lastEntry?.joinerCard ?? b.joiner.nowCard
+    animCreatorEffects.value = lastEntry?.creatorEffects ?? b.creator.effects.map(e => e.toData())
+    animJoinerEffects.value = lastEntry?.joinerEffects ?? b.joiner.effects.map(e => e.toData())
+    creatorCardIndex.value = lastEntry?.creatorCardIndex ?? b.creator.usedCardIndices.length
+    joinerCardIndex.value = lastEntry?.joinerCardIndex ?? b.joiner!.usedCardIndices.length
     turnVisual.value = { round: 0, statsKey: 0, damageKey: 0, breakKey: 0 }
     _statsKey = 0; _damageKey = 0; _breakKey = 0
     logCollapsed.value = false
@@ -670,11 +673,16 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
 .log-entry:last-child { border-bottom: none; }
 .log-round { flex-shrink: 0; min-width: 32px; }
 .log-message { white-space: pre-wrap; word-break: break-word; }
-.log-phase-card_break { color: #f56c6c; }
+.log-phase-card_break { color: #f56c6c; font-weight: bold; }
 .log-phase-card_set { color: #67c23a; }
 .log-phase-end { color: #e6a23c; font-weight: bold; }
 .log-phase-time_immune { color: #409eff; }
 .log-phase-time_expire { color: #e6a23c; }
+.log-phase-hurt { color: #f56c6c; }
+.log-phase-points { color: #409eff; }
+.log-phase-calc { color: #909399; font-size: 12px; }
+.log-phase-turn_start { color: #909399; font-size: 12px; }
+.log-phase-turn_end { color: #909399; font-size: 12px; }
 .result-section { text-align: center; }
 .result-section > * { margin-bottom: 16px; }
 .codex-section { padding: 0; }

@@ -377,21 +377,20 @@ import { generateEncounter, generateExEncounter, generateNewCardDrop, getExStage
 import type { CardData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import {
-  type DiceUpgrade, type EffectModule, type EffectSlot,
-  type ExpeditionCard, type ExpeditionState, type FixedDrop,
-  type Reward, type ShopItem,
-  BASE_PANELS, INITIAL_CARD_EFFECTS,
-  addEffectToCard,
-  addSlotCapacity,
-  canAddEffectToSlot,
-  createNonCard,
-  createSpellCard,
-  healAllForNewStage,
-  healNonCard,
-  toCardData
+    type DiceUpgrade, type EffectModule, type EffectSlot,
+    type ExpeditionCard, type ExpeditionState, type FixedDrop,
+    type Reward, type ShopItem,
+    BASE_PANELS, INITIAL_CARD_EFFECTS,
+    addEffectToCard,
+    addSlotCapacity,
+    canAddEffectToSlot,
+    createNonCard,
+    createSpellCard,
+    healAllForNewStage,
+    healNonCard,
+    toCardData
 } from '@/spellcard/expedition'
 import { DICE_POOL, generateRewards, generateShopItems, isDiceFixed, parseDescription } from '@/spellcard/rewards'
-import '@/spellcard/spellcard-test'
 import { computed, ref } from 'vue'
 
 const isDev = import.meta.env.DEV
@@ -984,9 +983,16 @@ function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1;
 .log-entry:last-child { border-bottom: none; }
 .log-round { flex-shrink: 0; min-width: 32px; }
 .log-message { white-space: pre-wrap; word-break: break-word; }
-.log-phase-card_break { color: #f56c6c; }
+.log-phase-card_break { color: #f56c6c; font-weight: bold; }
 .log-phase-card_set { color: #67c23a; }
 .log-phase-end { color: #e6a23c; font-weight: bold; }
+.log-phase-time_immune { color: #409eff; }
+.log-phase-time_expire { color: #e6a23c; }
+.log-phase-hurt { color: #f56c6c; }
+.log-phase-points { color: #409eff; }
+.log-phase-calc { color: #909399; font-size: 12px; }
+.log-phase-turn_start { color: #909399; font-size: 12px; }
+.log-phase-turn_end { color: #909399; font-size: 12px; }
 .log-divider { margin: 12px 0; }
 
 .reward-cards { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 24px; }
