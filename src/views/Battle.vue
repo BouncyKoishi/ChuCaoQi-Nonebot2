@@ -57,10 +57,11 @@
                 <div class="battle-players">
                   <div class="player-panel">
                     <h4>{{ battle?.creator?.name || '你' }}</h4>
-                    <div class="hp-bar">
-                      <el-progress :percentage="creatorHpPercent"
-                        :color="creatorHpPercent > 50 ? '#67c23a' : creatorHpPercent > 20 ? '#e6a23c' : '#f56c6c'"
-                        :stroke-width="18" :text-inside="true" :format="() => `HP ${animCreatorHp}`" />
+                    <div class="hp-bar" v-if="animCreatorMaxHp > 1">
+                      <div class="hp-bar-track">
+                        <div class="hp-bar-fill" :style="{ width: creatorHpPercent + '%', backgroundColor: creatorHpPercent > 50 ? '#67c23a' : creatorHpPercent > 20 ? '#e6a23c' : '#f56c6c' }"></div>
+                        <span class="hp-bar-text">HP {{ Math.max(0, animCreatorHp) }}/{{ animCreatorMaxHp }}</span>
+                      </div>
                     </div>
                     <div v-if="animCreatorCard" class="current-card">
                       <el-tag type="danger">{{ animCreatorCard.name }}</el-tag>
@@ -77,10 +78,11 @@
                   <div class="vs-badge">VS</div>
                   <div class="player-panel">
                     <h4>{{ battle?.joiner?.name || 'AI' }}</h4>
-                    <div class="hp-bar">
-                      <el-progress :percentage="joinerHpPercent"
-                        :color="joinerHpPercent > 50 ? '#67c23a' : joinerHpPercent > 20 ? '#e6a23c' : '#f56c6c'"
-                        :stroke-width="18" :text-inside="true" :format="() => `HP ${animJoinerHp}`" />
+                    <div class="hp-bar" v-if="animJoinerMaxHp > 1">
+                      <div class="hp-bar-track">
+                        <div class="hp-bar-fill" :style="{ width: joinerHpPercent + '%', backgroundColor: joinerHpPercent > 50 ? '#67c23a' : joinerHpPercent > 20 ? '#e6a23c' : '#f56c6c' }"></div>
+                        <span class="hp-bar-text">HP {{ Math.max(0, animJoinerHp) }}/{{ animJoinerMaxHp }}</span>
+                      </div>
                     </div>
                     <div v-if="animJoinerCard" class="current-card">
                       <el-tag type="primary">{{ animJoinerCard.name }}</el-tag>
@@ -136,7 +138,7 @@
                   </el-divider>
                 </template>
 
-                <div class="battle-visual" v-if="turnVisual.stats || turnVisual.damage || turnVisual.cardBreak">
+                <div class="battle-visual" v-if="turnVisual.stats || turnVisual.damage || turnVisual.cardBreak || turnVisual.effectDamage">
                   <div class="visual-round-badge" v-if="turnVisual.round">R{{ turnVisual.round }}</div>
                   <div class="visual-stats" v-if="turnVisual.stats" :key="'stats-' + turnVisual.statsKey">
                     <div class="stat-side creator-side">
@@ -152,6 +154,14 @@
                       <span class="stat-item def">🛡️{{ turnVisual.stats.joinerDef }}</span>
                       <span class="stat-item dod">💨{{ turnVisual.stats.joinerDod }}</span>
                     </div>
+                  </div>
+
+                  <div class="visual-effect-damage" v-if="turnVisual.effectDamage" :key="'effect-' + turnVisual.damageKey">
+                    <span class="effect-damage-icon">✨</span>
+                    <span class="effect-damage-source">{{ turnVisual.effectDamage.source }}</span>
+                    <span class="effect-damage-arrow">→</span>
+                    <span class="effect-damage-text">{{ turnVisual.effectDamage.target === 'creator' ? '你' : 'AI' }}</span>
+                    <span class="effect-damage-amount" :class="{ 'big-damage': turnVisual.effectDamage.amount >= 4 }">-{{ turnVisual.effectDamage.amount }}</span>
                   </div>
 
                   <div class="visual-attack" v-if="turnVisual.damage" :key="'attack-' + turnVisual.damageKey">
@@ -471,12 +481,14 @@ const processNextAnimEntry = () => {
 
   nextTick(() => { const el = document.querySelector('.battle-log'); if (el) el.scrollTop = el.scrollHeight })
   animIndex++
-  const delay = entry.phase === 'hurt' ? 1800
-    : entry.phase === 'card_break' ? 2200
-    : entry.phase === 'points' ? 1200
+  const delay = entry.phase === 'hurt' ? 1200
+    : entry.phase === 'card_break' ? 1500
+    : entry.phase === 'points' ? 800
     : entry.phase === 'calc' ? 0
-    : entry.phase === 'card_set' ? 600
-    : 400
+    : entry.phase === 'card_set' ? 500
+    : entry.phase === 'turn_start' ? (entry.visual?.effectType === 'damage' ? 1000 : 300)
+    : entry.phase === 'time_expire' ? 1000
+    : 300
   animTimer.value = setTimeout(processNextAnimEntry, delay)
 }
 
@@ -500,6 +512,18 @@ const updateTurnVisual = (entry: LogEntry) => {
   if (entry.phase === 'card_set') {
     turnVisual.value = { round: entry.round, statsKey: 0, damageKey: 0, breakKey: 0 }
     _statsKey = 0; _damageKey = 0; _breakKey = 0
+    if (v.effectType === 'damage') {
+      _damageKey++
+      turnVisual.value = {
+        ...turnVisual.value,
+        effectDamage: {
+          target: v.effectTarget ?? 'joiner',
+          amount: v.effectAmount ?? 0,
+          source: v.effectSource ?? '',
+        },
+        damageKey: _damageKey,
+      }
+    }
     return
   }
 
@@ -518,6 +542,7 @@ const updateTurnVisual = (entry: LogEntry) => {
       },
       damage: undefined,
       cardBreak: undefined,
+      effectDamage: undefined,
       statsKey: _statsKey,
       damageKey: 0,
       breakKey: 0,
@@ -541,6 +566,7 @@ const updateTurnVisual = (entry: LogEntry) => {
         creatorDefended: v.creatorDefSuccess ?? false,
         joinerDefended: v.joinerDefSuccess ?? false,
       },
+      effectDamage: undefined,
       damageKey: _damageKey,
     }
     return
@@ -553,6 +579,34 @@ const updateTurnVisual = (entry: LogEntry) => {
       stats: turnVisual.value.stats,
       cardBreak: v.whoBroke,
       breakSource: v.breakSource,
+      effectDamage: v.effectType === 'damage' ? { target: v.effectTarget ?? 'joiner', amount: v.effectAmount ?? 0, source: v.effectSource ?? '' } : undefined,
+      statsKey: turnVisual.value.statsKey,
+      damageKey: 0, breakKey: _breakKey,
+    }
+    return
+  }
+
+  if (entry.phase === 'turn_start' && v.effectType === 'damage') {
+    _damageKey++
+    turnVisual.value = {
+      ...turnVisual.value,
+      effectDamage: {
+        target: v.effectTarget ?? 'joiner',
+        amount: v.effectAmount ?? 0,
+        source: v.effectSource ?? '',
+      },
+      damageKey: _damageKey,
+    }
+    return
+  }
+
+  if (entry.phase === 'time_expire') {
+    _breakKey++
+    turnVisual.value = {
+      round: entry.round,
+      stats: turnVisual.value.stats,
+      cardBreak: v.effectTarget,
+      breakSource: 'time',
       statsKey: turnVisual.value.statsKey,
       damageKey: 0, breakKey: _breakKey,
     }
@@ -654,9 +708,35 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
 .turnbased-section { text-align: center; }
 .idle-section { padding: 40px 0; }
 .battle-players { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 16px; }
-.player-panel { flex: 1; max-width: 300px; text-align: center; }
+.player-panel { flex: 0 0 280px; max-width: 280px; min-width: 280px; text-align: center; }
 .player-panel h4 { margin: 0 0 8px 0; }
-.hp-bar { margin-bottom: 8px; }
+.hp-bar { margin-bottom: 8px; width: 100%; }
+.hp-bar-track {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  background-color: #ebeef5;
+  border-radius: 11px;
+  overflow: hidden;
+}
+.hp-bar-fill {
+  height: 100%;
+  border-radius: 11px;
+  transition: width 0.4s ease, background-color 0.3s ease;
+  min-width: 0;
+}
+.hp-bar-text {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: bold;
+  color: #303133;
+  white-space: nowrap;
+  text-shadow: 0 0 3px rgba(255,255,255,0.8);
+  z-index: 1;
+}
 .current-card { margin-bottom: 8px; display: flex; align-items: center; gap: 6px; justify-content: center; }
 .card-index { font-size: 12px; color: #909399; }
 .effects-list { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
@@ -809,6 +889,53 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
   padding: 16px;
   animation: breakShake 0.6s ease-out;
 }
+
+.visual-effect-damage {
+  text-align: center;
+  padding: 8px 16px;
+  margin-bottom: 8px;
+  animation: visualFadeIn 0.3s ease-out;
+}
+.effect-damage-icon {
+  font-size: 18px;
+  margin-right: 4px;
+}
+.effect-damage-source {
+  color: #ffd93d;
+  font-size: 13px;
+  font-weight: bold;
+  margin-right: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+.effect-damage-arrow {
+  color: rgba(255,255,255,0.5);
+  margin-right: 4px;
+  font-size: 14px;
+}
+.effect-damage-text {
+  color: rgba(255,255,255,0.85);
+  font-weight: bold;
+  font-size: 15px;
+  margin-right: 8px;
+}
+.effect-damage-amount {
+  color: #ffd93d;
+  font-weight: bold;
+  font-size: 20px;
+  animation: damagePop 0.5s ease-out;
+  text-shadow: 0 0 10px rgba(255,217,61,0.4);
+}
+.effect-damage-amount.big-damage {
+  font-size: 26px;
+  color: #ff9800;
+  text-shadow: 0 0 16px rgba(255,152,0,0.6);
+  animation: damagePopBig 0.6s ease-out;
+}
 .break-icon {
   font-size: 32px;
   display: block;
@@ -854,5 +981,47 @@ onUnmounted(() => { if (animTimer.value) clearTimeout(animTimer.value) })
   60% { transform: scale(1) rotate(-2deg); }
   80% { transform: scale(1) rotate(1deg); }
   100% { transform: scale(1) rotate(0deg); }
+}
+@media (max-width: 768px) {
+  .battle-container { padding: 0 8px; }
+  .card-header h2 { font-size: 18px; }
+  .battle-players { flex-direction: column; gap: 12px; }
+  .player-panel { max-width: 100%; min-width: 100%; flex: 0 0 auto; }
+  .vs-badge { display: none; }
+  .candidate-card { width: 160px; }
+  .hand-card { width: 150px; }
+  .battle-visual { padding: 12px 8px; }
+  .visual-stats { gap: 8px; flex-wrap: wrap; }
+  .stat-separator { width: 100%; text-align: center; font-size: 14px; }
+  .stat-side { padding: 6px 10px; }
+  .stat-name { min-width: auto; font-size: 12px; }
+  .stat-item { font-size: 13px; padding: 2px 6px; }
+  .attack-row { padding: 4px 8px; font-size: 13px; }
+  .attack-from, .attack-to { min-width: auto; }
+  .attack-damage { font-size: 16px; }
+  .attack-damage.big-damage { font-size: 20px; }
+  .battle-log { max-height: 400px; }
+  .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .visual-round-badge { font-size: 10px; padding: 1px 6px; top: 4px; right: 4px; }
+}
+@media (max-width: 480px) {
+  .candidate-card { width: 100%; max-width: 280px; }
+  .hand-card { width: 100%; max-width: 260px; }
+  .card-header h2 { font-size: 16px; }
+  .battle-visual { padding: 8px 4px; }
+  .visual-stats { gap: 4px; }
+  .stat-separator { font-size: 12px; }
+  .stat-side { padding: 4px 6px; gap: 6px; }
+  .stat-item { font-size: 12px; padding: 1px 4px; }
+  .attack-row { font-size: 12px; gap: 4px; }
+  .attack-damage { font-size: 14px; }
+  .attack-damage.big-damage { font-size: 18px; }
+  .hp-bar-track { height: 16px; border-radius: 8px; }
+  .hp-bar-fill { border-radius: 8px; }
+  .hp-bar-text { font-size: 11px; }
+  .battle-log { max-height: 50vh; }
+  .codex-grid { grid-template-columns: 1fr; }
+  .log-entry { font-size: 12px; }
+  .visual-round-badge { display: none; }
 }
 </style>

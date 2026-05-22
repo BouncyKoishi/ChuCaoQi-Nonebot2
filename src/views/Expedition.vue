@@ -1045,4 +1045,34 @@ function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1;
 .replace-option:hover { border-color: #f56c6c; }
 .replace-option-desc { font-size: 12px; color: #909399; }
 .replace-new { margin-top: 8px; }
+
+@media (max-width: 768px) {
+  .expedition-container { padding: 0 8px; }
+  .vs-preview { flex-direction: column; align-items: center; gap: 12px; }
+  .preview-side { max-width: 100%; }
+  .vs-divider { padding-top: 0; font-size: 20px; }
+  .panel-card { width: 160px; min-height: 140px; }
+  .reward-card { width: 180px; }
+  .shop-card { width: 150px; }
+  .target-card { min-width: 130px; }
+  .preview-card { min-width: 120px; }
+  .battle-log { max-height: 400px; }
+  .vs-row { gap: 16px; font-size: 14px; }
+  .fixed-drop-item { padding: 12px 16px; }
+  .stage-info { flex-wrap: wrap; }
+}
+@media (max-width: 480px) {
+  .panel-card { width: 100%; max-width: 260px; min-height: auto; }
+  .reward-card { width: 100%; max-width: 260px; }
+  .shop-card { width: 100%; max-width: 200px; }
+  .target-card { min-width: 0; width: 100%; max-width: 260px; }
+  .preview-card { min-width: 0; width: 100%; max-width: 260px; }
+  .battle-log { max-height: 50vh; }
+  .vs-row { gap: 8px; font-size: 13px; }
+  .log-entry { font-size: 12px; }
+  .fixed-drop-item { padding: 8px 12px; }
+  .fd-name { font-size: 14px; }
+  .fd-stats { font-size: 13px; }
+  .summary-card { min-width: 0; width: 100%; max-width: 260px; }
+}
 </style>
