@@ -150,7 +150,7 @@
                 <div class="tc-name">{{ card.name }}</div>
                 <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
                 <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
-                <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外3灵力</div>
+                <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
               </div>
             </div>
           </div>
@@ -218,7 +218,7 @@
                   <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
                 </template>
               </div>
-              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外3灵力</div>
+              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
             </div>
           </div>
         </div>
@@ -279,7 +279,7 @@
               <div class="tc-name">{{ card.name }}</div>
               <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
               <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
-              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外3灵力</div>
+              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
             </div>
           </div>
           <template #footer>
@@ -490,9 +490,8 @@ function canApplyToCard(card: ExpeditionCard, r: Reward, extraCost: number = 0):
     if (isDiceFixed(target)) return false
   }
   if (card.isNonCard) {
-    if (state.value.spirit < 3 + extraCost) return false
+    if (state.value.spirit < 2 + extraCost) return false
     if (isSlotReward(r)) return true
-    if (isDiceCountUpgrade(r)) return false
     if (isStatUpgrade(r)) return true
     if (isDiceUpgrade(r)) return true
     if ('slot' in r && 'apply' in r) {
@@ -700,8 +699,8 @@ function confirmFixedDrop() {
     if (fixedDropTargetIdx.value === -1 || !fixedDropItem.value) return
     const card = state.value.cards[fixedDropTargetIdx.value]
     if (card.isNonCard) {
-      if (state.value.spirit < 3) return
-      state.value.spirit -= 3
+      if (state.value.spirit < 2) return
+      state.value.spirit -= 2
     }
     fixedDropItem.value.apply(card)
   } else {
@@ -731,8 +730,8 @@ function confirmReward() {
     if (targetCardIdx.value === -1) return
     const card = state.value.cards[targetCardIdx.value]
     if (card.isNonCard) {
-      if (state.value.spirit < 3) return
-      state.value.spirit -= 3
+      if (state.value.spirit < 2) return
+      state.value.spirit -= 2
     }
     addSlotCapacity(card, reward.slot)
     advanceAfterReward()
@@ -759,8 +758,8 @@ function confirmReward() {
 
 function doApplyReward(card: ExpeditionCard, reward: Reward) {
   if (card.isNonCard) {
-    if (state.value.spirit < 3) return
-    state.value.spirit -= 3
+    if (state.value.spirit < 2) return
+    state.value.spirit -= 2
   }
   applyRewardToCard(card, reward)
   replaceConfirmVisible.value = false
@@ -774,8 +773,8 @@ function confirmReplaceEffect() {
   card.effects[info.slot].splice(replaceChoiceIdx.value, 1)
   card.effects[info.slot].push(info.newEffect)
   if (card.isNonCard) {
-    if (state.value.spirit < 3) return
-    state.value.spirit -= 3
+    if (state.value.spirit < 2) return
+    state.value.spirit -= 2
   }
   replaceConfirmVisible.value = false
 
@@ -899,8 +898,8 @@ let pendingShopBuy: { itemIdx: number; cardIdx: number } | null = null
 
 function doShopBuy(card: ExpeditionCard, item: ShopItem) {
   if (card.isNonCard) {
-    if (state.value.spirit < item.price + 3) return
-    state.value.spirit -= 3
+    if (state.value.spirit < item.price + 2) return
+    state.value.spirit -= 2
   }
   state.value.spirit -= item.price
   applyRewardToCard(card, item.reward)

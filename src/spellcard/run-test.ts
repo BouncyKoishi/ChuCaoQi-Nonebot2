@@ -2367,9 +2367,8 @@ function testExpeditionFlowUsability() {
       if (isDiceFixed(target)) return false
     }
     if (card.isNonCard) {
-      if (spirit < 3 + extraCost) return false
+      if (spirit < 2 + extraCost) return false
       if (isSlotRewardLocal(r)) return true
-      if (isDiceCountUpgradeLocal(r)) return false
       if (isStatUpgradeLocal(r)) return true
       if (isDiceUpgradeLocal(r)) return true
       if (isEffectModuleLocal(r)) return card.slotCapacity[(r as any).slot] > 0
@@ -2665,40 +2664,40 @@ function testExpeditionFlowUsability() {
     return true
   })())
 
-  assert(`[${S}] canApply: 非符拒绝骰数升级`, (() => {
+  assert(`[${S}] canApply: 非符可接受骰数升级`, (() => {
     const nc = createNonCard()
     const d = DICE_POOL.find(d => d.id === 'dice_atk_count')!
-    return !canApplyToCardFull(nc, d, 0, 100)
+    return canApplyToCardFull(nc, d, 0, 2)
   })())
 
   assert(`[${S}] canApply: 非符灵力不足拒绝效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return !canApplyToCardFull(nc, eff, 0, 2)
+    return !canApplyToCardFull(nc, eff, 0, 1)
   })())
 
   assert(`[${S}] canApply: 非符灵力足够接受效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return canApplyToCardFull(nc, eff, 0, 3)
+    return canApplyToCardFull(nc, eff, 0, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受额外槽位`, (() => {
     const nc = createNonCard()
     const slot = SLOT_POOL.find(s => s.id === 'slot_onCardBreak')!
-    return canApplyToCardFull(nc, slot, 0, 3)
+    return canApplyToCardFull(nc, slot, 0, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受骰面升级`, (() => {
     const nc = createNonCard()
     const d = DICE_POOL.find(d => d.id === 'dice_atk1')!
-    return canApplyToCardFull(nc, d, 0, 3)
+    return canApplyToCardFull(nc, d, 0, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受HP升级`, (() => {
     const nc = createNonCard()
     const s = STAT_POOL.find(s => s.id === 'stat_hp2')!
-    return canApplyToCardFull(nc, s, 0, 3)
+    return canApplyToCardFull(nc, s, 0, 2)
   })())
 
   assert(`[${S}] canApply: 骰下限+1对固定骰不可装配`, (() => {
@@ -2729,7 +2728,7 @@ function testExpeditionFlowUsability() {
   assert(`[${S}] canApply: 非符有亡语槽接受亡语效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return canApplyToCardFull(nc, eff, 0, 3)
+    return canApplyToCardFull(nc, eff, 0, 2)
   })())
 
   assert(`[${S}] canApply: 非符无被动槽拒绝被动效果`, (() => {
@@ -3262,7 +3261,6 @@ function isDiceCountUpgrade(r: Reward): boolean { return 'apply' in r && !('slot
 
 function canApplyToCard(card: ExpeditionCard, r: Reward): boolean {
   if (card.isNonCard) {
-    if (isDiceCountUpgrade(r)) return false
     if (isSlotReward(r)) return true
     if ('apply' in r && !('slot' in r)) return true
     if ('slot' in r && 'apply' in r) return card.slotCapacity[r.slot] > 0
@@ -3282,7 +3280,7 @@ function autoApplyReward(state: ExpeditionState, rewards: Reward[]) {
   const cards = state.cards.filter(c => canApplyToCard(c, reward))
   if (cards.length === 0) return
   const card = cards[Math.floor(rng() * cards.length)]
-  if (card.isNonCard && state.spirit >= 3) state.spirit -= 3
+  if (card.isNonCard && state.spirit >= 2) state.spirit -= 2
   applyRewardToCard(card, reward)
 }
 
@@ -3291,9 +3289,9 @@ function autoShopBuy(state: ExpeditionState) {
   const affordable = items.filter(i => i.price <= state.spirit && i.id !== 'shop_refresh')
   if (affordable.length === 0) return
   const item = affordable[Math.floor(rng() * affordable.length)]
-  const card = state.cards.filter(c => !c.isNonCard || state.spirit >= item.price + 3)[0]
+  const card = state.cards.filter(c => !c.isNonCard || state.spirit >= item.price + 2)[0]
   if (!card) return
-  if (card.isNonCard) state.spirit -= 3
+  if (card.isNonCard) state.spirit -= 2
   state.spirit -= item.price
   applyRewardToCard(card, item.reward)
 }
@@ -3363,7 +3361,7 @@ function runSingleExpedition() {
         if (enc.fixedDrop.type === 'dice') {
           const d = DICE_POOL[Math.floor(rng() * DICE_POOL.length)]
           const tc = state.cards.filter(c => canApplyToCard(c, d))
-          if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 3) state.spirit -= 3; d.apply(c) }
+          if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 2) state.spirit -= 2; d.apply(c) }
         } else {
           state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, rng)))
         }
@@ -3491,7 +3489,7 @@ function runSingleExExpedition() {
           if (enc.fixedDrop.type === 'dice') {
             const d = DICE_POOL[Math.floor(rng() * DICE_POOL.length)]
             const tc = state.cards.filter(c => canApplyToCard(c, d))
-            if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 3) state.spirit -= 3; d.apply(c) }
+            if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 2) state.spirit -= 2; d.apply(c) }
           } else {
             state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, rng)))
           }
