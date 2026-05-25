@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:prod": "vite build --mode production",
     "preview": "vite preview",
-    "type-check": "vue-tsc"
+    "type-check": "vue-tsc",
+    "test": "tsx src/spellcard/run-test.ts"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",

@@ -1,5 +1,5 @@
 import type { Battler } from './engine'
-import { rollDice, SeededRandom } from './engine'
+import { formatDice, parseDice, rollDice, SeededRandom } from './engine'
 import type { DiceUpgrade, EffectModule, ExtraSlotReward, Reward, ShopItem, StatUpgrade } from './expedition'
 
 const EFFECT_POOL: EffectModule[] = [
@@ -128,6 +128,19 @@ const EFFECT_POOL: EffectModule[] = [
     apply(user: Battler, _enemy: Battler) { user.appendEffect('Shield', 4); return '' },
   },
   {
+    id: 'set_laststand', displayName: '宣言·决意', slot: 'onCardSet', rarity: 'epic',
+    description: '宣言时若HP≤50%，获得[击破保护1]+[强化2]',
+    apply(user: Battler, _enemy: Battler) {
+      const maxHp = user.nowCard?.maxCardHp ?? user.nowCard?.cardHp ?? 1
+      if (user.nowHp * 2 <= maxHp) {
+        user.appendEffect('Unbreakable', 1)
+        user.appendEffect('Strength', 2)
+        return `[${user.name}]决意触发！获得击破保护与强化！\n`
+      }
+      return ''
+    },
+  },
+  {
     id: 'break_damage3', displayName: '亡语·造成3伤害', slot: 'onCardBreak', rarity: 'epic',
     description: '被击破时对敌方造成3点直接伤害',
     apply(user: Battler, enemy: Battler) {
@@ -197,12 +210,16 @@ const EFFECT_POOL: EffectModule[] = [
     apply(_user: Battler, enemy: Battler) { enemy.appendBorder('WeakenBorder', 3, 1); return '' },
   },
   {
-    id: 'turn_str1', displayName: '被动·强化', slot: 'onPassive', rarity: 'common',
-    description: '每回合获得[强化1]',
-    apply(user: Battler, _enemy: Battler) { user.removeEffect('Strength', 1); user.appendEffect('Strength', 1); return '' },
+    id: 'break_resurrect', displayName: '亡语·苏生', slot: 'onCardBreak', rarity: 'epic',
+    preSwap: true,
+    description: '被击破时下一张符卡回复2HP（可在0血基础上回复）',
+    apply(user: Battler, _enemy: Battler) {
+      user.pendingNextCardHeal += 2
+      return `[${user.name}]苏生！下一张符卡将回复2HP！\n`
+    },
   },
   {
-    id: 'turn_damage1', displayName: '被动·伤害', slot: 'onPassive', rarity: 'common',
+    id: 'turn_damage1', displayName: '被动·伤害', slot: 'onPassive', rarity: 'rare',
     description: '每回合对敌方造成1点直接伤害',
     apply(user: Battler, enemy: Battler) {
       const info = enemy.effectHurt(1)
@@ -218,19 +235,14 @@ const EFFECT_POOL: EffectModule[] = [
     },
   },
   {
-    id: 'turn_spirit1', displayName: '被动·灵力+1', slot: 'onPassive', rarity: 'common',
+    id: 'turn_spirit1', displayName: '被动·灵力+1', slot: 'onPassive', rarity: 'rare',
     description: '每回合获得1灵力',
     apply(user: Battler, _enemy: Battler) { user.spiritGained += 1; return `[${user.name}]获得1灵力！\n` },
   },
   {
     id: 'turn_desperate_dod1', displayName: '被动·绝境', slot: 'onPassive', rarity: 'common',
-    description: 'HP≤3时闪避+1',
+    description: 'HP≤50%时回避+1',
     apply(user: Battler, _enemy: Battler) { user.removeEffect('DesperateDod', 1); user.appendEffect('DesperateDod', 1); return '' },
-  },
-  {
-    id: 'turn_stable1', displayName: '被动·稳固', slot: 'onPassive', rarity: 'common',
-    description: '每回合获得[稳固1]',
-    apply(user: Battler, _enemy: Battler) { user.removeEffect('Stable', 1); user.appendEffect('Stable', 1); return '' },
   },
   {
     id: 'turn_str1_weak1', displayName: '被动·破釜', slot: 'onPassive', rarity: 'rare',
@@ -246,7 +258,7 @@ const EFFECT_POOL: EffectModule[] = [
   },
   {
     id: 'turn_desperate_atk2', displayName: '被动·背水', slot: 'onPassive', rarity: 'rare',
-    description: 'HP≤3时攻击力+2',
+    description: 'HP≤50%时攻击力+2',
     apply(user: Battler, _enemy: Battler) { user.removeEffect('DesperateAtk', 2); user.appendEffect('DesperateAtk', 2); return '' },
   },
   {
@@ -263,6 +275,16 @@ const EFFECT_POOL: EffectModule[] = [
     id: 'ek_kill_str2', displayName: '被动·击杀强化', slot: 'onPassive', rarity: 'rare', trigger: 'enemyCardBreak',
     description: '击破对方符卡时获得[强化2]',
     apply(user: Battler, _enemy: Battler) { user.appendEffect('Strength', 2); return `[${user.name}]击杀强化，攻击力+2！\n` },
+  },
+  {
+    id: 'turn_precision1', displayName: '被动·精准', slot: 'onPassive', rarity: 'rare',
+    description: '每回合获得[精准1]',
+    apply(user: Battler, _enemy: Battler) { user.removeEffect('Precision', 1); user.appendEffect('Precision', 1); return '' },
+  },
+  {
+    id: 'set_precision1', displayName: '宣言·精准', slot: 'onCardSet', rarity: 'common',
+    description: '宣言时获得[精准1]',
+    apply(user: Battler, _enemy: Battler) { user.appendEffect('Precision', 1); return `[${user.name}]获得精准！\n` },
   },
 ]
 
@@ -331,36 +353,6 @@ const STAT_POOL: StatUpgrade[] = [
     apply(card) { card.maxCardHp += 3; card.cardHp += 3; card.currentHp += 3 },
   },
 ]
-
-export function parseDice(diceStr: string): { count: number; faces: number; min: number; bonus: number } {
-  const minMatch = diceStr.match(/^(\d+)d\((\d+)~(\d+)\)([+-]\d+)?$/)
-  if (minMatch) {
-    return { count: parseInt(minMatch[1]), min: parseInt(minMatch[2]), faces: parseInt(minMatch[3]), bonus: minMatch[4] ? parseInt(minMatch[4]) : 0 }
-  }
-  const match = diceStr.match(/^(\d+)d(\d+)([+-]\d+)?$/)
-  if (!match) return { count: 1, faces: 1, min: 1, bonus: 0 }
-  return { count: parseInt(match[1]), min: 1, faces: parseInt(match[2]), bonus: match[3] ? parseInt(match[3]) : 0 }
-}
-
-export function formatDice(d: { count: number; faces: number; min?: number; bonus?: number }): string {
-  const min = d.min ?? 1
-  const bonus = d.bonus ?? 0
-  if (min > 1) {
-    const base = `${d.count}d(${min}~${d.faces})`
-    if (bonus > 0) return `${base}+${bonus}`
-    if (bonus < 0) return `${base}${bonus}`
-    return base
-  }
-  const base = `${d.count}d${d.faces}`
-  if (bonus > 0) return `${base}+${bonus}`
-  if (bonus < 0) return `${base}${bonus}`
-  return base
-}
-
-export function isDiceFixed(diceStr: string): boolean {
-  const d = parseDice(diceStr)
-  return d.min >= d.faces
-}
 
 function upgradeDice(diceStr: string): string {
   const d = parseDice(diceStr)
@@ -491,29 +483,29 @@ export function generateShopItems(rng: () => number): ShopItem[] {
 
 const EFFECT_DESCRIPTIONS: Record<string, string> = {
   '追击': '对方受伤时额外+X伤害',
-  '追踪': '对方闪避成功时仍受X点伤害',
+  '追踪': '对方回避成功时仍受X点伤害',
   '强化': '攻击力+X',
   '弱化': '攻击力-X',
   '稳固': '防御力+X',
   '脆弱': '防御力-X',
-  '灵动': '闪避+X',
-  '迟缓': '闪避-X',
+  '灵动': '回避+X',
+  '迟缓': '回避-X',
   '缓冲': '受到的伤害-X',
   '护盾': '抵消X点伤害',
   '击破保护': '免疫一次致命伤害',
-  '冻结': '无法攻击/防御/闪避',
+  '冻结': '无法攻击/防御/回避',
   '防御不可': '受伤=攻击力，无减伤',
-  '回避不可': '闪避率归零',
+  '回避不可': '回避率归零',
   '伤害结界': '每回合对对方造成X点伤害',
   '强化结界': '攻击力+X',
-  '弱化结界': '攻击力-X',
+  '弱化结界': '对方攻击力-X',
   '稳固结界': '防御力+X',
   '脆弱结界': '对方防御力-X',
-  '灵动结界': '闪避+X',
-  '迟缓结界': '闪避-X',
+  '灵动结界': '回避+X',
+  '迟缓结界': '回避-X',
   '连击': '对方符卡已受伤时攻击力+X',
-  '背水': 'HP≤3时攻击力+X',
-  '绝境': 'HP≤3时闪避+X',
+  '背水': 'HP≤50%时攻击力+X',
+  '绝境': 'HP≤50%时回避+X',
   '荆棘': '受到战斗伤害时反弹X点伤害',
   '灵力获取': '每回合获得X灵力',
   '吸血': '造成战斗伤害时，回复最多X点HP',
@@ -521,6 +513,8 @@ const EFFECT_DESCRIPTIONS: Record<string, string> = {
   '破甲': 'X回合内对方无法防御',
   '贯穿': 'X回合内对方无法防御',
   '时停': '对方无法行动X回合',
+  '苏生': '被击破时下一张符卡回复XHP',
+  '精准': '攻击骰最小值+X',
 }
 
 const SORTED_EFFECT_BASES = Object.keys(EFFECT_DESCRIPTIONS).sort((a, b) => b.length - a.length)

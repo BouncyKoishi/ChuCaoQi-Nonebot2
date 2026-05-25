@@ -1,5 +1,5 @@
 import type { Battler, EffectData } from './engine';
-import { Border, Effect, registerEffects } from './engine';
+import { Border, Effect, parseDice, registerEffects } from './engine';
 
 class StrengthEffect extends Effect {
   id = 'Strength'; displayName = '强化'; effectType = 'BUFF' as const
@@ -62,7 +62,7 @@ class BufferEffect extends Effect {
 
 class ChaseEffect extends Effect {
   id = 'Chase'; displayName = '追击'; effectType = 'BUFF' as const
-  onAttackDamageCalc(value: number): number {
+  onEnemyHurtValueCalc(value: number): number {
     if (value > 0) {
       this.infoMsg = `[${this.enemyName}]被敌方符卡追击，额外受到${this.amount}点伤害！\n`
       return value + this.amount
@@ -73,9 +73,9 @@ class ChaseEffect extends Effect {
 
 class TraceEffect extends Effect {
   id = 'Trace'; displayName = '追踪'; effectType = 'BUFF' as const
-  onAttackDamageCalc(value: number): number {
+  onEnemyHurtValueCalc(value: number): number {
     if (value === 0) {
-      this.infoMsg = `[${this.enemyName}]闪避成功，但被敌方符卡追踪，受到${this.amount}点伤害！\n`
+      this.infoMsg = `[${this.enemyName}]回避成功，但被敌方符卡追踪，受到${this.amount}点伤害！\n`
       return value + this.amount
     }
     return value
@@ -108,9 +108,9 @@ class UnbreakableEffect extends Effect {
 }
 
 class FreezeEffect extends Effect {
-  id = 'Freeze'; displayName = '冻结'; effectType = 'DEBUFF' as const
+  id = 'Freeze'; displayName = '冻结'; effectType = 'DEBUFF' as const; permanent = true
   onTurnStart(user: Battler, _enemy: Battler): void {
-    this.infoMsg = `${user.name}正被冰冻中，本回合无法进行攻击/防御/回避，所有非结界效果不触发！\n`
+    this.infoMsg = `[${user.name}]正被冰冻中，本回合无法进行攻击/防御/回避，所有非结界效果不触发！\n`
     user.states.push('Frozen')
   }
   onTurnEnd(_user: Battler, _enemy: Battler): void {
@@ -130,7 +130,7 @@ class FreezeEffect extends Effect {
 }
 
 class CantDefenceEffect extends Effect {
-  id = 'CantDefence'; displayName = '防御不可'; effectType = 'DEBUFF' as const
+  id = 'CantDefence'; displayName = '防御不可'; effectType = 'DEBUFF' as const; permanent = true
   onDefenceSuccessJudge(_success: boolean): boolean {
     this.infoMsg = `[${this.userName}]受符卡效果影响，无法作出防御\n`
     return false
@@ -141,7 +141,7 @@ class CantDefenceEffect extends Effect {
 }
 
 class CantDodgeEffect extends Effect {
-  id = 'CantDodge'; displayName = '回避不可'; effectType = 'DEBUFF' as const
+  id = 'CantDodge'; displayName = '回避不可'; effectType = 'DEBUFF' as const; permanent = true
   onDodgeSuccessJudge(_success: boolean): boolean {
     this.infoMsg = `[${this.userName}]受符卡效果影响，无法进行回避\n`
     return false
@@ -228,8 +228,8 @@ class ComboEffect extends Effect {
 class DesperateAtkEffect extends Effect {
   id = 'DesperateAtk'; displayName = '背水'; effectType = 'BUFF' as const
   onAttackCalc(value: number): number {
-    if (this.userHp <= 3) {
-      this.infoMsg = `[${this.userName}]背水触发，HP≤3，攻击力+${this.amount}！\n`
+    if (this.userHp * 2 <= this.userMaxHp) {
+      this.infoMsg = `[${this.userName}]背水触发，HP≤50%，攻击力+${this.amount}！\n`
       return value + this.amount
     }
     return value
@@ -239,8 +239,8 @@ class DesperateAtkEffect extends Effect {
 class DesperateDodEffect extends Effect {
   id = 'DesperateDod'; displayName = '绝境'; effectType = 'BUFF' as const
   onDodgeCalc(value: number): number {
-    if (this.userHp <= 3) {
-      this.infoMsg = `[${this.userName}]绝境触发，HP≤3，闪避+${this.amount}！\n`
+    if (this.userHp * 2 <= this.userMaxHp) {
+      this.infoMsg = `[${this.userName}]绝境触发，HP≤50%，回避+${this.amount}！\n`
       return value + this.amount
     }
     return value
@@ -261,6 +261,31 @@ class ThornsEffect extends Effect {
 
 class DrainEffect extends Effect {
   id = 'Drain'; displayName = '吸血'; effectType = 'BUFF' as const
+  onDealBattleDamage(value: number): number {
+    if (value > 0 && this.user) {
+      const maxHp = this.user.nowCard?.maxCardHp ?? this.user.nowCard?.cardHp ?? 1
+      const healAmt = Math.min(value, this.amount, maxHp - this.user.nowHp)
+      if (healAmt > 0) {
+        this.user.nowHp += healAmt
+        this.infoMsg = `[${this.userName}]吸血恢复了${healAmt}点HP (HP:${this.user.nowHp})`
+      }
+    }
+    return value
+  }
+}
+
+class PrecisionEffect extends Effect {
+  id = 'Precision'; displayName = '精准'; effectType = 'BUFF' as const
+  onAttackDiceRoll(value: number): number {
+    const dice = parseDice(this.user!.nowCard!.atkPoint)
+    const newMin = Math.min(dice.min + this.amount, dice.faces)
+    const floorValue = newMin * dice.count + dice.bonus
+    if (value < floorValue) {
+      this.infoMsg = `[${this.userName}]精准触发，攻击力不低于${floorValue}！\n`
+      return floorValue
+    }
+    return value
+  }
 }
 
 const ALL_EFFECTS: Record<string, new (...args: any[]) => Effect> = {
@@ -290,6 +315,7 @@ const ALL_EFFECTS: Record<string, new (...args: any[]) => Effect> = {
   DesperateDod: DesperateDodEffect,
   Thorns: ThornsEffect,
   Drain: DrainEffect,
+  Precision: PrecisionEffect,
 }
 
 registerEffects(ALL_EFFECTS)
@@ -303,7 +329,7 @@ export const EFFECT_DESC: Record<string, string> = {
   Sluggish: '回避-{n}',
   Buffer: '受到伤害-{n}',
   Chase: '对方受伤+{n}',
-  Trace: '对方闪避成功时仍受{n}点伤害',
+  Trace: '对方回避成功时仍受{n}点伤害',
   Shield: '护盾：吸收{n}点伤害',
   Unbreakable: '击破保护：免疫致命伤害（剩余{n}次）',
   Freeze: '冻结：无法攻击/防御/回避，非结界效果不触发（剩余{n}回合）',
@@ -316,6 +342,7 @@ export const EFFECT_DESC: Record<string, string> = {
   AgileBorder: '结界：回避+{s}（剩余{t}回合）',
   SluggishBorder: '结界：回避-{s}（剩余{t}回合）',
   DamageBorder: '结界：每回合对对方造成{s}点伤害（剩余{t}回合）',
+  Precision: '精准：攻击骰最小值+{n}',
 }
 
 export function getEffectTooltip(eff: EffectData): string {

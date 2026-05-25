@@ -1,5 +1,5 @@
 import type { Battler, CardData } from './engine'
-import { isDiceFixed } from './rewards'
+import { isDiceFixed } from './engine'
 
 export type EffectSlot = 'onCardSet' | 'onCardBreak' | 'onPassive'
 export type PassiveTrigger = 'turnStart' | 'enemyCardBreak'
@@ -13,6 +13,7 @@ export interface EffectModule {
   description: string
   apply: (user: Battler, enemy: Battler) => string
   trigger?: PassiveTrigger
+  preSwap?: boolean
 }
 
 export interface DiceUpgrade {
@@ -179,6 +180,8 @@ function mergeEffects(effects: EffectModule[]): ((user: Battler, enemy: Battler)
 export function toCardData(ec: ExpeditionCard): CardData {
   const turnStartEffects = ec.effects.onPassive.filter(e => !e.trigger || e.trigger === 'turnStart')
   const enemyCardBreakEffects = ec.effects.onPassive.filter(e => e.trigger === 'enemyCardBreak')
+  const preSwapBreakEffects = ec.effects.onCardBreak.filter(e => e.preSwap)
+  const normalBreakEffects = ec.effects.onCardBreak.filter(e => !e.preSwap)
 
   return {
     id: -1,
@@ -191,7 +194,8 @@ export function toCardData(ec: ExpeditionCard): CardData {
     dodPoint: ec.dodPoint,
     description: '',
     onCardSet: mergeEffects(ec.effects.onCardSet),
-    onCardBreak: mergeEffects(ec.effects.onCardBreak),
+    onCardBreak: mergeEffects(normalBreakEffects),
+    onCardBreakPreSwap: mergeEffects(preSwapBreakEffects),
     onTurnStart: mergeEffects(turnStartEffects),
     onEnemyCardBreak: mergeEffects(enemyCardBreakEffects),
   }
@@ -323,7 +327,7 @@ export function initCardOrder(cards: ExpeditionCard[]): number[] {
 }
 
 export function getOrderedCards(cards: ExpeditionCard[], cardOrder: number[]): ExpeditionCard[] {
-  return cardOrder.filter(i => i < cards.length && cards[i].currentHp > 0).map(i => cards[i])
+  return cardOrder.filter(i => i < cards.length).map(i => cards[i])
 }
 
 export function healRestingCards(cards: ExpeditionCard[], foughtCardIndices: number[]) {

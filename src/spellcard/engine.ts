@@ -21,6 +21,7 @@ export interface CardData {
   description: string
   onCardSet?: (user: Battler, enemy: Battler) => string
   onCardBreak?: (user: Battler, enemy: Battler) => string
+  onCardBreakPreSwap?: (user: Battler, enemy: Battler) => string
   onTurnStart?: (user: Battler, enemy: Battler) => string
   onTurnEnd?: (user: Battler, enemy: Battler) => string
   onEnemyCardBreak?: (user: Battler, enemy: Battler) => string
@@ -95,6 +96,36 @@ export class SeededRandom {
   }
 }
 
+export function parseDice(diceStr: string): { count: number; faces: number; min: number; bonus: number } {
+  const minMatch = diceStr.match(/^(\d+)d\((\d+)~(\d+)\)([+-]\d+)?$/)
+  if (minMatch) {
+    return { count: parseInt(minMatch[1]), min: parseInt(minMatch[2]), faces: parseInt(minMatch[3]), bonus: minMatch[4] ? parseInt(minMatch[4]) : 0 }
+  }
+  const match = diceStr.match(/^(\d+)d(\d+)([+-]\d+)?$/)
+  if (!match) return { count: 1, faces: 1, min: 1, bonus: 0 }
+  return { count: parseInt(match[1]), min: 1, faces: parseInt(match[2]), bonus: match[3] ? parseInt(match[3]) : 0 }
+}
+
+export function formatDice(d: { count: number; faces: number; min?: number; bonus?: number }): string {
+  const min = d.min ?? 1
+  const bonus = d.bonus ?? 0
+  if (min > 1) {
+    const base = `${d.count}d(${min}~${d.faces})`
+    if (bonus > 0) return `${base}+${bonus}`
+    if (bonus < 0) return `${base}${bonus}`
+    return base
+  }
+  const base = `${d.count}d${d.faces}`
+  if (bonus > 0) return `${base}+${bonus}`
+  if (bonus < 0) return `${base}${bonus}`
+  return base
+}
+
+export function isDiceFixed(diceStr: string): boolean {
+  const d = parseDice(diceStr)
+  return d.min >= d.faces
+}
+
 export function rollDice(diceStr: string, rng: SeededRandom): number {
   if (!diceStr) return 0
   let resultStr = diceStr
@@ -128,13 +159,12 @@ export function rollDice(diceStr: string, rng: SeededRandom): number {
   }
 }
 
-export const PERMANENT_EFFECT_IDS = new Set(['CantDodge', 'CantDefence', 'Freeze'])
-
 export class Effect {
   id: string = 'DefaultEffect'
   displayName: string = ''
   effectType: 'BUFF' | 'DEBUFF' = 'BUFF'
   amount: number = 1
+  permanent: boolean = false
   infoMsg: string = ''
   user: Battler | null = null
   enemy: Battler | null = null
@@ -151,11 +181,12 @@ export class Effect {
   get userName(): string { return this.user?.name ?? '' }
   get enemyName(): string { return this.enemy?.name ?? '' }
   get userHp(): number { return this.user?.nowHp ?? 0 }
+  get userMaxHp(): number { return this.user?.nowCard?.maxCardHp ?? this.user?.nowCard?.cardHp ?? 1 }
 
   stack(amount: number) {
     this.amount += amount
     if (this.amount < -1) this.amount = -1
-    if (this.amount === -1 && !PERMANENT_EFFECT_IDS.has(this.id)) this.amount = 0
+    if (this.amount === -1 && !this.permanent) this.amount = 0
   }
   reduce(amount: number) {
     if (this.amount === -1) return
@@ -168,17 +199,23 @@ export class Effect {
   onAttackCalc(value: number): number { return value }
   onDefenceCalc(value: number): number { return value }
   onDodgeCalc(value: number): number { return value }
+  onAttackDiceRoll(value: number): number { return value }
+  onDefenceDiceRoll(value: number): number { return value }
+  onDodgeDiceRoll(value: number): number { return value }
   onHurtValueCalc(value: number): number { return value }
+  onEnemyHurtValueCalc(value: number): number { return value }
   onAttackDamageCalc(value: number): number { return value }
   onDefenceSuccessJudge(success: boolean): boolean { return success }
+  onEnemyDefenceSuccessJudge(success: boolean): boolean { return success }
   onDodgeSuccessJudge(success: boolean): boolean { return success }
+  onEnemyDodgeSuccessJudge(success: boolean): boolean { return success }
   beforeHurt(value: number): number { return value }
   onHurt(value: number): number { return value }
   onBattleHurt(value: number): number { return value }
+  onDealBattleDamage(value: number): number { return value }
   onEffectHurt(value: number): number { return value }
   onCardSet(_user: Battler, _enemy: Battler): void { }
   onCardBreak(_user: Battler, _enemy: Battler): void { }
-  onRoundEnd(_user: Battler, _enemy: Battler): void { }
 
   toData(): EffectData {
     return {
@@ -241,6 +278,7 @@ export class Battler {
   spiritGained: number = 0
   timeCardRemaining?: number
   justApplied: boolean = false
+  pendingNextCardHeal: number = 0
   // [亡语鞭尸修复] 保存被击破符卡的引用。
   // 当双方符卡同时被击破时，需要在触发亡语前先切换到新符卡，
   // 否则亡语伤害会打到对方已被击破的旧符卡上（鞭尸）。
@@ -298,7 +336,7 @@ export class Battler {
         break
       }
     }
-    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && PERMANENT_EFFECT_IDS.has(e.id)))
+    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && e.permanent))
   }
 
   runEffects(funcName: string, ...args: any[]): any {
@@ -319,7 +357,7 @@ export class Battler {
         effect.infoMsg = ''
       }
     }
-    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && PERMANENT_EFFECT_IDS.has(e.id)))
+    this.effects = this.effects.filter(e => e.amount > 0 || (e.amount === -1 && e.permanent))
     const msg = msgs.join('\n')
     if (args.length === 0) return msg
     if (args.length === 1) return [args[0], msg]
@@ -332,14 +370,20 @@ export class Battler {
       return [0, `${this.name}被冻结，无法行动！\n`]
     }
     this.attack = rollDice(this.nowCard!.atkPoint, rng)
+    const [atkDiceVal, atkDiceMsg] = this.runEffects('onAttackDiceRoll', this.attack) as [number, string]
+    this.attack = atkDiceVal
     const [atkVal, atkMsg] = this.runEffects('onAttackCalc', this.attack) as [number, string]
     this.attack = atkVal
 
     this.defence = rollDice(this.nowCard!.defPoint, rng)
+    const [defDiceVal, defDiceMsg] = this.runEffects('onDefenceDiceRoll', this.defence) as [number, string]
+    this.defence = defDiceVal
     const [defVal, defMsg] = this.runEffects('onDefenceCalc', this.defence) as [number, string]
     this.defence = defVal
 
     this.dodge = rollDice(this.nowCard!.dodPoint, rng)
+    const [dodDiceVal, dodDiceMsg] = this.runEffects('onDodgeDiceRoll', this.dodge) as [number, string]
+    this.dodge = dodDiceVal
     const [dodVal, dodMsg] = this.runEffects('onDodgeCalc', this.dodge) as [number, string]
     this.dodge = dodVal
 
@@ -347,7 +391,7 @@ export class Battler {
     this.defence = Math.max(this.defence, 0)
     this.dodge = Math.max(this.dodge, 0)
 
-    const info = atkMsg + defMsg + dodMsg + `${this.name} Hp:${this.nowHp} Atk:${this.attack} Def:${this.defence} Dod:${this.dodge}\n`
+    const info = atkDiceMsg + atkMsg + defDiceMsg + defMsg + dodDiceMsg + dodMsg + `${this.name} Hp:${this.nowHp} Atk:${this.attack} Def:${this.defence} Dod:${this.dodge}\n`
     return [this.attack, info]
   }
 
@@ -361,6 +405,8 @@ export class Battler {
     let dodSuccess = rng.next() < dodgeProb
     const [dodSuccess1, dodMsg] = this.runEffects('onDodgeSuccessJudge', dodSuccess) as [boolean, string]
     dodSuccess = dodSuccess1
+    const [dodSuccess2, enemyDodMsg] = this.enemy!.runEffects('onEnemyDodgeSuccessJudge', dodSuccess) as [boolean, string]
+    dodSuccess = dodSuccess2
 
     let defSuccess = true
     let defMsg = ''
@@ -368,6 +414,9 @@ export class Battler {
       const [defSuccess1, defMsg1] = this.runEffects('onDefenceSuccessJudge', defSuccess) as [boolean, string]
       defSuccess = defSuccess1
       defMsg = defMsg1
+      const [defSuccess2, enemyDefMsg] = this.enemy!.runEffects('onEnemyDefenceSuccessJudge', defSuccess) as [boolean, string]
+      defSuccess = defSuccess2
+      defMsg += enemyDefMsg
     }
 
     this.dodSuccess = dodSuccess
@@ -380,11 +429,11 @@ export class Battler {
 
     const [hurtVal1, hurtMsg] = this.runEffects('onHurtValueCalc', hurt) as [number, string]
     hurt = hurtVal1
-    const [hurtVal2, enemyHurtMsg] = this.enemy!.runEffects('onAttackDamageCalc', hurt) as [number, string]
+    const [hurtVal2, enemyHurtMsg] = this.enemy!.runEffects('onEnemyHurtValueCalc', hurt) as [number, string]
     hurt = Math.max(hurtVal2, 0)
 
-    const dodgeInfo = `${this.name} ${dodSuccess ? '闪避成功！' : '闪避失败'}\n`
-    const calcInfo = dodgeInfo + dodMsg + defMsg + hurtMsg + enemyHurtMsg
+    const dodgeInfo = `${this.name} ${dodSuccess ? '回避成功！' : '回避失败'}\n`
+    const calcInfo = dodgeInfo + dodMsg + enemyDodMsg + defMsg + hurtMsg + enemyHurtMsg
     return [hurt, calcInfo]
   }
 
@@ -413,23 +462,31 @@ export class Battler {
   shouldEnd(): boolean { return this.nowHp <= 0 && this.usedCardIndices.length >= this.chosenCards.length }
 
   setNewMainCard(cardIndex?: number): boolean {
-    if (cardIndex !== undefined) {
-      if (cardIndex < 0 || cardIndex >= this.chosenCards.length) return false
-      if (this.usedCardIndices.includes(cardIndex)) return false
-    } else {
-      const available = Array.from({ length: this.chosenCards.length }, (_, i) => i)
-        .filter(i => !this.usedCardIndices.includes(i))
-      if (available.length === 0) return false
-      cardIndex = available[0]
+    while (true) {
+      if (cardIndex !== undefined) {
+        if (cardIndex < 0 || cardIndex >= this.chosenCards.length) return false
+        if (this.usedCardIndices.includes(cardIndex)) return false
+      } else {
+        const available = Array.from({ length: this.chosenCards.length }, (_, i) => i)
+          .filter(i => !this.usedCardIndices.includes(i))
+        if (available.length === 0) return false
+        cardIndex = available[0]
+      }
+      const card = this.chosenCards[cardIndex]
+      this.usedCardIndices.push(cardIndex)
+      if (card.cardHp <= 0 && this.pendingNextCardHeal <= 0) {
+        cardIndex = undefined
+        continue
+      }
+      this.nowCard = card
+      this.nowHp = Math.max(0, card.cardHp) + this.pendingNextCardHeal
+      this.pendingNextCardHeal = 0
+      this.justApplied = true
+      if (card.isTimeCard) {
+        this.timeCardRemaining = card.timeCardTurns
+      }
+      return true
     }
-    this.nowCard = this.chosenCards[cardIndex]
-    this.nowHp = this.nowCard.cardHp
-    this.usedCardIndices.push(cardIndex)
-    this.justApplied = true
-    if (this.nowCard.isTimeCard) {
-      this.timeCardRemaining = this.nowCard.timeCardTurns
-    }
-    return true
   }
 
   cleanTurnTemp() {
@@ -556,7 +613,8 @@ export class Battle {
 
   applyCard(battler: Battler, cardIndex: number) {
     battler.nowCard = battler.chosenCards[cardIndex]
-    battler.nowHp = battler.nowCard.cardHp
+    battler.nowHp = battler.nowCard.cardHp + battler.pendingNextCardHeal
+    battler.pendingNextCardHeal = 0
     battler.usedCardIndices.push(cardIndex)
     battler.justApplied = true
     if (battler.nowCard.isTimeCard) {
@@ -621,11 +679,11 @@ export class Battle {
       creatorDmg > 0 ? { effectTarget: 'creator', effectType: 'damage', effectAmount: creatorDmg, effectSource: this.joiner!.nowCard!.name } : undefined)
   }
 
-  // [亡语鞭尸修复] 击破处理流程（三步走）：
+  // [亡语鞭尸修复 + 苏生支持] 击破处理流程（四步走）：
   // 1. handleCardBreakLog：记录击破日志 + 保存旧卡引用(_brokenCardRef) + 清理效果
-  // 2. setNewMainCard：切换到新符卡（此时 nowCard 指向新卡，enemy.nowCard 也指向新卡）
-  // 3. handleCardBreakEffects：触发亡语（从 _brokenCardRef 取旧卡回调，伤害打到对方新卡上）
-  // 关键：步骤2必须在步骤3之前，否则亡语伤害会打到对方已被击破的旧符卡（鞭尸）
+  // 2. onCardBreakPreSwap：触发交换前亡语（如苏生，设置pendingNextCardHeal）
+  // 3. setNewMainCard：切换到新符卡（检查pendingNextCardHeal，0血卡有治愈量则复活入场）
+  // 4. handleCardBreakEffects：触发交换后亡语（伤害亡语打到对方新符卡，鞭尸修复保持）
   resolveTurnsUntilCardBreak(autoSwap = true) {
     while (!this.finished) {
       if (this.creator!.shouldChangeCard() || this.joiner!.shouldChangeCard()) break
@@ -634,10 +692,17 @@ export class Battle {
     const brokenSet = new Set<Battler>()
     if (this.creator!.shouldChangeCard()) { this.handleCardBreakLog(this.creator!); brokenSet.add(this.creator!) }
     if (this.joiner!.shouldChangeCard()) { this.handleCardBreakLog(this.joiner!); brokenSet.add(this.joiner!) }
+    for (const b of brokenSet) {
+      const brokenCard = b._brokenCardRef
+      if (brokenCard?.onCardBreakPreSwap) {
+        const msg = brokenCard.onCardBreakPreSwap(b, b.enemy!)
+        if (msg) this.log.add(this.gameRound, 'card_break', msg, this.creator!.nowHp, this.joiner!.nowHp)
+      }
+    }
     const swapped = new Set<Battler>()
     if (autoSwap) {
       for (const b of brokenSet) {
-        if (!b.shouldEnd()) { b.setNewMainCard(); swapped.add(b) }
+        if (!b.shouldEnd() && b.setNewMainCard()) swapped.add(b)
       }
     }
     for (const b of brokenSet) {
@@ -654,8 +719,12 @@ export class Battle {
       if (this.creator!.shouldChangeCard() && !brokenSet.has(this.creator!)) {
         this.handleCardBreakLog(this.creator!)
         brokenSet.add(this.creator!)
-        if (autoSwap && !this.creator!.shouldEnd()) {
-          this.creator!.setNewMainCard()
+        const brokenCard = this.creator!._brokenCardRef
+        if (brokenCard?.onCardBreakPreSwap) {
+          const msg = brokenCard.onCardBreakPreSwap(this.creator!, this.creator!.enemy!)
+          if (msg) this.log.add(this.gameRound, 'card_break', msg, this.creator!.nowHp, this.joiner!.nowHp)
+        }
+        if (autoSwap && !this.creator!.shouldEnd() && this.creator!.setNewMainCard()) {
           brokenSet.delete(this.creator!)
         }
         this.handleCardBreakEffects(this.creator!)
@@ -664,8 +733,12 @@ export class Battle {
       if (this.joiner!.shouldChangeCard() && !brokenSet.has(this.joiner!)) {
         this.handleCardBreakLog(this.joiner!)
         brokenSet.add(this.joiner!)
-        if (autoSwap && !this.joiner!.shouldEnd()) {
-          this.joiner!.setNewMainCard()
+        const brokenCard = this.joiner!._brokenCardRef
+        if (brokenCard?.onCardBreakPreSwap) {
+          const msg = brokenCard.onCardBreakPreSwap(this.joiner!, this.joiner!.enemy!)
+          if (msg) this.log.add(this.gameRound, 'card_break', msg, this.creator!.nowHp, this.joiner!.nowHp)
+        }
+        if (autoSwap && !this.joiner!.shouldEnd() && this.joiner!.setNewMainCard()) {
           brokenSet.delete(this.joiner!)
         }
         this.handleCardBreakEffects(this.joiner!)
@@ -734,42 +807,29 @@ export class Battle {
     const cMsg = cHurt > 0 ? this.creator!.battleHurt(cHurt) : ''
     const jMsg = jHurt > 0 ? this.joiner!.battleHurt(jHurt) : ''
 
-    // Drain（吸血）钩子
     const creatorRawDmg = prevCreatorHp - this.creator!.nowHp
     const joinerRawDmg = prevJoinerHp - this.joiner!.nowHp
 
     const creatorHpAfterDmg = this.creator!.nowHp
     const joinerHpAfterDmg = this.joiner!.nowHp
 
-    const drainParts: string[] = []
+    const dealDmgParts: string[] = []
     if (joinerRawDmg > 0) {
-      const drainEffect = this.creator!.effects.find(e => e.id === 'Drain')
-      if (drainEffect) {
-        const healAmt = Math.min(joinerRawDmg, drainEffect.amount, this.creator!.nowCard!.cardHp - this.creator!.nowHp)
-        if (healAmt > 0) {
-          this.creator!.nowHp += healAmt
-          drainParts.push(`[${this.creator!.name}]吸血恢复了${healAmt}点HP (HP:${this.creator!.nowHp})`)
-        }
-      }
+      const [, creatorDealMsg] = this.creator!.runEffects('onDealBattleDamage', joinerRawDmg) as [number, string]
+      if (creatorDealMsg) dealDmgParts.push(creatorDealMsg)
     }
     if (creatorRawDmg > 0) {
-      const drainEffect = this.joiner!.effects.find(e => e.id === 'Drain')
-      if (drainEffect) {
-        const healAmt = Math.min(creatorRawDmg, drainEffect.amount, this.joiner!.nowCard!.cardHp - this.joiner!.nowHp)
-        if (healAmt > 0) {
-          this.joiner!.nowHp += healAmt
-          drainParts.push(`[${this.joiner!.name}]吸血恢复了${healAmt}点HP (HP:${this.joiner!.nowHp})`)
-        }
-      }
+      const [, joinerDealMsg] = this.joiner!.runEffects('onDealBattleDamage', creatorRawDmg) as [number, string]
+      if (joinerDealMsg) dealDmgParts.push(joinerDealMsg)
     }
 
     const hurtParts: string[] = []
     if (creatorRawDmg > 0) hurtParts.push(`${this.creator!.name} 受到${creatorRawDmg}点伤害 (HP:${Math.max(0, creatorHpAfterDmg)})`)
     if (joinerRawDmg > 0) hurtParts.push(`${this.joiner!.name} 受到${joinerRawDmg}点伤害 (HP:${Math.max(0, joinerHpAfterDmg)})`)
     const hurtSummary = hurtParts.length > 0 ? hurtParts.join(' | ') + '\n' : ''
-    const drainSummary = drainParts.length > 0 ? drainParts.join(' | ') + '\n' : ''
+    const dealDmgSummary = dealDmgParts.length > 0 ? dealDmgParts.join(' | ') + '\n' : ''
 
-    this.log.add(this.gameRound, 'hurt', hurtSummary + drainSummary + cMsg + jMsg, this.creator!.nowHp, this.joiner!.nowHp, {
+    this.log.add(this.gameRound, 'hurt', hurtSummary + dealDmgSummary + cMsg + jMsg, this.creator!.nowHp, this.joiner!.nowHp, {
       creatorHurt: creatorRawDmg,
       joinerHurt: joinerRawDmg,
       creatorDodged: this.creator!.dodSuccess ?? false,
@@ -883,7 +943,11 @@ export class Battle {
   }
 
   runFullBattle(): Battle {
-    this.creator!.setNewMainCard()
+    if (!this.creator!.setNewMainCard()) {
+      this.finished = true
+      this.winnerId = this.joiner!.id
+      return this
+    }
     this.joiner!.setNewMainCard()
     this.onNewCardsSet()
 
