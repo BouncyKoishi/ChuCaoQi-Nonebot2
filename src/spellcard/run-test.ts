@@ -4,13 +4,18 @@ import { generateEncounter, generateExEncounter, generateNewCardDrop, getExStage
 import type { Battler, CardData, LogEntry } from './engine'
 import { Battle } from './engine'
 import {
-  type Encounter, type ExpeditionCard, type ExpeditionState, type Reward,
+  type Encounter, type ExpeditionCard, type ExpeditionState, type Reward, type ShopItem,
   addEffectToCard, addSlotCapacity,
+  applyRewardToCard,
   BASE_PANELS,
   canAddEffectToSlot,
-  createNonCard, createSpellCard, healAllForNewStage, healNonCard,
+  canApplyToCard,
+  createNonCard, createSpellCard, getOrderedCards,
+  healAllForNewStage, healNonCard,
+  healRestingCards, initCardOrder,
   initExpeditionState,
   INITIAL_CARD_EFFECTS,
+  isDiceCountUpgrade, isDiceMinUpgrade, isDiceUpgrade, isEffectModule, isSlotReward, isStatUpgrade,
   toCardData
 } from './expedition'
 import { DICE_POOL, EFFECT_POOL, formatDice, generateRewards, generateShopItems, isDiceFixed, parseDescription, parseDice, SLOT_POOL, STAT_POOL } from './rewards'
@@ -2307,6 +2312,7 @@ function testExpeditionFlowUsability() {
       cards: [], spirit: 0, currentStage: 1, currentBattle: 1,
       battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
       exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false,
+      cardOrder: [],
       ...overrides,
     }
   }
@@ -2317,17 +2323,17 @@ function testExpeditionFlowUsability() {
     const spellCard = createSpellCard(panel)
     const initEffects = INITIAL_CARD_EFFECTS[panel.name]
     if (initEffects) { for (const eff of initEffects) { addEffectToCard(spellCard, eff) } }
-    return createTestState({ cards: [nonCard, spellCard], spirit })
+    return createTestState({ cards: [nonCard, spellCard], cardOrder: initCardOrder([nonCard, spellCard]), spirit })
   }
 
   function runBattleForState(state: ExpeditionState, enc: Encounter) {
+    const orderedCards = getOrderedCards(state.cards, state.cardOrder)
     const activeIndices: number[] = []
     const myCardDatas: CardData[] = []
-    for (let i = 0; i < state.cards.length; i++) {
-      if (state.cards[i].currentHp > 0) {
-        activeIndices.push(i)
-        myCardDatas.push(toCardData(state.cards[i]))
-      }
+    for (const card of orderedCards) {
+      const idx = state.cards.indexOf(card)
+      activeIndices.push(idx)
+      myCardDatas.push(toCardData(card))
     }
     if (myCardDatas.length === 0) return { won: false, battle: null as any, activeIndices }
     const b = new Battle(1)
@@ -2349,32 +2355,6 @@ function testExpeditionFlowUsability() {
       card.currentHp = hpAfter
     }
     return { won: b.winnerId === 1, battle: b, activeIndices }
-  }
-
-  function isSlotRewardLocal(r: Reward): boolean { return 'slot' in r && !('apply' in r) }
-  function isDiceCountUpgradeLocal(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.endsWith('_count') }
-  function isDiceMinUpgradeLocal(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.endsWith('_min1') }
-  function isDiceUpgradeLocal(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.startsWith('dice_') }
-  function isStatUpgradeLocal(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.startsWith('stat_') }
-  function isRefreshItemLocal(r: Reward): boolean { return r.id === '_refresh' }
-  function isEffectModuleLocal(r: Reward): boolean { return 'slot' in r && 'apply' in r }
-
-  function canApplyToCardFull(card: ExpeditionCard, r: Reward, extraCost = 0, spirit = 0): boolean {
-    if (isRefreshItemLocal(r)) return false
-    if (isDiceMinUpgradeLocal(r) && 'apply' in r) {
-      const du = r as any
-      const target = du.id.startsWith('dice_atk') ? card.atkPoint : du.id.startsWith('dice_def') ? card.defPoint : card.dodPoint
-      if (isDiceFixed(target)) return false
-    }
-    if (card.isNonCard) {
-      if (spirit < 2 + extraCost) return false
-      if (isSlotRewardLocal(r)) return true
-      if (isStatUpgradeLocal(r)) return true
-      if (isDiceUpgradeLocal(r)) return true
-      if (isEffectModuleLocal(r)) return card.slotCapacity[(r as any).slot] > 0
-      return false
-    }
-    return true
   }
 
   assert(`[${S}] 初始化: 4个基础面板可用`, (() => {
@@ -2659,7 +2639,7 @@ function testExpeditionFlowUsability() {
     const sc = createSpellCard(BASE_PANELS[0])
     const allTypes = [...EFFECT_POOL, ...DICE_POOL, ...STAT_POOL, ...SLOT_POOL]
     for (const r of allTypes) {
-      if (!canApplyToCardFull(sc, r, 0, 100)) return false
+      if (!canApplyToCard(sc, r, 100)) return false
     }
     return true
   })())
@@ -2667,74 +2647,74 @@ function testExpeditionFlowUsability() {
   assert(`[${S}] canApply: 非符可接受骰数升级`, (() => {
     const nc = createNonCard()
     const d = DICE_POOL.find(d => d.id === 'dice_atk_count')!
-    return canApplyToCardFull(nc, d, 0, 2)
+    return canApplyToCard(nc, d, 2)
   })())
 
   assert(`[${S}] canApply: 非符灵力不足拒绝效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return !canApplyToCardFull(nc, eff, 0, 1)
+    return !canApplyToCard(nc, eff, 1)
   })())
 
   assert(`[${S}] canApply: 非符灵力足够接受效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return canApplyToCardFull(nc, eff, 0, 2)
+    return canApplyToCard(nc, eff, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受额外槽位`, (() => {
     const nc = createNonCard()
     const slot = SLOT_POOL.find(s => s.id === 'slot_onCardBreak')!
-    return canApplyToCardFull(nc, slot, 0, 2)
+    return canApplyToCard(nc, slot, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受骰面升级`, (() => {
     const nc = createNonCard()
     const d = DICE_POOL.find(d => d.id === 'dice_atk1')!
-    return canApplyToCardFull(nc, d, 0, 2)
+    return canApplyToCard(nc, d, 2)
   })())
 
   assert(`[${S}] canApply: 非符可接受HP升级`, (() => {
     const nc = createNonCard()
     const s = STAT_POOL.find(s => s.id === 'stat_hp2')!
-    return canApplyToCardFull(nc, s, 0, 2)
+    return canApplyToCard(nc, s, 2)
   })())
 
   assert(`[${S}] canApply: 骰下限+1对固定骰不可装配`, (() => {
     const sc = createSpellCard(BASE_PANELS[0])
     sc.atkPoint = '1d1'
     const d = DICE_POOL.find(d => d.id === 'dice_atk_min1')!
-    return !canApplyToCardFull(sc, d, 0, 100)
+    return !canApplyToCard(sc, d, 100)
   })())
 
   assert(`[${S}] canApply: 骰下限+1对非固定骰可装配`, (() => {
     const sc = createSpellCard(BASE_PANELS[0])
     const d = DICE_POOL.find(d => d.id === 'dice_atk_min1')!
-    return canApplyToCardFull(sc, d, 0, 100)
+    return canApplyToCard(sc, d, 100)
   })())
 
   assert(`[${S}] canApply: 刷新商品不可装配`, (() => {
     const sc = createSpellCard(BASE_PANELS[0])
     const refresh = { id: '_refresh', displayName: '刷新', rarity: 'common' as const, description: '', slot: 'onCardSet' as const }
-    return !canApplyToCardFull(sc, refresh as any, 0, 100)
+    return !canApplyToCard(sc, refresh as any, 100)
   })())
 
   assert(`[${S}] canApply: 非符无宣言槽拒绝宣言效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'set_damage1')!
-    return !canApplyToCardFull(nc, eff, 0, 100)
+    return !canApplyToCard(nc, eff, 100)
   })())
 
   assert(`[${S}] canApply: 非符有亡语槽接受亡语效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'break_damage1')!
-    return canApplyToCardFull(nc, eff, 0, 2)
+    return canApplyToCard(nc, eff, 2)
   })())
 
   assert(`[${S}] canApply: 非符无被动槽拒绝被动效果`, (() => {
     const nc = createNonCard()
     const eff = EFFECT_POOL.find(e => e.id === 'turn_str1')!
-    return !canApplyToCardFull(nc, eff, 0, 100)
+    return !canApplyToCard(nc, eff, 100)
   })())
 
   assert(`[${S}] 商店: 生成5个商品(4+刷新)`, (() => {
@@ -2835,16 +2815,17 @@ function testExpeditionFlowUsability() {
       if (enc.fixedDrop) {
         if (enc.fixedDrop.type === 'dice') {
           const d = DICE_POOL.find(d => d.id === 'dice_atk1')!
-          const tc = state.cards.filter(c => canApplyToCardFull(c, d, 0, state.spirit))
+          const tc = state.cards.filter(c => canApplyToCard(c, d, state.spirit))
           if (tc.length > 0) d.apply(tc[0])
         } else {
           state.cards.push(createSpellCard(generateNewCardDrop(1, rng)))
+          state.cardOrder.push(state.cards.length - 1)
         }
       }
       const rewards = generateRewards(enc.type, rng)
       if (rewards.length > 0) {
         const r = rewards[0]
-        const tc = state.cards.filter(c => canApplyToCardFull(c, r, 0, state.spirit))
+        const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
         if (tc.length > 0) applyRewardToCard(tc[0], r)
       }
     }
@@ -3140,7 +3121,7 @@ function testExpeditionFlowUsability() {
     const state = initExpeditionState()
     return state.cards.length === 0 && state.spirit === 0 && state.currentStage === 1
       && state.currentBattle === 1 && !state.finished && state.exActive === false
-      && state.exBattle === 0 && state.exFinished === false
+      && state.exBattle === 0 && state.exFinished === false && state.cardOrder.length === 0
   })())
 
   assert(`[${S}] 边界: 商店刷新商品`, (() => {
@@ -3167,6 +3148,35 @@ function testExpeditionFlowUsability() {
     return !canAddEffectToSlot(nc, 'onCardSet') && canAddEffectToSlot(nc, 'onCardBreak') && !canAddEffectToSlot(nc, 'onPassive')
   })())
 
+  assert(`[${S}] 排序: initCardOrder非符在首位`, (() => {
+    const nc = createNonCard()
+    const sc1 = createSpellCard(BASE_PANELS[0])
+    const sc2 = createSpellCard(BASE_PANELS[1])
+    const order = initCardOrder([nc, sc1, sc2])
+    return order[0] === 0 && order.length === 3
+  })())
+
+  assert(`[${S}] 排序: getOrderedCards过滤已击破`, (() => {
+    const nc = createNonCard()
+    const sc1 = createSpellCard(BASE_PANELS[0])
+    const sc2 = createSpellCard(BASE_PANELS[1])
+    sc2.currentHp = 0
+    const order = initCardOrder([nc, sc1, sc2])
+    const ordered = getOrderedCards([nc, sc1, sc2], order)
+    return ordered.length === 2 && ordered[0] === nc && ordered[1] === sc1
+  })())
+
+  assert(`[${S}] 排序: healRestingCards未出战符卡回复2HP`, (() => {
+    const nc = createNonCard()
+    const sc1 = createSpellCard(BASE_PANELS[0])
+    const sc2 = createSpellCard(BASE_PANELS[1])
+    sc1.currentHp = 1
+    sc2.currentHp = 3
+    sc2.maxCardHp = 10
+    healRestingCards([nc, sc1, sc2], [1])
+    return sc1.currentHp === 1 && sc2.currentHp === 5
+  })())
+
   assert(`[${S}] 完整流程: 从1面1战到6面boss(强制胜利)`, (() => {
     const state = initTestState(500)
     for (let stage = 1; stage <= 6; stage++) {
@@ -3181,16 +3191,17 @@ function testExpeditionFlowUsability() {
         if (enc.fixedDrop) {
           if (enc.fixedDrop.type === 'dice') {
             const d = DICE_POOL.find(d => d.id === 'dice_atk1')!
-            const tc = state.cards.filter(c => canApplyToCardFull(c, d, 0, state.spirit))
+            const tc = state.cards.filter(c => canApplyToCard(c, d, state.spirit))
             if (tc.length > 0) d.apply(tc[0])
           } else {
             state.cards.push(createSpellCard(generateNewCardDrop(stage, rng)))
+            state.cardOrder.push(state.cards.length - 1)
           }
         }
         const rewards = generateRewards(enc.type, rng)
         if (rewards.length > 0) {
           const r = rewards[0]
-          const tc = state.cards.filter(c => canApplyToCardFull(c, r, 0, state.spirit))
+          const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
           if (tc.length > 0) applyRewardToCard(tc[0], r)
         }
         if (battle >= template.length) {
@@ -3238,14 +3249,14 @@ function testExpeditionFlowUsability() {
       if (enc.fixedDrop) {
         if (enc.fixedDrop.type === 'dice') {
           const d = DICE_POOL.find(d => d.id === 'dice_atk1')!
-          const tc = state.cards.filter(c => canApplyToCardFull(c, d, 0, state.spirit))
+          const tc = state.cards.filter(c => canApplyToCard(c, d, state.spirit))
           if (tc.length > 0) d.apply(tc[0])
         }
       }
       const rewards = generateRewards(enc.type, rng)
       if (rewards.length > 0) {
         const r = rewards[0]
-        const tc = state.cards.filter(c => canApplyToCardFull(c, r, 0, state.spirit))
+        const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
         if (tc.length > 0) applyRewardToCard(tc[0], r)
       }
     }
@@ -3256,28 +3267,10 @@ function testExpeditionFlowUsability() {
 }
 
 function rng(): number { return Math.random() }
-function isSlotReward(r: Reward): boolean { return 'slot' in r && !('apply' in r) }
-function isDiceCountUpgrade(r: Reward): boolean { return 'apply' in r && !('slot' in r) && r.id.endsWith('_count') }
-
-function canApplyToCard(card: ExpeditionCard, r: Reward): boolean {
-  if (card.isNonCard) {
-    if (isSlotReward(r)) return true
-    if ('apply' in r && !('slot' in r)) return true
-    if ('slot' in r && 'apply' in r) return card.slotCapacity[r.slot] > 0
-    return false
-  }
-  return true
-}
-
-function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
-  if (isSlotReward(reward)) { addSlotCapacity(card, reward.slot); return }
-  if ('slot' in reward && 'apply' in reward) { addEffectToCard(card, reward) }
-  else if ('apply' in reward) { reward.apply(card) }
-}
 
 function autoApplyReward(state: ExpeditionState, rewards: Reward[]) {
   const reward = rewards[Math.floor(rng() * rewards.length)]
-  const cards = state.cards.filter(c => canApplyToCard(c, reward))
+  const cards = state.cards.filter(c => canApplyToCard(c, reward, state.spirit))
   if (cards.length === 0) return
   const card = cards[Math.floor(rng() * cards.length)]
   if (card.isNonCard && state.spirit >= 2) state.spirit -= 2
@@ -3289,7 +3282,7 @@ function autoShopBuy(state: ExpeditionState) {
   const affordable = items.filter(i => i.price <= state.spirit && i.id !== 'shop_refresh')
   if (affordable.length === 0) return
   const item = affordable[Math.floor(rng() * affordable.length)]
-  const card = state.cards.filter(c => !c.isNonCard || state.spirit >= item.price + 2)[0]
+  const card = state.cards.filter(c => canApplyToCard(c, item.reward, state.spirit, item.price))[0]
   if (!card) return
   if (card.isNonCard) state.spirit -= 2
   state.spirit -= item.price
@@ -3308,18 +3301,19 @@ function runSingleExpedition() {
   const state: ExpeditionState = {
     cards: [nonCard, spellCard], spirit: 0, currentStage: 1, currentBattle: 1,
     battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
+    cardOrder: initCardOrder([nonCard, spellCard]),
   }
   let totalRounds = 0
 
   while (!state.finished) {
     const enc = generateEncounter(state.currentStage, state.currentBattle, rng)
+    const orderedCards = getOrderedCards(state.cards, state.cardOrder)
     const activeIndices: number[] = []
     const myCardDatas = []
-    for (let i = 0; i < state.cards.length; i++) {
-      if (state.cards[i].currentHp > 0) {
-        activeIndices.push(i)
-        myCardDatas.push(toCardData(state.cards[i]))
-      }
+    for (const card of orderedCards) {
+      const idx = state.cards.indexOf(card)
+      activeIndices.push(idx)
+      myCardDatas.push(toCardData(card))
     }
     if (myCardDatas.length === 0) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors }
     try {
@@ -3353,6 +3347,7 @@ function runSingleExpedition() {
       state.victories++
       state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
       healNonCard(state.cards)
+      healRestingCards(state.cards, activeIndices)
 
       if (enc.type === 'boss' && state.currentStage >= state.totalStages)
         return { victory: true, stagesCleared: 3, battlesWon: state.victories, totalRounds, errors }
@@ -3360,10 +3355,11 @@ function runSingleExpedition() {
       if (enc.fixedDrop) {
         if (enc.fixedDrop.type === 'dice') {
           const d = DICE_POOL[Math.floor(rng() * DICE_POOL.length)]
-          const tc = state.cards.filter(c => canApplyToCard(c, d))
+          const tc = state.cards.filter(c => canApplyToCard(c, d, state.spirit))
           if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 2) state.spirit -= 2; d.apply(c) }
         } else {
           state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, rng)))
+          state.cardOrder.push(state.cards.length - 1)
         }
       }
 
@@ -3398,6 +3394,7 @@ function runSingleExExpedition() {
     cards: [nonCard, spellCard], spirit: 30, currentStage: 1, currentBattle: 1,
     battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
     exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false,
+    cardOrder: initCardOrder([nonCard, spellCard]),
   }
   let totalRounds = 0
 
@@ -3422,13 +3419,13 @@ function runSingleExExpedition() {
       continue
     }
 
+    const orderedCards = getOrderedCards(state.cards, state.cardOrder)
     const activeIndices: number[] = []
     const myCardDatas = []
-    for (let i = 0; i < state.cards.length; i++) {
-      if (state.cards[i].currentHp > 0) {
-        activeIndices.push(i)
-        myCardDatas.push(toCardData(state.cards[i]))
-      }
+    for (const card of orderedCards) {
+      const idx = state.cards.indexOf(card)
+      activeIndices.push(idx)
+      myCardDatas.push(toCardData(card))
     }
     if (myCardDatas.length === 0) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, exCleared: false, errors }
 
@@ -3466,6 +3463,7 @@ function runSingleExExpedition() {
       state.victories++
       state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
       healNonCard(state.cards)
+      healRestingCards(state.cards, activeIndices)
 
       if (isEx) {
         state.exCardsBroken += b.joiner!.usedCardIndices.length
@@ -3488,10 +3486,11 @@ function runSingleExExpedition() {
         if (enc.fixedDrop) {
           if (enc.fixedDrop.type === 'dice') {
             const d = DICE_POOL[Math.floor(rng() * DICE_POOL.length)]
-            const tc = state.cards.filter(c => canApplyToCard(c, d))
+            const tc = state.cards.filter(c => canApplyToCard(c, d, state.spirit))
             if (tc.length > 0) { const c = tc[0]; if (c.isNonCard && state.spirit >= 2) state.spirit -= 2; d.apply(c) }
           } else {
             state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, rng)))
+            state.cardOrder.push(state.cards.length - 1)
           }
         }
 
@@ -3582,47 +3581,565 @@ function testExpeditionFlow(count: number = 200) {
   return lines.join('\n')
 }
 
-console.log('开始符卡系统自测...\n')
+interface StrategyResult {
+  victories: number
+  totalBattles: number
+  totalRounds: number
+  stageReached: Map<number, number>
+  errors: string[]
+  avgCardHpPercent: number
+  avgCardsAlive: number
+}
 
-testEffectBasics()
-testEffectAdvanced()
-testSpecialCards()
-testRewardEffects()
-testDiceSystem()
-testBattleMechanics()
-testBugFixes()
-testBattleFlow()
-testAnimationCardTracking()
-testStateMachine()
-testExpeditionFlowUsability()
+interface Strategy {
+  name: string
+  desc: string
+  pickReward: (rewards: Reward[], state: ExpeditionState) => number
+  pickTarget: (reward: Reward, state: ExpeditionState) => number
+  pickShopItem: (items: ShopItem[], state: ExpeditionState) => number
+  pickShopTarget: (reward: Reward, state: ExpeditionState, itemPrice: number) => number
+  reorderCards: (state: ExpeditionState) => void
+}
 
-const passed = results.filter(r => r.passed).length
-const failed = results.filter(r => !r.passed).length
-const total = results.length
+function cardPower(c: ExpeditionCard): number {
+  const atk = parseDice(c.atkPoint).avg
+  const def = parseDice(c.defPoint).avg
+  const dod = parseDice(c.dodPoint).avg
+  return atk * 2 + def + dod + c.maxCardHp * 0.5
+}
 
-console.log(`╔══════════════════════════════════════╗`)
-console.log(`║     符卡系统自测报告                 ║`)
-console.log(`╚══════════════════════════════════════╝`)
-console.log(``)
-console.log(`单元测试: ${passed}/${total} 通过${failed > 0 ? `，${failed} 失败` : ''}`)
-console.log(``)
+function firstSpellIdx(state: ExpeditionState): number {
+  for (let i = 0; i < state.cards.length; i++) {
+    if (!state.cards[i].isNonCard && state.cards[i].currentHp > 0) return i
+  }
+  return -1
+}
 
-if (failed > 0) {
-  console.log('--- 失败项 ---')
+function weakestSpellIdx(state: ExpeditionState): number {
+  let minPower = Infinity, idx = -1
+  for (let i = 0; i < state.cards.length; i++) {
+    if (state.cards[i].isNonCard || state.cards[i].currentHp <= 0) continue
+    const p = cardPower(state.cards[i])
+    if (p < minPower) { minPower = p; idx = i }
+  }
+  return idx
+}
+
+function strongestSpellIdx(state: ExpeditionState): number {
+  let maxPower = -1, idx = -1
+  for (let i = 0; i < state.cards.length; i++) {
+    if (state.cards[i].isNonCard || state.cards[i].currentHp <= 0) continue
+    const p = cardPower(state.cards[i])
+    if (p > maxPower) { maxPower = p; idx = i }
+  }
+  return idx
+}
+
+function nonCardIdx(state: ExpeditionState): number {
+  return state.cards.findIndex(c => c.isNonCard)
+}
+
+function findValidTarget(reward: Reward, state: ExpeditionState, extraCost: number = 0, preferred?: number[]): number {
+  const candidates = preferred ?? state.cards.map((_, i) => i)
+  for (const i of candidates) {
+    if (canApplyToCard(state.cards[i], reward, state.spirit, extraCost)) return i
+  }
+  for (let i = 0; i < state.cards.length; i++) {
+    if (candidates.includes(i)) continue
+    if (canApplyToCard(state.cards[i], reward, state.spirit, extraCost)) return i
+  }
+  return -1
+}
+
+function effectScore(r: Reward): number {
+  if (!isEffectModule(r)) return 0
+  const id = r.id
+  if (id === 'set_drain1') return 100
+  if (id === 'set_cantdef' || id === 'set_cantdod') return 90
+  if (id === 'set_freeze') return 85
+  if (id === 'set_damage3') return 80
+  if (id === 'set_strborder3') return 75
+  if (id === 'turn_chase1' || id === 'turn_trace1') return 70
+  if (id === 'set_chase1' || id === 'set_trace1') return 65
+  if (id === 'set_damage2') return 60
+  if (id === 'set_shield4') return 55
+  if (id === 'ek_kill_str2') return 52
+  if (id === 'ek_kill_heal3') return 50
+  if (id === 'set_combo1') return 48
+  if (id === 'break_fragborder' || id === 'break_sluggishborder' || id === 'break_weakenborder') return 45
+  if (id === 'break_damage3') return 44
+  if (id === 'break_permstr') return 43
+  if (id === 'set_dmgborder') return 42
+  if (id === 'set_fragborder') return 40
+  if (id === 'turn_spirit1') return 38
+  if (id === 'set_spirit2') return 36
+  if (id === 'set_unbreak1') return 35
+  if (id === 'turn_damage1') return 34
+  if (id === 'turn_str1') return 32
+  if (id === 'break_strborder') return 30
+  if (id === 'break_damage2') return 28
+  if (id === 'set_shield2') return 26
+  if (id === 'set_buffer1') return 24
+  if (id === 'set_stable1' || id === 'set_agile1') return 22
+  if (id === 'turn_stable1') return 20
+  if (id === 'turn_desperate_dod1' || id === 'turn_desperate_atk2') return 18
+  if (id === 'turn_str1_weak1') return 16
+  if (id === 'set_weaken1' || id === 'set_sluggish1') return 15
+  if (id === 'set_thorns1') return 14
+  if (id === 'turn_agile1_even') return 12
+  if (id === 'set_damage1') return 10
+  if (id === 'break_shield2') return 8
+  if (id === 'break_damage1') return 6
+  return 5
+}
+
+function smartRewardScore(r: Reward, state: ExpeditionState): number {
+  if (isSlotReward(r)) {
+    const slot = (r as any).slot as string
+    const ncIdx = nonCardIdx(state)
+    if (slot === 'onCardBreak' && ncIdx >= 0 && state.cards[ncIdx].slotCapacity.onCardBreak < 3) return 95
+    if (slot === 'onCardSet') return 88
+    if (slot === 'onPassive') return 85
+    return 80
+  }
+  if (isEffectModule(r)) {
+    const eff = r as EffectModule
+    let score = effectScore(r)
+    const ncIdx = nonCardIdx(state)
+    if (eff.slot === 'onCardBreak' && ncIdx >= 0 && canApplyToCard(state.cards[ncIdx], r, state.spirit)) {
+      score += 15
+    }
+    return score
+  }
+  if (isDiceCountUpgrade(r)) {
+    if ((r as any).id === 'dice_atk_count') return 78
+    return 70
+  }
+  if (isDiceUpgrade(r)) {
+    if ((r as any).id === 'dice_atk2') return 65
+    if ((r as any).id?.startsWith('dice_atk')) return 55
+    return 40
+  }
+  if (isDiceMinUpgrade(r)) {
+    if ((r as any).id?.startsWith('dice_atk')) return 50
+    return 35
+  }
+  if (isStatUpgrade(r)) return 30
+  return 0
+}
+
+function smartPickTarget(reward: Reward, state: ExpeditionState, extraCost: number = 0, preferStrong: boolean = true): number {
+  if (isEffectModule(reward)) {
+    const eff = reward as EffectModule
+    if (eff.slot === 'onCardBreak') {
+      const ncIdx = nonCardIdx(state)
+      if (ncIdx >= 0 && canApplyToCard(state.cards[ncIdx], reward, state.spirit, extraCost)) return ncIdx
+    }
+  }
+  if (isSlotReward(reward)) {
+    const slot = (reward as any).slot as string
+    if (slot === 'onCardBreak') {
+      const ncIdx = nonCardIdx(state)
+      if (ncIdx >= 0 && canApplyToCard(state.cards[ncIdx], reward, state.spirit, extraCost)) return ncIdx
+    }
+    const idx = preferStrong ? strongestSpellIdx(state) : weakestSpellIdx(state)
+    if (idx >= 0 && canApplyToCard(state.cards[idx], reward, state.spirit, extraCost)) return idx
+  }
+  if (isDiceUpgrade(reward) || isDiceMinUpgrade(reward) || isDiceCountUpgrade(reward)) {
+    const idx = preferStrong ? strongestSpellIdx(state) : weakestSpellIdx(state)
+    if (idx >= 0 && canApplyToCard(state.cards[idx], reward, state.spirit, extraCost)) return idx
+  }
+  if (isStatUpgrade(reward)) {
+    const idx = weakestSpellIdx(state)
+    if (idx >= 0 && canApplyToCard(state.cards[idx], reward, state.spirit, extraCost)) return idx
+  }
+  const preferred = preferStrong
+    ? [strongestSpellIdx(state), firstSpellIdx(state)].filter(i => i >= 0)
+    : [weakestSpellIdx(state), firstSpellIdx(state)].filter(i => i >= 0)
+  return findValidTarget(reward, state, extraCost, preferred)
+}
+
+function smartShopPick(items: ShopItem[], state: ExpeditionState, scoreFn: (r: Reward, s: ExpeditionState) => number): number {
+  const affordable = items.filter(i => i.price <= state.spirit && i.id !== 'shop_refresh')
+  if (affordable.length === 0) return -1
+  let bestItem = affordable[0], bestScore = -1
+  for (const item of affordable) {
+    const s = scoreFn(item.reward, state)
+    if (s > bestScore) { bestScore = s; bestItem = item }
+  }
+  return items.indexOf(bestItem)
+}
+
+const STRATEGIES: Strategy[] = [
+  {
+    name: '随机',
+    desc: '随机选择奖励和目标（基线）',
+    pickReward: (rewards) => Math.floor(Math.random() * rewards.length),
+    pickTarget: (reward, state) => {
+      const valid = state.cards.map((c, i) => ({ c, i })).filter(x => canApplyToCard(x.c, reward, state.spirit))
+      return valid.length === 0 ? -1 : valid[Math.floor(Math.random() * valid.length)].i
+    },
+    pickShopItem: (items, state) => {
+      const affordable = items.filter(i => i.price <= state.spirit && i.id !== 'shop_refresh')
+      return affordable.length === 0 ? -1 : items.indexOf(affordable[Math.floor(Math.random() * affordable.length)])
+    },
+    pickShopTarget: (reward, state, price) => findValidTarget(reward, state, price),
+    reorderCards: () => { },
+  },
+  {
+    name: '贪心智能',
+    desc: '效果质量评估+亡语给非符+回退逻辑',
+    pickReward: (rewards, state) => {
+      let best = 0, bestScore = smartRewardScore(rewards[0], state)
+      for (let i = 1; i < rewards.length; i++) {
+        const s = smartRewardScore(rewards[i], state)
+        if (s > bestScore) { bestScore = s; best = i }
+      }
+      return best
+    },
+    pickTarget: (reward, state) => smartPickTarget(reward, state),
+    pickShopItem: (items, state) => smartShopPick(items, state, smartRewardScore),
+    pickShopTarget: (reward, state, price) => smartPickTarget(reward, state, price),
+    reorderCards: (state) => {
+      const ncIdx = nonCardIdx(state)
+      const spellIndices = state.cards.map((_, i) => i).filter(i => i !== ncIdx && state.cards[i].currentHp > 0)
+      spellIndices.sort((a, b) => cardPower(state.cards[a]) - cardPower(state.cards[b]))
+      state.cardOrder = ncIdx >= 0 ? [ncIdx, ...spellIndices] : spellIndices
+    },
+  },
+  {
+    name: '吸血核心',
+    desc: '优先宣言·吸血+进攻效果，主卡集中投资',
+    pickReward: (rewards, state) => {
+      const scores = rewards.map(r => {
+        if (isEffectModule(r) && r.id === 'set_drain1') return 200
+        if (isEffectModule(r) && (r.id === 'turn_chase1' || r.id === 'turn_trace1' || r.id === 'turn_damage1')) return 120
+        if (isSlotReward(r) && (r as any).slot === 'onCardSet') return 110
+        return smartRewardScore(r, state)
+      })
+      return scores.indexOf(Math.max(...scores))
+    },
+    pickTarget: (reward, state) => {
+      if (isEffectModule(reward) && (reward as EffectModule).slot !== 'onCardBreak') {
+        const idx = strongestSpellIdx(state)
+        if (idx >= 0 && canApplyToCard(state.cards[idx], reward, state.spirit)) return idx
+      }
+      return smartPickTarget(reward, state)
+    },
+    pickShopItem: (items, state) => smartShopPick(items, state, (r, s) => {
+      if (isEffectModule(r) && r.id === 'set_drain1') return 200
+      return smartRewardScore(r, s)
+    }),
+    pickShopTarget: (reward, state, price) => {
+      if (isEffectModule(reward) && (reward as EffectModule).slot !== 'onCardBreak') {
+        const idx = strongestSpellIdx(state)
+        if (idx >= 0 && canApplyToCard(state.cards[idx], reward, state.spirit, price)) return idx
+      }
+      return smartPickTarget(reward, state, price)
+    },
+    reorderCards: () => { },
+  },
+  {
+    name: '非符亡语流',
+    desc: '优先给非符堆亡语+额外亡语槽，符卡均卡',
+    pickReward: (rewards, state) => {
+      const scores = rewards.map(r => {
+        if (isSlotReward(r) && (r as any).slot === 'onCardBreak') return 120
+        if (isEffectModule(r) && (r as EffectModule).slot === 'onCardBreak') {
+          const ncIdx = nonCardIdx(state)
+          if (ncIdx >= 0 && canApplyToCard(state.cards[ncIdx], r, state.spirit)) return 115
+        }
+        return smartRewardScore(r, state)
+      })
+      return scores.indexOf(Math.max(...scores))
+    },
+    pickTarget: (reward, state) => smartPickTarget(reward, state),
+    pickShopItem: (items, state) => smartShopPick(items, state, smartRewardScore),
+    pickShopTarget: (reward, state, price) => smartPickTarget(reward, state, price),
+    reorderCards: (state) => {
+      const ncIdx = nonCardIdx(state)
+      const spellIndices = state.cards.map((_, i) => i).filter(i => i !== ncIdx && state.cards[i].currentHp > 0)
+      spellIndices.sort((a, b) => cardPower(state.cards[a]) - cardPower(state.cards[b]))
+      state.cardOrder = ncIdx >= 0 ? [ncIdx, ...spellIndices] : spellIndices
+    },
+  },
+  {
+    name: '均卡休息流',
+    desc: '均卡分配+弱卡前排消耗+休息回复续航',
+    pickReward: (rewards, state) => {
+      let best = 0, bestScore = smartRewardScore(rewards[0], state)
+      for (let i = 1; i < rewards.length; i++) {
+        const s = smartRewardScore(rewards[i], state)
+        if (s > bestScore) { bestScore = s; best = i }
+      }
+      return best
+    },
+    pickTarget: (reward, state) => smartPickTarget(reward, state, 0, false),
+    pickShopItem: (items, state) => smartShopPick(items, state, smartRewardScore),
+    pickShopTarget: (reward, state, price) => smartPickTarget(reward, state, price, false),
+    reorderCards: (state) => {
+      const ncIdx = nonCardIdx(state)
+      const spellIndices = state.cards.map((_, i) => i).filter(i => i !== ncIdx && state.cards[i].currentHp > 0)
+      spellIndices.sort((a, b) => {
+        const hpA = state.cards[a].currentHp / state.cards[a].maxCardHp
+        const hpB = state.cards[b].currentHp / state.cards[b].maxCardHp
+        if (hpA !== hpB) return hpA - hpB
+        return cardPower(state.cards[a]) - cardPower(state.cards[b])
+      })
+      state.cardOrder = ncIdx >= 0 ? [ncIdx, ...spellIndices] : spellIndices
+    },
+  },
+  {
+    name: '综合最优',
+    desc: '吸血核心+非符亡语+均卡休息+智能回退',
+    pickReward: (rewards, state) => {
+      let best = 0, bestScore = smartRewardScore(rewards[0], state)
+      for (let i = 1; i < rewards.length; i++) {
+        const s = smartRewardScore(rewards[i], state)
+        if (s > bestScore) { bestScore = s; best = i }
+      }
+      return best
+    },
+    pickTarget: (reward, state) => smartPickTarget(reward, state),
+    pickShopItem: (items, state) => smartShopPick(items, state, smartRewardScore),
+    pickShopTarget: (reward, state, price) => smartPickTarget(reward, state, price),
+    reorderCards: (state) => {
+      const ncIdx = nonCardIdx(state)
+      const spellIndices = state.cards.map((_, i) => i).filter(i => i !== ncIdx && state.cards[i].currentHp > 0)
+      spellIndices.sort((a, b) => {
+        const hpA = state.cards[a].currentHp / state.cards[a].maxCardHp
+        const hpB = state.cards[b].currentHp / state.cards[b].maxCardHp
+        if (Math.abs(hpA - hpB) > 0.2) return hpA - hpB
+        return cardPower(state.cards[a]) - cardPower(state.cards[b])
+      })
+      state.cardOrder = ncIdx >= 0 ? [ncIdx, ...spellIndices] : spellIndices
+    },
+  },
+]
+
+function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCleared: number; battlesWon: number; totalRounds: number; errors: string[]; finalCards: ExpeditionCard[] } {
+  const errors: string[] = []
+  const panelIdx = Math.floor(Math.random() * BASE_PANELS.length)
+  const panel = BASE_PANELS[panelIdx]
+  const nonCard = createNonCard()
+  const spellCard = createSpellCard(panel)
+  const initEffects = INITIAL_CARD_EFFECTS[panel.name]
+  if (initEffects) { for (const eff of initEffects) { addEffectToCard(spellCard, eff) } }
+
+  const state: ExpeditionState = {
+    cards: [nonCard, spellCard], spirit: 0, currentStage: 1, currentBattle: 1,
+    battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
+    cardOrder: initCardOrder([nonCard, spellCard]),
+  }
+  let totalRounds = 0
+
+  while (!state.finished) {
+    strategy.reorderCards(state)
+    const enc = generateEncounter(state.currentStage, state.currentBattle, Math.random)
+    const orderedCards = getOrderedCards(state.cards, state.cardOrder)
+    const activeIndices: number[] = []
+    const myCardDatas = []
+    for (const card of orderedCards) {
+      const idx = state.cards.indexOf(card)
+      activeIndices.push(idx)
+      myCardDatas.push(toCardData(card))
+    }
+    if (myCardDatas.length === 0) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
+    try {
+      const b = new Battle(1)
+      b.setCreator('玩家')
+      b.creator.chosenCards = myCardDatas
+      b.setSingleEnemy('敌人', enc.enemyCards)
+      b.runFullBattle()
+      totalRounds += b.gameRound
+
+      const usedBattleIndices = b.creator.usedCardIndices
+      for (let i = 0; i < state.cards.length; i++) {
+        const card = state.cards[i]
+        const activePos = activeIndices.indexOf(i)
+        let hpAfter: number
+        if (activePos === -1) { hpAfter = card.currentHp }
+        else {
+          const wasUsed = activePos < usedBattleIndices.length
+          if (wasUsed) { hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0 }
+          else { hpAfter = card.currentHp }
+        }
+        card.currentHp = hpAfter
+      }
+
+      if (b.winnerId !== 1) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
+
+      state.victories++
+      state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
+      healNonCard(state.cards)
+      healRestingCards(state.cards, activeIndices)
+
+      if (enc.type === 'boss' && state.currentStage >= state.totalStages)
+        return { victory: true, stagesCleared: 6, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
+
+      if (enc.fixedDrop) {
+        if (enc.fixedDrop.type === 'dice') {
+          const d = DICE_POOL[Math.floor(Math.random() * DICE_POOL.length)]
+          const ti = strategy.pickTarget(d, state)
+          if (ti >= 0 && canApplyToCard(state.cards[ti], d, state.spirit)) {
+            if (state.cards[ti].isNonCard && state.spirit >= 2) state.spirit -= 2
+            d.apply(state.cards[ti])
+          }
+        } else {
+          state.cards.push(createSpellCard(generateNewCardDrop(state.currentStage, Math.random)))
+          state.cardOrder.push(state.cards.length - 1)
+        }
+      }
+
+      const rewards = generateRewards(enc.type, Math.random)
+      if (rewards.length > 0) {
+        const ri = strategy.pickReward(rewards, state)
+        const reward = ri >= 0 && ri < rewards.length ? rewards[ri] : rewards[0]
+        const ti = strategy.pickTarget(reward, state)
+        if (ti >= 0 && canApplyToCard(state.cards[ti], reward, state.spirit)) {
+          if (state.cards[ti].isNonCard && state.spirit >= 2) state.spirit -= 2
+          applyRewardToCard(state.cards[ti], reward)
+        }
+      }
+
+      const template = getStageTemplate(state.currentStage)
+      if (state.currentBattle >= template.length) {
+        healAllForNewStage(state.cards)
+        if (state.currentStage >= state.totalStages)
+          return { victory: true, stagesCleared: 6, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
+        state.currentStage++; state.currentBattle = 1
+        const shopItems = generateShopItems(Math.random)
+        const si = strategy.pickShopItem(shopItems, state)
+        if (si >= 0) {
+          const item = shopItems[si]
+          if (item && item.price <= state.spirit && item.id !== 'shop_refresh') {
+            const ti = strategy.pickShopTarget(item.reward, state, item.price)
+            if (ti >= 0 && canApplyToCard(state.cards[ti], item.reward, state.spirit, item.price)) {
+              if (state.cards[ti].isNonCard) state.spirit -= 2
+              state.spirit -= item.price
+              applyRewardToCard(state.cards[ti], item.reward)
+            }
+          }
+        }
+      } else { state.currentBattle++ }
+    } catch (e: any) {
+      errors.push(`S${state.currentStage}-${state.currentBattle}: ${e.message?.slice(0, 100)}`)
+      return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
+    }
+  }
+  return { victory: false, stagesCleared: 0, battlesWon: 0, totalRounds, errors, finalCards: [...state.cards] }
+}
+
+export function evaluateStrategies(count: number = 500): string {
+  const lines: string[] = []
+  lines.push(`\n╔══════════════════════════════════════════════════════════════╗`)
+  lines.push(`║          远征策略对比评估 (${count}场/策略)                        ║`)
+  lines.push(`╚══════════════════════════════════════════════════════════════╝`)
+  lines.push('')
+
+  const results: { strategy: Strategy; result: StrategyResult }[] = []
+
+  for (const strategy of STRATEGIES) {
+    let victories = 0, totalBattles = 0, totalRounds = 0
+    const stageReached = new Map<number, number>()
+    const allErrors: string[] = []
+    let totalHpPct = 0, totalAlive = 0
+
+    for (let i = 0; i < count; i++) {
+      const r = runStrategyExpedition(strategy)
+      if (r.victory) victories++
+      totalBattles += r.battlesWon
+      totalRounds += r.totalRounds
+      stageReached.set(r.stagesCleared, (stageReached.get(r.stagesCleared) ?? 0) + 1)
+      allErrors.push(...r.errors)
+      const spellCards = r.finalCards.filter(c => !c.isNonCard)
+      if (spellCards.length > 0) {
+        totalHpPct += spellCards.reduce((s, c) => s + (c.currentHp > 0 ? c.currentHp / c.maxCardHp : 0), 0) / spellCards.length
+        totalAlive += spellCards.filter(c => c.currentHp > 0).length
+      }
+    }
+
+    results.push({
+      strategy,
+      result: { victories, totalBattles, totalRounds, stageReached, errors: allErrors, avgCardHpPercent: totalHpPct / count * 100, avgCardsAlive: totalAlive / count }
+    })
+  }
+
+  const maxNameLen = Math.max(...STRATEGIES.map(s => s.name.length))
+  for (const { strategy, result } of results) {
+    lines.push(`── ${strategy.name.padEnd(maxNameLen)} ── ${strategy.desc}`)
+    lines.push(`  通关率: ${(result.victories / count * 100).toFixed(1)}%  平均胜场: ${(result.totalBattles / count).toFixed(1)}  平均回合: ${(result.totalRounds / count).toFixed(1)}`)
+    lines.push(`  通关时卡均血量: ${result.avgCardHpPercent.toFixed(1)}%  卡均存活: ${result.avgCardsAlive.toFixed(2)}`)
+    const stageLabels = ['1面前', '1面', '2面', '3面', '4面', '5面', '6面']
+    const stageParts: string[] = []
+    for (let s = 0; s <= 6; s++) {
+      const cnt = result.stageReached.get(s) ?? 0
+      if (cnt > 0) stageParts.push(`${stageLabels[s]}:${cnt}`)
+    }
+    lines.push(`  进度分布: ${stageParts.join(' ')}`)
+    if (result.errors.length > 0) {
+      lines.push(`  错误: ${result.errors.length}`)
+      const uniqueErrors = [...new Set(result.errors)]
+      for (const err of uniqueErrors.slice(0, 5)) lines.push(`    ${err}`)
+    }
+    lines.push('')
+  }
+
+  lines.push('── 对比摘要 ──')
+  const sorted = [...results].sort((a, b) => b.result.victories - a.result.victories)
+  for (let i = 0; i < sorted.length; i++) {
+    const { strategy, result } = sorted[i]
+    lines.push(`  ${i + 1}. ${strategy.name.padEnd(maxNameLen)} 通关${(result.victories / count * 100).toFixed(1)}% 胜场${(result.totalBattles / count).toFixed(1)} 血量${result.avgCardHpPercent.toFixed(0)}%`)
+  }
+
+  return lines.join('\n')
+}
+
+export function runAllTests() {
+  console.log('开始符卡系统自测...\n')
+
+  testEffectBasics()
+  testEffectAdvanced()
+  testSpecialCards()
+  testRewardEffects()
+  testDiceSystem()
+  testBattleMechanics()
+  testBugFixes()
+  testBattleFlow()
+  testAnimationCardTracking()
+  testStateMachine()
+  testExpeditionFlowUsability()
+
+  const passed = results.filter(r => r.passed).length
+  const failed = results.filter(r => !r.passed).length
+  const total = results.length
+
+  console.log(`╔══════════════════════════════════════╗`)
+  console.log(`║     符卡系统自测报告                 ║`)
+  console.log(`╚══════════════════════════════════════╝`)
+  console.log(``)
+  console.log(`单元测试: ${passed}/${total} 通过${failed > 0 ? `，${failed} 失败` : ''}`)
+  console.log(``)
+
+  if (failed > 0) {
+    console.log('--- 失败项 ---')
+    for (const r of results) {
+      if (!r.passed) console.log(`  ✗ ${r.name}: ${r.detail}`)
+    }
+    console.log('')
+  }
+
+  console.log('--- 通过项 ---')
   for (const r of results) {
-    if (!r.passed) console.log(`  ✗ ${r.name}: ${r.detail}`)
+    if (r.passed) console.log(`  ✓ ${r.name}`)
   }
   console.log('')
-}
 
-console.log('--- 通过项 ---')
-for (const r of results) {
-  if (r.passed) console.log(`  ✓ ${r.name}`)
+  console.log('=== 远征流程测试 ===')
+  console.log(testExpeditionFlow(200))
+  console.log('')
+  console.log('=== EX面流程测试 ===')
+  console.log(testExExpeditionFlow(200))
+  console.log('')
+  console.log(evaluateStrategies(500))
 }
-console.log('')
-
-console.log('=== 远征流程测试 ===')
-console.log(testExpeditionFlow(200))
-console.log('')
-console.log('=== EX面流程测试 ===')
-console.log(testExExpeditionFlow(200))

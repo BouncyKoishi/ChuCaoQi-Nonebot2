@@ -1,4 +1,4 @@
-import type { Battler } from './engine';
+import type { Battler, EffectData } from './engine';
 import { Border, Effect, registerEffects } from './engine';
 
 class StrengthEffect extends Effect {
@@ -293,3 +293,36 @@ const ALL_EFFECTS: Record<string, new (...args: any[]) => Effect> = {
 }
 
 registerEffects(ALL_EFFECTS)
+
+export const EFFECT_DESC: Record<string, string> = {
+  Strength: '攻击力+{n}',
+  Weaken: '攻击力-{n}',
+  Stable: '防御力+{n}',
+  Fragile: '防御力-{n}',
+  Agile: '回避+{n}',
+  Sluggish: '回避-{n}',
+  Buffer: '受到伤害-{n}',
+  Chase: '对方受伤+{n}',
+  Trace: '对方闪避成功时仍受{n}点伤害',
+  Shield: '护盾：吸收{n}点伤害',
+  Unbreakable: '击破保护：免疫致命伤害（剩余{n}次）',
+  Freeze: '冻结：无法攻击/防御/回避，非结界效果不触发（剩余{n}回合）',
+  CantDefence: '无法防御',
+  CantDodge: '无法回避',
+  StrengthBorder: '结界：攻击力+{s}（剩余{t}回合）',
+  WeakenBorder: '结界：攻击力-{s}（剩余{t}回合）',
+  StableBorder: '结界：防御力+{s}（剩余{t}回合）',
+  FragileBorder: '结界：防御力-{s}（剩余{t}回合）',
+  AgileBorder: '结界：回避+{s}（剩余{t}回合）',
+  SluggishBorder: '结界：回避-{s}（剩余{t}回合）',
+  DamageBorder: '结界：每回合对对方造成{s}点伤害（剩余{t}回合）',
+}
+
+export function getEffectTooltip(eff: EffectData): string {
+  const desc = EFFECT_DESC[eff.id]
+  if (!desc) return `${eff.displayName} (${eff.effectType})`
+  return desc
+    .replace('{n}', String(eff.amount))
+    .replace('{s}', String(eff.strength ?? 0))
+    .replace('{t}', String(eff.turns ?? 0))
+}

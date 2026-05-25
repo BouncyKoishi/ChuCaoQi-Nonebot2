@@ -1,4 +1,5 @@
 import type { Battler, CardData } from './engine'
+import { isDiceFixed } from './rewards'
 
 export type EffectSlot = 'onCardSet' | 'onCardBreak' | 'onPassive'
 export type PassiveTrigger = 'turnStart' | 'enemyCardBreak'
@@ -100,6 +101,7 @@ export interface ExpeditionState {
   exBattle: number
   exCardsBroken: number
   exFinished: boolean
+  cardOrder: number[]
 }
 
 function emptyEffects(): CardEffects {
@@ -226,5 +228,109 @@ export function addEffectToCard(card: ExpeditionCard, effect: EffectModule): { r
 }
 
 export function initExpeditionState(): ExpeditionState {
-  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false }
+  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false, cardOrder: [] }
+}
+
+export function isSlotReward(r: Reward): boolean {
+  return 'slot' in r && !('apply' in r)
+}
+
+export function isDiceUpgrade(r: Reward): boolean {
+  return 'apply' in r && !('slot' in r) && r.id.startsWith('dice_')
+}
+
+export function isRefreshItem(r: Reward): boolean {
+  return r.id === '_refresh'
+}
+
+export function isDiceCountUpgrade(r: Reward): boolean {
+  return 'apply' in r && !('slot' in r) && r.id.endsWith('_count')
+}
+
+export function isStatUpgrade(r: Reward): boolean {
+  return 'apply' in r && !('slot' in r) && r.id.startsWith('stat_')
+}
+
+export function isDiceMinUpgrade(r: Reward): boolean {
+  return 'apply' in r && !('slot' in r) && r.id.endsWith('_min1')
+}
+
+export function isEffectModule(r: Reward): boolean {
+  return 'slot' in r && 'apply' in r
+}
+
+export function canApplyToCard(card: ExpeditionCard, r: Reward, spirit: number, extraCost: number = 0): boolean {
+  if (isRefreshItem(r)) return false
+  if (isDiceMinUpgrade(r) && 'apply' in r) {
+    const du = r as DiceUpgrade
+    const target = du.id.startsWith('dice_atk') ? card.atkPoint
+      : du.id.startsWith('dice_def') ? card.defPoint
+        : card.dodPoint
+    if (isDiceFixed(target)) return false
+  }
+  if (card.isNonCard) {
+    if (spirit < 2 + extraCost) return false
+    if (isSlotReward(r)) return true
+    if (isStatUpgrade(r)) return true
+    if (isDiceUpgrade(r)) return true
+    if (isEffectModule(r)) {
+      return card.slotCapacity[(r as EffectModule).slot] > 0
+    }
+    return false
+  }
+  return true
+}
+
+export function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
+  if (isSlotReward(reward)) { addSlotCapacity(card, reward.slot); return }
+  if ('slot' in reward && 'apply' in reward) {
+    addEffectToCard(card, reward)
+  } else if ('apply' in reward) {
+    reward.apply(card)
+  }
+}
+
+export type SlotDisplay = { type: 'effect'; effect: EffectModule & { slot: EffectSlot } } | { type: 'empty'; slot: EffectSlot }
+
+export function slotDisplayList(card: ExpeditionCard): SlotDisplay[] {
+  const result: SlotDisplay[] = []
+  for (const eff of card.effects.onCardSet) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardSet' } })
+  for (let i = card.effects.onCardSet.length; i < card.slotCapacity.onCardSet; i++) result.push({ type: 'empty', slot: 'onCardSet' })
+  for (const eff of card.effects.onCardBreak) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardBreak' } })
+  for (let i = card.effects.onCardBreak.length; i < card.slotCapacity.onCardBreak; i++) result.push({ type: 'empty', slot: 'onCardBreak' })
+  for (const eff of card.effects.onPassive) result.push({ type: 'effect', effect: { ...eff, slot: 'onPassive' } })
+  for (let i = card.effects.onPassive.length; i < card.slotCapacity.onPassive; i++) result.push({ type: 'empty', slot: 'onPassive' })
+  return result
+}
+
+export function allEffects(card: ExpeditionCard): (EffectModule & { slot: EffectSlot })[] {
+  const result: (EffectModule & { slot: EffectSlot })[] = []
+  for (const eff of card.effects.onCardSet) result.push({ ...eff, slot: 'onCardSet' })
+  for (const eff of card.effects.onCardBreak) result.push({ ...eff, slot: 'onCardBreak' })
+  for (const eff of card.effects.onPassive) result.push({ ...eff, slot: 'onPassive' })
+  return result
+}
+
+export const slotLabel = (slot: EffectSlot) => slot === 'onCardSet' ? '宣言' : slot === 'onCardBreak' ? '亡语' : '被动'
+export const slotTagType = (slot: EffectSlot) => slot === 'onCardSet' ? 'success' : slot === 'onCardBreak' ? 'danger' : 'warning'
+
+export const REST_HEAL_AMOUNT = 2
+
+export function initCardOrder(cards: ExpeditionCard[]): number[] {
+  const nonCardIdx = cards.findIndex(c => c.isNonCard)
+  const others = cards.map((_, i) => i).filter(i => i !== nonCardIdx)
+  return nonCardIdx >= 0 ? [nonCardIdx, ...others] : others
+}
+
+export function getOrderedCards(cards: ExpeditionCard[], cardOrder: number[]): ExpeditionCard[] {
+  return cardOrder.filter(i => i < cards.length && cards[i].currentHp > 0).map(i => cards[i])
+}
+
+export function healRestingCards(cards: ExpeditionCard[], foughtCardIndices: number[]) {
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].isNonCard) continue
+    if (cards[i].currentHp <= 0) continue
+    if (foughtCardIndices.includes(i)) continue
+    cards[i].currentHp = Math.min(cards[i].maxCardHp, cards[i].currentHp + REST_HEAL_AMOUNT)
+  }
 }

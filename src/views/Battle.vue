@@ -13,6 +13,7 @@
                 <p class="section-desc">选择5张符卡，逐回合与AI对战</p>
                 <el-button type="primary" @click="startCardSelection">开始选卡</el-button>
                 <el-button v-if="isDev" type="info" @click="handleQuickBattle">快速对战(测试)</el-button>
+                <el-button v-if="isDev" type="info" @click="handleQuickSelect">快速选卡(测试)</el-button>
               </div>
             </template>
 
@@ -70,7 +71,7 @@
                     <div v-if="animCreatorEffects.length" class="effects-list">
                       <el-tooltip v-for="eff in animCreatorEffects" :key="eff.id + (eff.effectType === 'BORDER' ? eff.turns : eff.amount)" :content="getEffectTooltip(eff)" placement="top">
                         <el-tag size="small" class="effect-tag">
-                          {{ eff.displayName }}{{ eff.effectType === 'BORDER' ? eff.turns : eff.amount }}
+                          {{ eff.displayName }}{{ eff.effectType === 'BORDER' ? eff.turns : (eff.amount === -1 ? '' : eff.amount) }}
                         </el-tag>
                       </el-tooltip>
                     </div>
@@ -91,7 +92,7 @@
                     <div v-if="animJoinerEffects.length" class="effects-list">
                       <el-tooltip v-for="eff in animJoinerEffects" :key="eff.id + (eff.effectType === 'BORDER' ? eff.turns : eff.amount)" :content="getEffectTooltip(eff)" placement="top">
                         <el-tag size="small" class="effect-tag" type="info">
-                          {{ eff.displayName }}{{ eff.effectType === 'BORDER' ? eff.turns : eff.amount }}
+                          {{ eff.displayName }}{{ eff.effectType === 'BORDER' ? eff.turns : (eff.amount === -1 ? '' : eff.amount) }}
                         </el-tag>
                       </el-tooltip>
                     </div>
@@ -266,6 +267,7 @@
 <script setup lang="ts">
 import { ALL_CARDS, getRandomCards } from '@/spellcard/cards'
 import '@/spellcard/effects'
+import { getEffectTooltip } from '@/spellcard/effects'
 import type { CardData, EffectData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import { parseDescription } from '@/spellcard/rewards'
@@ -295,39 +297,6 @@ const filteredCards = computed(() => {
 })
 const costTagType = (cost: number) => ({ 0: 'info', 1: '', 2: 'success', 3: 'warning', 4: 'danger', 5: '' }[cost] ?? 'info')
 const costTagClass = (cost: number) => cost === 5 ? 'cost-epic-tag' : ''
-
-const EFFECT_DESC: Record<string, string> = {
-  Strength: '攻击力+{n}',
-  Weaken: '攻击力-{n}',
-  Stable: '防御力+{n}',
-  Fragile: '防御力-{n}',
-  Agile: '回避+{n}',
-  Sluggish: '回避-{n}',
-  Buffer: '受到伤害-{n}',
-  Chase: '对方受伤+{n}',
-  Trace: '对方闪避成功时仍受{n}点伤害',
-  Shield: '护盾：吸收{n}点伤害',
-  Unbreakable: '击破保护：免疫致命伤害（剩余{n}次）',
-  Freeze: '冻结：无法攻击/防御/回避，非结界效果不触发（剩余{n}回合）',
-  CantDefence: '无法防御',
-  CantDodge: '无法回避',
-  StrengthBorder: '结界：攻击力+{s}（剩余{t}回合）',
-  WeakenBorder: '结界：攻击力-{s}（剩余{t}回合）',
-  StableBorder: '结界：防御力+{s}（剩余{t}回合）',
-  FragileBorder: '结界：防御力-{s}（剩余{t}回合）',
-  AgileBorder: '结界：回避+{s}（剩余{t}回合）',
-  SluggishBorder: '结界：回避-{s}（剩余{t}回合）',
-  DamageBorder: '结界：每回合对对方造成{s}点伤害（剩余{t}回合）',
-}
-
-const getEffectTooltip = (eff: EffectData): string => {
-  const desc = EFFECT_DESC[eff.id]
-  if (!desc) return `${eff.displayName} (${eff.effectType})`
-  return desc
-    .replace('{n}', String(eff.amount))
-    .replace('{s}', String(eff.strength ?? 0))
-    .replace('{t}', String(eff.turns ?? 0))
-}
 
 const animCreatorHp = ref(0)
 const animJoinerHp = ref(0)
@@ -618,6 +587,7 @@ const finishAnimation = () => {
   turnVisual.value = { round: 0, statsKey: 0, damageKey: 0, breakKey: 0 }
   _statsKey = 0; _damageKey = 0; _breakKey = 0
   if (battle.value?.finished) {
+    logCollapsed.value = false
     battlePhase.value = 'finished'
   } else if (battle.value?.creator?.shouldChangeCard()) {
     battlePhase.value = 'playing'
@@ -625,6 +595,11 @@ const finishAnimation = () => {
   } else {
     battlePhase.value = 'playing'
   }
+}
+
+const handleQuickSelect = () => {
+  selectedCards.value = getRandomCards(5)
+  handleCreateBattle()
 }
 
 const handleQuickBattle = () => {
@@ -665,6 +640,7 @@ const handleSurrender = async () => {
       battle.value.state = Battle.STATE_FINISHED
       battle.value.log.add(battle.value.gameRound, 'end', '你投降了！AI对手 获胜！', battle.value.creator.nowHp, battle.value.joiner.nowHp)
       displayedLog.value = [...battle.value.log.entries]
+      logCollapsed.value = false
       battlePhase.value = 'finished'
     }
   } catch {}

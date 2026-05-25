@@ -41,14 +41,33 @@
 
         <div class="vs-preview">
           <div class="preview-side my-side">
-            <h4>我的阵容</h4>
-            <div class="preview-cards">
-              <div v-for="(card, idx) in state.cards" :key="idx" class="preview-card" :class="{ noncard: card.isNonCard }">
-                <div class="pc-name">{{ card.name }}</div>
-                <div class="pc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-                <div class="pc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
+            <h4>我的阵容 <span class="drag-hint" v-if="orderedPreviewCards.length > 2">{{ isMobile ? '长按拖动调整顺序' : '拖动调整顺序' }}</span></h4>
+            <div class="preview-cards sortable" @touchmove="onCardTouchMove" @touchend="onCardTouchEnd">
+              <div v-for="item in orderedPreviewCards" :key="item.cardIdx"
+                class="preview-card"
+                :class="{
+                  noncard: item.card.isNonCard,
+                  dead: !item.alive,
+                  'drag-over': dragOverPos === item.displayPos,
+                  dragging: dragFromPos === item.displayPos && !touchDragActive,
+                  'touch-dragging': touchDragActive && dragFromPos === item.displayPos
+                }"
+                :data-drag-pos="item.displayPos"
+                :draggable="!item.card.isNonCard && item.alive"
+                @dragstart="onCardDragStart(item.displayPos, $event)"
+                @dragover="onCardDragOver(item.displayPos, $event)"
+                @drop="onCardDrop(item.displayPos)"
+                @dragend="onCardDragEnd"
+                @dragleave="dragOverPos = -1"
+                @touchstart="onCardTouchStart(item.displayPos, $event)">
+                <div class="pc-header">
+                  <span class="pc-name">{{ item.card.name }}</span>
+                  <span class="pc-drag-handle" v-if="!item.card.isNonCard && item.alive">⠿</span>
+                </div>
+                <div class="pc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+                <div class="pc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
                 <div class="pc-effects">
-                  <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                  <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
                     <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                       <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                     </el-tooltip>
@@ -144,13 +163,13 @@
           <div class="reward-target">
             <h4>选择装配到：</h4>
             <div class="target-cards">
-              <div v-for="(card, idx) in state.cards" :key="idx" class="target-card"
-                :class="{ selected: fixedDropTargetIdx === idx, disabled: !canApplyToCard(card, fixedDropItem) }"
-                @click="canApplyToCard(card, fixedDropItem) && (fixedDropTargetIdx = idx)">
-                <div class="tc-name">{{ card.name }}</div>
-                <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-                <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
-                <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
+              <div v-for="item in orderedCards" :key="item.cardIdx" class="target-card"
+                :class="{ selected: fixedDropTargetIdx === item.cardIdx, disabled: !canApplyToCard(item.card, fixedDropItem!, state.spirit) }"
+                @click="canApplyToCard(item.card, fixedDropItem!, state.spirit) && (fixedDropTargetIdx = item.cardIdx)">
+                <div class="tc-name">{{ item.card.name }}</div>
+                <div class="tc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+                <div class="tc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
+                <div v-if="item.card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
               </div>
             </div>
           </div>
@@ -204,21 +223,21 @@
         <div v-if="selectedRewardIdx >= 0" class="reward-target">
           <h4>装配到：</h4>
           <div class="target-cards">
-            <div v-for="(card, idx) in state.cards" :key="idx" class="target-card"
-              :class="{ selected: targetCardIdx === idx, disabled: !canApplyToCard(card, currentRewards[selectedRewardIdx]) }"
-              @click="canApplyToCard(card, currentRewards[selectedRewardIdx]) && (targetCardIdx = idx)">
-              <div class="tc-name">{{ card.name }}</div>
-              <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-              <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
+            <div v-for="item in orderedCards" :key="item.cardIdx" class="target-card"
+              :class="{ selected: targetCardIdx === item.cardIdx, disabled: !canApplyToCard(item.card, currentRewards[selectedRewardIdx], state.spirit) }"
+              @click="canApplyToCard(item.card, currentRewards[selectedRewardIdx], state.spirit) && (targetCardIdx = item.cardIdx)">
+              <div class="tc-name">{{ item.card.name }}</div>
+              <div class="tc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+              <div class="tc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="tc-effects">
-                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
                   <el-tag v-else size="small" type="info" class="empty-slot-tag">{{ slotLabel(sd.slot) }}·空</el-tag>
                 </template>
               </div>
-              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
+              <div v-if="item.card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
             </div>
           </div>
         </div>
@@ -255,12 +274,12 @@
         <div class="shop-cards-info">
           <h4>当前符卡</h4>
           <div class="preview-cards">
-            <div v-for="(card, idx) in state.cards" :key="idx" class="preview-card" :class="{ noncard: card.isNonCard }">
-              <div class="pc-name">{{ card.name }}</div>
-              <div class="pc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-              <div class="pc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
+            <div v-for="item in orderedCards" :key="item.cardIdx" class="preview-card" :class="{ noncard: item.card.isNonCard }">
+              <div class="pc-name">{{ item.card.name }}</div>
+              <div class="pc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+              <div class="pc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="pc-effects">
-                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
@@ -273,13 +292,13 @@
 
         <el-dialog v-model="shopTargetVisible" title="选择装配目标" width="400px">
           <div class="target-cards">
-            <div v-for="(card, idx) in state.cards" :key="idx" class="target-card"
-              :class="{ selected: shopTargetIdx === idx, disabled: !canApplyToCard(card, shopBuyingReward!, shopBuyingItem?.price ?? 0) }"
-              @click="canApplyToCard(card, shopBuyingReward!, shopBuyingItem?.price ?? 0) && (shopTargetIdx = idx)">
-              <div class="tc-name">{{ card.name }}</div>
-              <div class="tc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-              <div class="tc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
-              <div v-if="card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
+            <div v-for="item in orderedCards" :key="item.cardIdx" class="target-card"
+              :class="{ selected: shopTargetIdx === item.cardIdx, disabled: !canApplyToCard(item.card, shopBuyingReward!, state.spirit, shopBuyingItem?.price ?? 0) }"
+              @click="canApplyToCard(item.card, shopBuyingReward!, state.spirit, shopBuyingItem?.price ?? 0) && (shopTargetIdx = item.cardIdx)">
+              <div class="tc-name">{{ item.card.name }}</div>
+              <div class="tc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+              <div class="tc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
+              <div v-if="item.card.isNonCard" class="tc-extra-cost">装配到非符需额外2灵力</div>
             </div>
           </div>
           <template #footer>
@@ -320,12 +339,12 @@
         <div class="victory-cards">
           <h4>最终阵容</h4>
           <div class="summary-cards">
-            <div v-for="(card, idx) in state.cards" :key="idx" class="summary-card" :class="{ noncard: card.isNonCard }">
-              <div class="sc-name">{{ card.name }}</div>
-              <div class="sc-hp">HP: {{ card.currentHp }}/{{ card.maxCardHp }}</div>
-              <div class="sc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
+            <div v-for="item in orderedCards" :key="item.cardIdx" class="summary-card" :class="{ noncard: item.card.isNonCard }">
+              <div class="sc-name">{{ item.card.name }}</div>
+              <div class="sc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
+              <div class="sc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="sc-effects">
-                <template v-for="(sd, si) in slotDisplayList(card)" :key="si">
+                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
@@ -377,28 +396,41 @@ import { generateEncounter, generateExEncounter, generateNewCardDrop, getExStage
 import type { CardData, LogEntry } from '@/spellcard/engine'
 import { Battle } from '@/spellcard/engine'
 import {
-    type DiceUpgrade, type EffectModule, type EffectSlot,
-    type ExpeditionCard, type ExpeditionState, type FixedDrop,
-    type Reward, type ShopItem,
-    BASE_PANELS, INITIAL_CARD_EFFECTS,
-    addEffectToCard,
-    addSlotCapacity,
-    canAddEffectToSlot,
-    createNonCard,
-    createSpellCard,
-    healAllForNewStage,
-    healNonCard,
-    toCardData
+  type DiceUpgrade, type EffectModule, type EffectSlot,
+  type ExpeditionCard, type ExpeditionState, type FixedDrop,
+  type Reward, type ShopItem,
+  addEffectToCard,
+  addSlotCapacity,
+  applyRewardToCard,
+  BASE_PANELS,
+  canAddEffectToSlot,
+  canApplyToCard,
+  createNonCard,
+  createSpellCard,
+  getOrderedCards,
+  healAllForNewStage,
+  healNonCard,
+  healRestingCards,
+  initCardOrder,
+  initExpeditionState,
+  INITIAL_CARD_EFFECTS,
+  isRefreshItem,
+  isSlotReward,
+  slotDisplayList,
+  slotLabel,
+  slotTagType,
+  toCardData
 } from '@/spellcard/expedition'
-import { DICE_POOL, generateRewards, generateShopItems, isDiceFixed, parseDescription } from '@/spellcard/rewards'
+import { DICE_POOL, generateRewards, generateShopItems, parseDescription } from '@/spellcard/rewards'
 import { computed, ref } from 'vue'
 
 const isDev = import.meta.env.DEV
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 const phase = ref<'start' | 'encounter' | 'result' | 'fixedDrop' | 'reward' | 'shop' | 'defeated' | 'victory'>('start')
 const selectedPanelIdx = ref(-1)
 const basePanels = BASE_PANELS
 
-const state = ref<ExpeditionState>(createInitialState())
+const state = ref<ExpeditionState>(initExpeditionState())
 const encounterType = ref<'normal' | 'elite' | 'boss'>('normal')
 const enemyCards = ref<CardData[]>([])
 const currentEncounterEnemyCards = ref<CardData[]>([])
@@ -431,82 +463,116 @@ const fixedDropItem = ref<DiceUpgrade | null>(null)
 const fixedDropNewCard = ref<typeof NEW_CARD_POOL[number] | null>(null)
 const fixedDropTargetIdx = ref(-1)
 
+const dragFromPos = ref(-1)
+const dragOverPos = ref(-1)
+const touchDragActive = ref(false)
+let touchDragTimer: ReturnType<typeof setTimeout> | null = null
+
+const orderedCards = computed(() => {
+  return state.value.cardOrder
+    .filter(i => i < state.value.cards.length)
+    .map((cardIdx, displayPos) => ({ card: state.value.cards[cardIdx], cardIdx, displayPos }))
+})
+
+const orderedPreviewCards = computed(() => {
+  return orderedCards.value.map(item => ({ ...item, alive: item.card.currentHp > 0 }))
+})
+
+function onCardDragStart(displayPos: number, event: DragEvent) {
+  const item = orderedPreviewCards.value[displayPos]
+  if (!item || item.card.isNonCard || !item.alive) {
+    event.preventDefault()
+    return
+  }
+  dragFromPos.value = displayPos
+  dragOverPos.value = -1
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(displayPos))
+  }
+}
+
+function onCardDragOver(displayPos: number, event: DragEvent) {
+  event.preventDefault()
+  if (displayPos === 0) return
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  dragOverPos.value = displayPos
+}
+
+function onCardDrop(displayPos: number) {
+  if (dragFromPos.value === -1 || dragFromPos.value === displayPos) {
+    dragFromPos.value = -1
+    dragOverPos.value = -1
+    return
+  }
+  if (displayPos === 0) {
+    dragFromPos.value = -1
+    dragOverPos.value = -1
+    return
+  }
+  const order = [...state.value.cardOrder]
+  const fromPos = dragFromPos.value
+  const [moved] = order.splice(fromPos, 1)
+  order.splice(displayPos, 0, moved)
+  const nonCardIdx = state.value.cards.findIndex(c => c.isNonCard)
+  if (nonCardIdx >= 0 && order[0] !== nonCardIdx) {
+    const ncPos = order.indexOf(nonCardIdx)
+    if (ncPos >= 0) {
+      order.splice(ncPos, 1)
+      order.unshift(nonCardIdx)
+    }
+  }
+  state.value = { ...state.value, cardOrder: order }
+  dragFromPos.value = -1
+  dragOverPos.value = -1
+}
+
+function onCardDragEnd() {
+  dragFromPos.value = -1
+  dragOverPos.value = -1
+}
+
+function onCardTouchStart(displayPos: number, event: TouchEvent) {
+  const item = orderedPreviewCards.value[displayPos]
+  if (!item || item.card.isNonCard || !item.alive) return
+  if (touchDragTimer) clearTimeout(touchDragTimer)
+  touchDragTimer = setTimeout(() => {
+    touchDragActive.value = true
+    dragFromPos.value = displayPos
+    dragOverPos.value = -1
+  }, 300)
+}
+
+function onCardTouchMove(event: TouchEvent) {
+  if (!touchDragActive.value) {
+    if (touchDragTimer) { clearTimeout(touchDragTimer); touchDragTimer = null }
+    return
+  }
+  event.preventDefault()
+  const touch = event.touches[0]
+  const el = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (!el) return
+  const cardEl = el.closest('[data-drag-pos]') as HTMLElement | null
+  if (cardEl) {
+    const pos = Number(cardEl.dataset.dragPos)
+    if (!isNaN(pos) && pos !== 0) {
+      dragOverPos.value = pos
+    }
+  }
+}
+
+function onCardTouchEnd() {
+  if (touchDragTimer) { clearTimeout(touchDragTimer); touchDragTimer = null }
+  if (touchDragActive.value && dragFromPos.value !== -1 && dragOverPos.value !== -1) {
+    onCardDrop(dragOverPos.value)
+  }
+  touchDragActive.value = false
+  dragFromPos.value = -1
+  dragOverPos.value = -1
+}
+
 function diceRange(diceStr: string): string {
   return diceStr
-}
-
-type SlotDisplay = { type: 'effect'; effect: EffectModule & { slot: EffectSlot } } | { type: 'empty'; slot: EffectSlot }
-
-function slotDisplayList(card: ExpeditionCard): SlotDisplay[] {
-  const result: SlotDisplay[] = []
-  for (const eff of card.effects.onCardSet) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardSet' } })
-  for (let i = card.effects.onCardSet.length; i < card.slotCapacity.onCardSet; i++) result.push({ type: 'empty', slot: 'onCardSet' })
-  for (const eff of card.effects.onCardBreak) result.push({ type: 'effect', effect: { ...eff, slot: 'onCardBreak' } })
-  for (let i = card.effects.onCardBreak.length; i < card.slotCapacity.onCardBreak; i++) result.push({ type: 'empty', slot: 'onCardBreak' })
-  for (const eff of card.effects.onPassive) result.push({ type: 'effect', effect: { ...eff, slot: 'onPassive' } })
-  for (let i = card.effects.onPassive.length; i < card.slotCapacity.onPassive; i++) result.push({ type: 'empty', slot: 'onPassive' })
-  return result
-}
-
-function allEffects(card: ExpeditionCard): (EffectModule & { slot: EffectSlot })[] {
-  const result: (EffectModule & { slot: EffectSlot })[] = []
-  for (const eff of card.effects.onCardSet) result.push({ ...eff, slot: 'onCardSet' })
-  for (const eff of card.effects.onCardBreak) result.push({ ...eff, slot: 'onCardBreak' })
-  for (const eff of card.effects.onPassive) result.push({ ...eff, slot: 'onPassive' })
-  return result
-}
-
-function isSlotReward(r: Reward): boolean {
-  return 'slot' in r && !('apply' in r)
-}
-
-function isDiceUpgrade(r: Reward): boolean {
-  return 'apply' in r && !('slot' in r) && r.id.startsWith('dice_')
-}
-
-function isRefreshItem(r: Reward): boolean {
-  return r.id === '_refresh'
-}
-
-function isDiceCountUpgrade(r: Reward): boolean {
-  return 'apply' in r && !('slot' in r) && r.id.endsWith('_count')
-}
-
-function isStatUpgrade(r: Reward): boolean {
-  return 'apply' in r && !('slot' in r) && r.id.startsWith('stat_')
-}
-
-function isDiceMinUpgrade(r: Reward): boolean {
-  return 'apply' in r && !('slot' in r) && r.id.endsWith('_min1')
-}
-
-function canApplyToCard(card: ExpeditionCard, r: Reward, extraCost: number = 0): boolean {
-  if (isRefreshItem(r)) return false
-  if (isDiceMinUpgrade(r) && 'apply' in r) {
-    const du = r as DiceUpgrade
-    const target = du.id.startsWith('dice_atk') ? card.atkPoint
-      : du.id.startsWith('dice_def') ? card.defPoint
-      : card.dodPoint
-    if (isDiceFixed(target)) return false
-  }
-  if (card.isNonCard) {
-    if (state.value.spirit < 2 + extraCost) return false
-    if (isSlotReward(r)) return true
-    if (isStatUpgrade(r)) return true
-    if (isDiceUpgrade(r)) return true
-    if ('slot' in r && 'apply' in r) {
-      return card.slotCapacity[r.slot] > 0
-    }
-    return false
-  }
-  return true
-}
-
-const slotLabel = (slot: EffectSlot) => slot === 'onCardSet' ? '宣言' : slot === 'onCardBreak' ? '亡语' : '被动'
-const slotTagType = (slot: EffectSlot) => slot === 'onCardSet' ? 'success' : slot === 'onCardBreak' ? 'danger' : 'warning'
-
-function createInitialState(): ExpeditionState {
-  return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false }
 }
 
 function startExpedition() {
@@ -518,7 +584,7 @@ function startExpedition() {
   if (initEffects) {
     for (const eff of initEffects) { addEffectToCard(spellCard, eff) }
   }
-  state.value = { ...createInitialState(), cards: [nonCard, spellCard] }
+  state.value = { ...initExpeditionState(), cards: [nonCard, spellCard], cardOrder: initCardOrder([nonCard, spellCard]) }
   loadEncounter()
   phase.value = 'encounter'
 }
@@ -542,8 +608,9 @@ function startExDebug() {
   const card3 = createSpellCard({ name: '副卡B', cardHp: 10, maxCardHp: 10, atkPoint: '1d5', defPoint: '1d4', dodPoint: '1d2' })
   const card4 = createSpellCard({ name: '副卡C', cardHp: 8, maxCardHp: 8, atkPoint: '1d6', defPoint: '1d2', dodPoint: '1d4' })
   state.value = {
-    ...createInitialState(),
+    ...initExpeditionState(),
     cards: [nonCard, spellCard, card2, card3, card4],
+    cardOrder: initCardOrder([nonCard, spellCard, card2, card3, card4]),
     spirit: 500,
     exActive: true,
     exBattle: 0,
@@ -569,13 +636,13 @@ function loadEncounter() {
 
 function startBattle() {
   const hpBefore = state.value.cards.map(c => c.currentHp)
+  const orderedCards = getOrderedCards(state.value.cards, state.value.cardOrder)
   const activeIndices: number[] = []
   const myCardDatas: CardData[] = []
-  for (let i = 0; i < state.value.cards.length; i++) {
-    if (state.value.cards[i].currentHp > 0) {
-      activeIndices.push(i)
-      myCardDatas.push(toCardData(state.value.cards[i]))
-    }
+  for (const card of orderedCards) {
+    const idx = state.value.cards.indexOf(card)
+    activeIndices.push(idx)
+    myCardDatas.push(toCardData(card))
   }
   if (myCardDatas.length === 0) {
     battleWon.value = false
@@ -595,9 +662,11 @@ function startBattle() {
   battleLog.value = b.log.entries
   battleWon.value = b.winnerId === 1
 
+  const foughtIndices = new Set<number>()
   const summary: CardSummary[] = []
   const usedBattleIndices = b.creator.usedCardIndices
-  for (let i = 0; i < state.value.cards.length; i++) {
+  const orderedIndices = state.value.cardOrder.filter(i => i < state.value.cards.length)
+  for (const i of orderedIndices) {
     const card = state.value.cards[i]
     const activePos = activeIndices.indexOf(i)
     let hpAfter: number
@@ -608,6 +677,7 @@ function startBattle() {
     } else {
       const wasUsed = activePos < usedBattleIndices.length
       if (wasUsed) {
+        foughtIndices.add(i)
         if (activePos === usedBattleIndices.length - 1) {
           hpAfter = Math.max(b.creator.nowHp, 0)
           broken = b.creator.nowHp <= 0
@@ -630,6 +700,7 @@ function startBattle() {
     spiritGainedInBattle.value = b.creator.spiritGained
     state.value.spirit += b.creator.spiritGained
     healNonCard(state.value.cards)
+    healRestingCards(state.value.cards, [...foughtIndices])
   } else {
     spiritGainedInBattle.value = 0
   }
@@ -707,6 +778,8 @@ function confirmFixedDrop() {
     if (!fixedDropNewCard.value) return
     const newCard = createSpellCard(fixedDropNewCard.value)
     state.value.cards.push(newCard)
+    const newIdx = state.value.cards.length - 1
+    state.value.cardOrder.push(newIdx)
   }
   currentFixedDrop.value = null
   generateAndShowRewards()
@@ -787,15 +860,6 @@ function confirmReplaceEffect() {
     pendingShopBuy = null
   } else {
     advanceAfterReward()
-  }
-}
-
-function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
-  if (isSlotReward(reward)) { addSlotCapacity(card, reward.slot); return }
-  if ('slot' in reward && 'apply' in reward) {
-    addEffectToCard(card, reward)
-  } else if ('apply' in reward) {
-    reward.apply(card)
   }
 }
 
@@ -929,7 +993,7 @@ function enterExStage() {
   phase.value = 'shop'
 }
 
-function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1; state.value = createInitialState(); currentFixedDrop.value = null }
+function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1; state.value = initExpeditionState(); currentFixedDrop.value = null }
 </script>
 
 <style scoped>
@@ -955,10 +1019,21 @@ function resetExpedition() { phase.value = 'start'; selectedPanelIdx.value = -1;
 .preview-side h4 { margin: 0 0 12px 0; }
 .vs-divider { font-size: 28px; font-weight: bold; color: #909399; padding-top: 40px; flex-shrink: 0; }
 .preview-cards { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.preview-card { background: #f5f7fa; border-radius: 8px; padding: 12px 16px; min-width: 150px; text-align: center; }
+.preview-cards.sortable { flex-direction: column; align-items: center; }
+.preview-card { background: #f5f7fa; border-radius: 8px; padding: 12px 16px; min-width: 150px; text-align: center; transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s; }
 .preview-card.noncard { background: #fafafa; border: 1px dashed #dcdfe6; }
 .preview-card.enemy { background: #fef0f0; border: 1px solid #fbc4c4; }
-.pc-name { font-weight: bold; margin-bottom: 4px; }
+.preview-card.dead { opacity: 0.4; }
+.preview-card.dragging { opacity: 0.3; transform: scale(0.95); }
+.preview-card.drag-over { border: 2px dashed #409eff; box-shadow: 0 0 8px rgba(64,158,255,0.3); transform: translateY(-2px); }
+.preview-card[draggable="true"]:not(.noncard):not(.dead) { cursor: grab; }
+.preview-card[draggable="true"]:not(.noncard):not(.dead):hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.preview-card[draggable="true"]:not(.noncard):not(.dead):active { cursor: grabbing; }
+.preview-card.touch-dragging { opacity: 0.5; transform: scale(1.03); box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 10; }
+.drag-hint { font-size: 12px; font-weight: normal; color: #909399; }
+.pc-header { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 4px; }
+.pc-drag-handle { color: #c0c4cc; font-size: 16px; line-height: 1; cursor: grab; user-select: none; flex-shrink: 0; }
+.pc-name { font-weight: bold; }
 .pc-hp { font-size: 13px; color: #606266; margin-bottom: 2px; }
 .pc-stats { font-size: 12px; color: #909399; margin-bottom: 4px; }
 .pc-desc { font-size: 11px; color: #909399; border-top: 1px solid #ebeef5; padding-top: 4px; margin-top: 4px; }
