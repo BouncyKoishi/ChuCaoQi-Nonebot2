@@ -479,7 +479,8 @@ export class Battler {
         continue
       }
       this.nowCard = card
-      this.nowHp = Math.max(0, card.cardHp) + this.pendingNextCardHeal
+      const maxHp = card.maxCardHp ?? card.cardHp
+      this.nowHp = Math.min(maxHp, Math.max(0, card.cardHp) + this.pendingNextCardHeal)
       this.pendingNextCardHeal = 0
       this.justApplied = true
       if (card.isTimeCard) {
@@ -613,7 +614,8 @@ export class Battle {
 
   applyCard(battler: Battler, cardIndex: number) {
     battler.nowCard = battler.chosenCards[cardIndex]
-    battler.nowHp = battler.nowCard.cardHp + battler.pendingNextCardHeal
+    const maxHp = battler.nowCard.maxCardHp ?? battler.nowCard.cardHp
+    battler.nowHp = Math.min(maxHp, battler.nowCard.cardHp + battler.pendingNextCardHeal)
     battler.pendingNextCardHeal = 0
     battler.usedCardIndices.push(cardIndex)
     battler.justApplied = true
