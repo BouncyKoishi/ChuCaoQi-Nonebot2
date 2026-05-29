@@ -179,20 +179,21 @@ async def buying(
         return False
     if user is None or item is None:
         return False
-    if is_using_adv_kusa and user.advKusa < total_price:
-        return False
-    if not is_using_adv_kusa and user.kusa < total_price:
-        return False
+
+    if is_using_adv_kusa:
+        if not await base_db.deductKusa(userId, total_price, type='advKusa'):
+            return False
+    else:
+        if not await base_db.deductKusa(userId, total_price):
+            return False
 
     await item_db.changeItemAmount(userId, item_name_buying, item_amount_buying)
     
     bot_qq = plugin_config.get('qq', {}).get('bot', 0)
     
     if is_using_adv_kusa:
-        await base_db.changeAdvKusa(userId, -total_price)
         await base_db.changeAdvKusa(bot_qq, total_price)
     else:
-        await base_db.changeKusa(userId, -total_price)
         await base_db.changeKusa(bot_qq, total_price)
         
     cost_item_name = '草之精华' if is_using_adv_kusa else '草'

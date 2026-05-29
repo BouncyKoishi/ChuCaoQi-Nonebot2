@@ -1,6 +1,7 @@
 import pytz
 import datetime
 from .models import KusaItemList, KusaItemStorage
+from tortoise.expressions import F
 from . import user as user_db
 from utils import romanNumToInt
 
@@ -62,19 +63,22 @@ async def changeItemAmount(userId, itemName, increaseAmount):
     if not item:
         return False
 
-    itemStorage = await KusaItemStorage.filter(user_id=userId, item=item).first()
-    if itemStorage:
-        if itemStorage.amount + increaseAmount < 0:
-            raise ValueError("Item amount cannot be negative")
-        itemStorage.amount += increaseAmount
-        await itemStorage.save()
-        if itemStorage.amount == 0:
-            await itemStorage.delete()
+    if increaseAmount > 0:
+        existing = await KusaItemStorage.filter(user_id=userId, item=item).first()
+        if existing:
+            await KusaItemStorage.filter(user_id=userId, item=item).update(amount=F('amount') + increaseAmount)
+        else:
+            unifiedUser = await user_db.getUnifiedUser(userId)
+            await KusaItemStorage.create(user=unifiedUser, item=item, amount=increaseAmount)
     else:
-        if increaseAmount < 0:
+        affected = await KusaItemStorage.filter(
+            user_id=userId, item=item, amount__gte=-increaseAmount
+        ).update(amount=F('amount') + increaseAmount)
+        if affected == 0:
             raise ValueError("Item amount cannot be negative")
-        unifiedUser = await user_db.getUnifiedUser(userId)
-        await KusaItemStorage.create(user=unifiedUser, item=item, amount=increaseAmount)
+        storage = await KusaItemStorage.filter(user_id=userId, item=item).first()
+        if storage and storage.amount == 0:
+            await storage.delete()
 
     return True
 

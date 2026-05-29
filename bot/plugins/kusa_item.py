@@ -237,7 +237,11 @@ async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state:
             if result['success']:
                 await send_finish(buy_cmd, result['message'])
             else:
-                await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
+                error_code = result.get('error', '')
+                if error_code.startswith('INSUFFICIENT'):
+                    await send_finish(buy_cmd, result.get('message', f'你不够{price_type}^ ^'))
+                else:
+                    await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
         else:
             await send_finish(buy_cmd, f'购买{buying_amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^')
 
@@ -322,7 +326,15 @@ async def handle_buy_confirm(event: Union[OneBotV11MessageEvent, QQMessageEvent]
         if result['success']:
             await send_finish(buy_cmd, result['message'])
         else:
-            await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
+            error_code = result.get('error', '')
+            if error_code.startswith('INSUFFICIENT'):
+                price_type = '草'
+                item = await item_db.getItem(item_name)
+                if item:
+                    price_type = item.priceType
+                await send_finish(buy_cmd, result.get('message', f'你不够{price_type}^ ^'))
+            else:
+                await send_finish(buy_cmd, f'购买失败：{result.get("message", "未知错误")}')
     except (FinishedException, PausedException, RejectedException):
         raise
     except Exception as e:

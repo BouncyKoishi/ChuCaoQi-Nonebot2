@@ -54,3 +54,6 @@ bot/plugins/hidden.py
 bot/scripts/
 bot/font/
 bot/picArchive/
+
+# 自测文件
+test/

@@ -6,6 +6,7 @@
 
 import datetime
 from typing import Dict, List, Optional
+from tortoise.expressions import F
 from .models import KusaBase, KusaField, Flag, DonateRecord, TradeRecord
 from . import user as user_db
 
@@ -79,75 +80,59 @@ async def changeKusaUserTitle(userId, newTitle):
 
 
 async def changeKusa(userId, changeAmount):
-    """修改用户草数量"""
-    user = await getKusaUser(userId)
-    if user:
-        user.kusa += changeAmount
-        await user.save()
-        return True
-    else:
-        return False
+    """修改用户草数量（原子操作）"""
+    affected = await KusaBase.filter(user_id=userId).update(kusa=F('kusa') + changeAmount)
+    return affected > 0
 
 
 async def changeAdvKusa(userId, changeAmount):
-    """修改用户草之精华数量"""
-    user = await getKusaUser(userId)
-    if user:
-        user.advKusa += changeAmount
-        await user.save()
-        return True
+    """修改用户草之精华数量（原子操作）"""
+    affected = await KusaBase.filter(user_id=userId).update(advKusa=F('advKusa') + changeAmount)
+    return affected > 0
+
+
+async def deductKusa(userId, amount, type='kusa'):
+    """原子化余额检查+扣减，余额不足时返回False"""
+    if type == 'advKusa':
+        affected = await KusaBase.filter(user_id=userId, advKusa__gte=amount).update(advKusa=F('advKusa') - amount)
     else:
-        return False
+        affected = await KusaBase.filter(user_id=userId, kusa__gte=amount).update(kusa=F('kusa') - amount)
+    return affected > 0
 
 
 async def changeKusaAndAdvKusa(userId, kusaChange, advKusaChange):
-    """同时修改用户的草和草之精华（单次 save，避免异步覆盖）"""
-    user = await getKusaUser(userId)
-    if user:
-        user.kusa += kusaChange
-        user.advKusa += advKusaChange
-        await user.save()
-    return user
+    """同时修改用户的草和草之精华（原子操作）"""
+    affected = await KusaBase.filter(user_id=userId).update(
+        kusa=F('kusa') + kusaChange,
+        advKusa=F('advKusa') + advKusaChange
+    )
+    if affected > 0:
+        return await getKusaUser(userId)
+    return None
 
 
 async def batchChangeKusa(updates):
     """
-    批量更新用户的草数量
+    批量更新用户的草数量（原子操作）
     updates: {userId: changeAmount, ...}
     """
     if not updates:
         return
 
-    userIdList = list(updates.keys())
-    users = await KusaBase.filter(user_id__in=userIdList).all()
-    userMap = {user.user_id: user for user in users}
-
     for userId, changeAmount in updates.items():
-        if userId in userMap:
-            userMap[userId].kusa += changeAmount
-
-    if users:
-        await KusaBase.bulk_update(users, ['kusa'])
+        await KusaBase.filter(user_id=userId).update(kusa=F('kusa') + changeAmount)
 
 
 async def batchChangeAdvKusa(updates):
     """
-    批量更新用户的草之精华数量
+    批量更新用户的草之精华数量（原子操作）
     updates: {userId: changeAmount, ...}
     """
     if not updates:
         return
 
-    userIdList = list(updates.keys())
-    users = await KusaBase.filter(user_id__in=userIdList).all()
-    userMap = {user.user_id: user for user in users}
-
     for userId, changeAmount in updates.items():
-        if userId in userMap:
-            userMap[userId].advKusa += changeAmount
-
-    if users:
-        await KusaBase.bulk_update(users, ['advKusa'])
+        await KusaBase.filter(user_id=userId).update(advKusa=F('advKusa') + changeAmount)
 
 
 async def batchGetKusaUserVipLevels(userIdList):
@@ -254,7 +239,7 @@ async def getAllTradeRecordsByCostItem(costItemName: str):
 
 async def setTradeRecord(userId, tradeType, gainItemAmount, gainItemName, costItemAmount, costItemName, detail=None):
     """设置交易记录"""
-    if gainItemAmount == 0 or costItemAmount == 0:
+    if gainItemAmount == 0 and costItemAmount == 0:
         return
     timestamp = datetime.datetime.now().timestamp()
     unifiedUser = await user_db.getUnifiedUser(userId)

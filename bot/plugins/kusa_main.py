@@ -23,6 +23,7 @@ import dbConnection.kusa_system as base_db
 import dbConnection.kusa_item as item_db
 import dbConnection.kusa_field as field_db
 import dbConnection.user as user_db
+from dbConnection.models import KusaBase
 from utils import convertNumStrToInt
 from kusa_base import (
     plugin_config, send_private_msg, send_group_msg, get_bot_qq
@@ -399,15 +400,9 @@ async def handle_kusa_ban(
         seconds = int(seconds_match.group(0))
 
         if seconds > 0:
-            user = await base_db.getKusaUser(user_id)
-            if not user:
-                await send_finish(kusa_ban_cmd, '用户信息不存在')
-                return
-            
             cost_kusa = seconds
-            if user.kusa >= cost_kusa:
+            if await base_db.deductKusa(user_id, cost_kusa):
                 await bot.set_group_ban(group_id=group_id, user_id=receiver_qq, duration=seconds)
-                await base_db.changeKusa(user_id, -cost_kusa)
                 await base_db.changeKusa(await get_bot_qq(), cost_kusa)
             else:
                 status_msg = '你不够草^ ^'
@@ -551,12 +546,9 @@ async def handle_give_envelope(
         await send_finish(give_envelope_cmd, '待发的草数不合法！')
         return
 
-    user = await base_db.getKusaUser(user_id)
-    if user.kusa < total_kusa:
+    if not await base_db.deductKusa(user_id, total_kusa):
         await send_finish(give_envelope_cmd, '你不够草^ ^')
         return
-
-    await base_db.changeKusa(user_id, -total_kusa)
 
     envelope_info = KusaEnvelopeInfo(
         userId=user_id,
@@ -652,10 +644,8 @@ async def handle_vip_upgrade(event: Union[OneBotV11MessageEvent, QQMessageEvent]
     new_level = user.vipLevel + 1
     cost_kusa = 50 * (10 ** new_level)
 
-    if user.kusa >= cost_kusa:
-        user.vipLevel = new_level
-        user.kusa -= cost_kusa
-        await user.save()
+    if await base_db.deductKusa(user_id, cost_kusa):
+        await KusaBase.filter(user_id=user_id).update(vipLevel=new_level)
         await base_db.changeKusa(await get_bot_qq(), cost_kusa)
         await base_db.setTradeRecord(
             userId=user_id,
@@ -690,10 +680,8 @@ async def handle_vip_upgrade_2(event: Union[OneBotV11MessageEvent, QQMessageEven
     new_level = user.vipLevel + 1
     cost_adv_point = 10 ** (new_level - 4)
 
-    if user.advKusa >= cost_adv_point:
-        user.vipLevel = new_level
-        user.advKusa -= cost_adv_point
-        await user.save()
+    if await base_db.deductKusa(user_id, cost_adv_point, type='advKusa'):
+        await KusaBase.filter(user_id=user_id).update(vipLevel=new_level)
         await base_db.changeAdvKusa(await get_bot_qq(), cost_adv_point)
         await base_db.setTradeRecord(
             userId=user_id,

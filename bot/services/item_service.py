@@ -26,41 +26,26 @@ class ItemService:
         item_name: str,
         amount: int
     ) -> Dict[str, Any]:
-        """转让物品
-
-        Args:
-            from_user_id: 转让者用户ID
-            to_user_id: 接收者用户ID
-            item_name: 物品名称
-            amount: 转让数量
-
-        Returns:
-            Dict: 包含 success, message, error 等字段的结果
-        """
-        # 检查接收者是否存在
         target_user = await user_db.getUnifiedUser(to_user_id)
         if not target_user:
             return {'success': False, 'error': 'TARGET_NOT_FOUND', 'message': '目标用户不存在'}
 
-        # 检查物品是否存在
         item = await itemDB.getItem(item_name)
         if not item:
             return {'success': False, 'error': 'ITEM_NOT_FOUND', 'message': '物品不存在'}
 
-        # 检查物品是否可转让
         if not item.isTransferable:
             return {'success': False, 'error': 'NOT_TRANSFERABLE', 'message': '此物品不能转让'}
 
-        # 检查转让者物品数量
         item_amount = await itemDB.getItemAmount(from_user_id, item_name)
         if item_amount < amount:
             return {'success': False, 'error': 'INSUFFICIENT_ITEM', 'message': f'你不够{item_name}'}
 
-        # 执行转让
-        await itemDB.changeItemAmount(from_user_id, item_name, -amount)
-        await itemDB.changeItemAmount(to_user_id, item_name, amount)
+        from tortoise.transactions import in_transaction
+        async with in_transaction():
+            await itemDB.changeItemAmount(from_user_id, item_name, -amount)
+            await itemDB.changeItemAmount(to_user_id, item_name, amount)
 
-        # 记录交易
         await baseDB.setTradeRecord(
             userId=from_user_id,
             tradeType='物品转让',
@@ -146,15 +131,11 @@ class ItemService:
         price_type = item.priceType
 
         if price_type == '草':
-            user = await baseDB.getKusaUser(userId)
-            if user.kusa < total_price:
-                return {'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': '草不足'}
-            await baseDB.changeKusa(userId, -total_price)
+            if not await baseDB.deductKusa(userId, total_price):
+                return {'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': f'购买{amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^'}
         elif price_type == '草之精华':
-            user = await baseDB.getKusaUser(userId)
-            if user.advKusa < total_price:
-                return {'success': False, 'error': 'INSUFFICIENT_ADV_KUSA', 'message': '草精不足'}
-            await baseDB.changeAdvKusa(userId, -total_price)
+            if not await baseDB.deductKusa(userId, total_price, type='advKusa'):
+                return {'success': False, 'error': 'INSUFFICIENT_ADV_KUSA', 'message': f'购买{amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^'}
         elif price_type == '自动化核心':
             from kusa_base import item_charging
             success = await item_charging(userId, item_name, amount, '自动化核心', total_price, '商店(买)')

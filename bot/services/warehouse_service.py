@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__) + '/..')
 import dbConnection.kusa_system as baseDB
 import dbConnection.kusa_item as itemDB
 import dbConnection.user as user_db
-from dbConnection.models import UnifiedUser
+from dbConnection.models import UnifiedUser, KusaBase
 
 _rank_cache = {}
 _cache_ttl = 300
@@ -191,8 +191,7 @@ class WarehouseService:
         adv_amount = abs(adv_amount)
         kusa_use = 1000000 * adv_amount
         
-        user = await baseDB.getKusaUser(userId)
-        if user.kusa < kusa_use:
+        if not await baseDB.deductKusa(userId, kusa_use):
             return {
                 'success': False,
                 'error': 'INSUFFICIENT_KUSA',
@@ -200,7 +199,6 @@ class WarehouseService:
             }
         
         await baseDB.changeAdvKusa(userId, adv_amount)
-        await baseDB.changeKusa(userId, -kusa_use)
         
         await baseDB.setTradeRecord(
             userId=userId, tradeType='草压缩',
@@ -233,15 +231,10 @@ class WarehouseService:
             return {'success': False, 'error': 'TARGET_NOT_FOUND', 'message': '目标用户不存在'}
         
         # 检查转让者草是否足够
-        user = await baseDB.getKusaUser(userId)
-        if not user:
-            return {'success': False, 'error': 'USER_NOT_FOUND', 'message': '用户不存在'}
-        if user.kusa < amount:
+        if not await baseDB.deductKusa(userId, amount):
             return {'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': '草不足'}
         
-        # 执行转让
         await baseDB.changeKusa(target_userId, amount)
-        await baseDB.changeKusa(userId, -amount)
         
         # 记录交易
         await baseDB.setTradeRecord(
@@ -466,12 +459,10 @@ class WarehouseService:
         newLevel = currentLevel + 1
         costKusa = 50 * (10 ** newLevel)
         
-        if user.kusa < costKusa:
+        if not await baseDB.deductKusa(userId, costKusa):
             return {'success': False, 'error': f'草不足，需要{costKusa}草'}
-        
-        user.kusa -= costKusa
-        user.vipLevel = newLevel
-        await user.save()
+
+        await KusaBase.filter(user_id=userId).update(vipLevel=newLevel)
         
         await baseDB.setTradeRecord(
             userId=userId,
@@ -506,12 +497,10 @@ class WarehouseService:
         newLevel = currentLevel + 1
         costAdvPoint = 10 ** (newLevel - 4)
         
-        if user.advKusa < costAdvPoint:
+        if not await baseDB.deductKusa(userId, costAdvPoint, type='advKusa'):
             return {'success': False, 'error': f'草之精华不足，需要{costAdvPoint}草之精华'}
-        
-        user.advKusa -= costAdvPoint
-        user.vipLevel = newLevel
-        await user.save()
+
+        await KusaBase.filter(user_id=userId).update(vipLevel=newLevel)
         
         await baseDB.setTradeRecord(
             userId=userId,

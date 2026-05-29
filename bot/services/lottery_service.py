@@ -175,12 +175,9 @@ class LotteryService:
                 'message': '内容审核未通过，请修改后重试'
             }
         
-        user = await baseDB.getKusaUser(userId)
         cost_kusa = 1000 * (8 ** rare_rank)
-        if user.kusa < cost_kusa:
+        if not await baseDB.deductKusa(userId, cost_kusa):
             return {'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': '草不足'}
-        
-        await baseDB.changeKusa(userId, -cost_kusa)
         await drawItemDB.addItem(item_name, rare_rank, pool_name, detail, userId)
         
         return {
