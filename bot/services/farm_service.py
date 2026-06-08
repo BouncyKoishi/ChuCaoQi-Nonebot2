@@ -510,11 +510,35 @@ class FarmService:
 
         Args:
             userId: 用户ID，为None时只返回全服统计
-            period: 统计周期 ('24小时', '昨日', '上周')
+            period: 统计周期 ('24小时', '昨日', '上周', '总计')
 
         Returns:
             Dict: 包含 personal（如有userId）和 total 统计信息
         """
+        result = {}
+
+        if period == "总计":
+            if userId is not None:
+                personal_row = await fieldDB.kusaHistoryReport(userId)
+                result['personal'] = {
+                    'count': personal_row.get('count') or 0,
+                    'sumKusa': personal_row.get('sumKusa') or 0,
+                    'sumAdvKusa': personal_row.get('sumAdvKusa') or 0,
+                    'avgKusa': round(personal_row.get('avgKusa') or 0, 2),
+                    'avgAdvKusa': round(personal_row.get('avgAdvKusa') or 0, 2)
+                }
+
+            total_row = await fieldDB.kusaHistoryTotalReport()
+            total_count = total_row.get('count') or 0
+            result['total'] = {
+                'count': total_count,
+                'sumKusa': total_row.get('sumKusa') or 0,
+                'sumAdvKusa': total_row.get('sumAdvKusa') or 0,
+                'avgKusa': round((total_row.get('sumKusa') or 0) / total_count, 2) if total_count > 0 else 0,
+                'avgAdvKusa': round((total_row.get('sumAdvKusa') or 0) / total_count, 2) if total_count > 0 else 0
+            }
+            return result
+
         now = datetime.now()
         today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
 

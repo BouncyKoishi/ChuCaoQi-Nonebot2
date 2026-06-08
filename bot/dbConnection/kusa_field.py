@@ -119,21 +119,35 @@ async def kusaHistoryAdd(field: KusaField):
                              kusaResult=field.kusaResult, advKusaResult=field.advKusaResult)
 
 
-async def kusaHistoryReport(userId, endTime: datetime.datetime, interval):
-    startTime = endTime - datetime.timedelta(seconds=interval)
+async def kusaHistoryReport(userId, endTime: datetime.datetime = None, interval=None):
     conn = Tortoise.get_connection('default')
-    rows = await conn.execute_query_dict(f'''
-            SELECT
-                count(*) AS count,
-                sum(kusaResult) AS sumKusa,
-                avg(kusaResult) AS avgKusa,
-                sum(advKusaResult) AS sumAdvKusa,
-                avg(advKusaResult) AS avgAdvKusa
-            FROM
-                KusaHistory
-            WHERE
-                userId = ? AND createTimeTs < ? AND createTimeTs > ?
-        ''', [userId, endTime.timestamp(), startTime.timestamp()])
+    if endTime is not None and interval is not None:
+        startTime = endTime - datetime.timedelta(seconds=interval)
+        rows = await conn.execute_query_dict('''
+                SELECT
+                    count(*) AS count,
+                    COALESCE(sum(kusaResult), 0) AS sumKusa,
+                    COALESCE(avg(kusaResult), 0) AS avgKusa,
+                    COALESCE(sum(advKusaResult), 0) AS sumAdvKusa,
+                    COALESCE(avg(advKusaResult), 0) AS avgAdvKusa
+                FROM
+                    KusaHistory
+                WHERE
+                    userId = ? AND createTimeTs < ? AND createTimeTs > ?
+            ''', [userId, endTime.timestamp(), startTime.timestamp()])
+    else:
+        rows = await conn.execute_query_dict('''
+                SELECT
+                    count(*) AS count,
+                    COALESCE(sum(kusaResult), 0) AS sumKusa,
+                    COALESCE(avg(kusaResult), 0) AS avgKusa,
+                    COALESCE(sum(advKusaResult), 0) AS sumAdvKusa,
+                    COALESCE(avg(advKusaResult), 0) AS avgAdvKusa
+                FROM
+                    KusaHistory
+                WHERE
+                    userId = ?
+            ''', [userId])
     return rows[0] if rows else {"count": 0, "sumKusa": 0, "sumAdvKusa": 0, "avgKusa": 0, "avgAdvKusa": 0}
 
 
@@ -147,21 +161,29 @@ async def getRecentKusaHistory(userId, limit: int):
     return rows
 
 
-async def kusaHistoryTotalReport(interval, endTime: datetime.datetime = None):
-    if endTime is None:
-        endTime = datetime.datetime.now()
-    startTime = endTime - datetime.timedelta(seconds=interval)
+async def kusaHistoryTotalReport(interval=None, endTime: datetime.datetime = None):
     conn = Tortoise.get_connection('default')
-    rows = await conn.execute_query_dict(f'''
-        SELECT
-            count(*) AS count,
-            sum(kusaResult) AS sumKusa,
-            sum(advKusaResult) AS sumAdvKusa
-        FROM
-            KusaHistory
-        WHERE
-            createTimeTs < ? AND createTimeTs > ?
-    ''', [endTime.timestamp(), startTime.timestamp()])
+    if interval is not None and endTime is not None:
+        startTime = endTime - datetime.timedelta(seconds=interval)
+        rows = await conn.execute_query_dict('''
+            SELECT
+                count(*) AS count,
+                COALESCE(sum(kusaResult), 0) AS sumKusa,
+                COALESCE(sum(advKusaResult), 0) AS sumAdvKusa
+            FROM
+                KusaHistory
+            WHERE
+                createTimeTs < ? AND createTimeTs > ?
+        ''', [endTime.timestamp(), startTime.timestamp()])
+    else:
+        rows = await conn.execute_query_dict('''
+            SELECT
+                count(*) AS count,
+                COALESCE(sum(kusaResult), 0) AS sumKusa,
+                COALESCE(sum(advKusaResult), 0) AS sumAdvKusa
+            FROM
+                KusaHistory
+        ''', [])
     return rows[0] if rows else {"count": 0, "sumKusa": 0, "sumAdvKusa": 0}
 
 

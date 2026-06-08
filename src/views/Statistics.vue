@@ -96,6 +96,7 @@
                     <el-radio-button label="24小时">24小时</el-radio-button>
                     <el-radio-button label="昨日">昨日</el-radio-button>
                     <el-radio-button label="上周">上周</el-radio-button>
+                    <el-radio-button label="总计">总计</el-radio-button>
                   </el-radio-group>
                 </div>
               </template>
@@ -134,6 +135,7 @@
                     <el-radio-button label="24小时">24小时</el-radio-button>
                     <el-radio-button label="昨日">昨日</el-radio-button>
                     <el-radio-button label="上周">上周</el-radio-button>
+                    <el-radio-button v-if="isSuperAdmin" label="总计">总计</el-radio-button>
                   </el-radio-group>
                 </div>
               </template>
@@ -349,10 +351,14 @@
 
 <script setup lang="ts">
 import { warehouseApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 import { formatNumber } from '@/utils'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+
+const userStore = useUserStore()
+const isSuperAdmin = computed(() => userStore.userInfo?.isSuperAdmin)
 
 const activeTab = ref('production')
 const loading = ref(false)

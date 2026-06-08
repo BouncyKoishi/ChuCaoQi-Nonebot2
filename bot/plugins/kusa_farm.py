@@ -460,6 +460,26 @@ async def handle_kusa_weekly(event: Union[OneBotV11MessageEvent, QQMessageEvent]
     )
 
 
+kusa_total_cmd = on_command("生草总计", priority=5, block=True)
+
+@kusa_total_cmd.handle()
+async def handle_kusa_total(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+    """处理生草总计命令"""
+    user_id = await get_user_id(event, auto_create=True)
+    stats = await FarmService.get_grass_stats(userId=user_id, period='总计')
+    p = stats['personal']
+
+    if not p['count']:
+        await send_finish(kusa_total_cmd, '你还没有生草记录！')
+        return
+
+    await send_finish(kusa_total_cmd,
+        f'历史共生草{p["count"]}次\n'
+        f'收获{p["sumKusa"]}草，平均每次{p["avgKusa"]}草\n'
+        f'收获{p["sumAdvKusa"]}草之精华，平均每次{p["avgAdvKusa"]}草之精华'
+    )
+
+
 rob_cmd = on_command("围殴", priority=5, block=True)
 
 @rob_cmd.handle()
