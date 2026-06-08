@@ -116,6 +116,13 @@ export const commands: Command[] = [
     category: '生草系统',
     subcategory: '生草'
   },
+  {
+    name: '生草总计',
+    params: '',
+    description: '查看历史所有生草统计，包括总生草次数、总草量、草之精华及各自平均值。',
+    category: '生草系统',
+    subcategory: '生草'
+  },
 
   {
     name: '仓库',
