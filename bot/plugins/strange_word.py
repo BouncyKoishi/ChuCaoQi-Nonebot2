@@ -57,6 +57,13 @@ except Exception as e:
     print(f"[怪话] 加载配置失败: {e}")
 
 
+def update_poke_cache(group_num: int, text: str, timestamp: int):
+    """更新拍一拍缓存，使怪话回复与拍一拍衔接"""
+    if group_num in poke_trigger_groups and text:
+        poke_cache[group_num] = {'text': text, 'time': timestamp, 'msg_time': timestamp}
+        poke_last_reply[group_num] = text
+
+
 def get_sentence_list(group_num: int) -> list:
     return sentence_list_dict.get(group_num) or sentence_list_dict.get(default_group_num, [])
 
@@ -192,11 +199,14 @@ async def 怪话_cmd(event, bot):
 
     group_num = getattr(event, 'group_id', default_group_num)
 
-    if allow_model and random.random() < 0.5:
+    if allow_model and random.random() < 0.8:
         reply = await get_sentence_advance(group_num, text)
+        update_poke_cache(group_num, reply, event.time)
         return reply
     else:
-        return get_random_sentence(group_num)
+        reply = get_random_sentence(group_num)
+        update_poke_cache(group_num, reply, event.time)
+        return reply
 
 
 @reply_text_command('remove')
@@ -250,11 +260,14 @@ async def handle_say(event: MessageEvent, args: Message = CommandArg()):
     group_num = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
     
-    if stripped_text and allow_model and random.random() < 0.5:
+    if stripped_text and allow_model and random.random() < 0.8:
         reply = await get_sentence_advance(group_num, stripped_text)
+        update_poke_cache(group_num, reply, event.time)
         await say_cmd.send(reply)
     else:
-        await say_cmd.send(get_random_sentence(group_num))
+        reply = get_random_sentence(group_num)
+        update_poke_cache(group_num, reply, event.time)
+        await say_cmd.send(reply)
 
 
 @say_reverse_cmd.handle()
@@ -283,7 +296,7 @@ async def handle_say_many(event: MessageEvent, args: Message = CommandArg()):
     group_id = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
     
-    if stripped_text and allow_model and random.random() < 0.35:
+    if stripped_text and allow_model and random.random() < 0.8:
         reply_list = await get_sentence_list_advance(group_id, stripped_text)
     else:
         reply_list = []
@@ -295,6 +308,9 @@ async def handle_say_many(event: MessageEvent, args: Message = CommandArg()):
     for msg in reply_list:
         await say_many_cmd.send(msg)
         await asyncio.sleep(1)
+    
+    if reply_list:
+        update_poke_cache(group_id, reply_list[-1], event.time)
 
 
 record_message_matcher = on_message(priority=5, block=False)
@@ -475,13 +491,13 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     
     try:
         last_bot_reply = poke_last_reply.get(group_num, '')
-        if allow_model and random.random() < 0.5:
+        if allow_model and random.random() < 0.8:
             reply = await get_sentence_advance(group_num, text, exclude=last_bot_reply)
         else:
             reply = get_random_sentence(group_num)
         
         poke_last_reply[group_num] = reply
-        poke_cache[group_num] = {'text': reply, 'time': poke_time, 'msg_time': poke_time}
+        update_poke_cache(group_num, reply, poke_time)
         
         await bot.send_group_msg(group_id=group_num, message=reply)
         
