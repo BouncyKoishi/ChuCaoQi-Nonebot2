@@ -7,7 +7,7 @@ import httpx
 import urllib.parse
 import asyncio
 from lxml import etree
-from PicImageSearch import Network, SauceNAO, Ascii2D, Bing
+from PicImageSearch import Network, SauceNAO, Ascii2D, Yandex
 from PIL import Image, ImageFont, ImageDraw, ImageFilter
 
 from utils import imgLocalPathToBase64, extractImgUrls
@@ -232,10 +232,10 @@ class ImgExploration:
     async def ImageBatchDownload(urls: list, client: httpx.AsyncClient) -> list:
         if not urls:
             return []
-        tasks = [asyncio.create_task(client.get(url)) for url in urls]
-        return [(await task).content for task in tasks]
+        responses = await asyncio.gather(*[client.get(url) for url in urls])
+        return [resp.content for resp in responses]
 
-    async def __draw(self) -> bytes:
+    async def __draw(self):
         try:
             font_size = self.__font_b_size
             font = self.__font_b
@@ -332,14 +332,14 @@ class ImgExploration:
                       fill=(0, 0, 0), font=font, anchor="mm",
                       )
 
-            save = BytesIO()
-            img.save(os.path.join(CACHE_DIR, "picsearch.jpg"), format="JPEG", quality=95)
-            return save.getvalue()
-        except Exception as e:
+            img_path = os.path.join(CACHE_DIR, "picsearch.jpg")
+            img.save(img_path, format="JPEG", quality=95)
+            return img_path
+        except Exception:
             traceback.print_exc()
-            raise e
+            return None
 
-    async def __saucenao_build_result(self, result_num=5, minSim=50) -> list:
+    async def __saucenao_build_result(self, result_num=5, minSim=60) -> list:
         resList = []
         try:
             async with Network(proxies=self.__proxy, timeout=100) as client:
@@ -373,14 +373,14 @@ class ImgExploration:
             print(f"saucenao result:{len(resList)}")
         return resList
 
-    async def __bing_build_result(self, result_num=3) -> list:
+    async def __yandex_build_result(self, result_num=3) -> list:
         resList = []
         try:
             async with Network(proxies=self.__proxy, timeout=60) as client:
-                bing = Bing(client=client)
-                bing_result = await bing.search(url=self.__pic_url)
+                yandex = Yandex(client=client)
+                yandex_result = await yandex.search(url=self.__pic_url)
 
-                for i, single in enumerate(bing_result.raw[:result_num]):
+                for i, single in enumerate(yandex_result.raw[:result_num]):
                     if not single.url or not single.thumbnail:
                         continue
 
@@ -388,7 +388,7 @@ class ImgExploration:
                         "title": single.title or "",
                         "thumbnail": single.thumbnail,
                         "url": urllib.parse.unquote(single.url),
-                        "source": "Bing",
+                        "source": "Yandex",
                     })
 
                 if resList:
@@ -398,10 +398,10 @@ class ImgExploration:
                         r["thumbnail_bytes"] = thumbnail_bytes[i]
 
         except Exception as e:
-            print(f"bing error: {e}")
+            print(f"yandex error: {e}")
             traceback.print_exc()
         finally:
-            print(f"bing result:{len(resList)}")
+            print(f"yandex result:{len(resList)}")
         return resList
 
     def __ascii2d_get_external_url(self, rawHtml):
@@ -448,11 +448,11 @@ class ImgExploration:
 
     async def doSearch(self):
         task_saucenao = asyncio.create_task(self.__saucenao_build_result())
-        task_bing = asyncio.create_task(self.__bing_build_result())
+        task_yandex = asyncio.create_task(self.__yandex_build_result())
         task_ascii2d = asyncio.create_task(self.__ascii2d_build_result())
 
         results = await asyncio.gather(
-            task_saucenao, task_bing, task_ascii2d,
+            task_saucenao, task_yandex, task_ascii2d,
             return_exceptions=True
         )
 
