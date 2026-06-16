@@ -7,16 +7,15 @@ import io
 import re
 import codecs
 import random
-from typing import Optional, Dict, Union
+from typing import Optional, Dict
 from datetime import datetime
 from collections import Counter
 
 from reloader import kusa_command as on_command
 from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
-from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
+from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
 from nonebot.params import CommandArg
-from nonebot.adapters import Message, Bot
+from nonebot.adapters import Message
 
 from kusa_base import plugin_config, send_group_msg
 from utils import imgBytesToBase64
@@ -27,8 +26,6 @@ from .pagination_helper import register_pagination_handler, set_pagination_state
 from . import scheduler
 from multi_platform import (
     get_user_id,
-    is_onebot_v11_event,
-    is_qq_event,
     send_finish,
 )
 
@@ -52,7 +49,7 @@ g_pic_cache: Dict[str, Optional[bytes]] = {
 check_g_cmd = on_command("测G", priority=5, block=True)
 
 @check_g_cmd.handle()
-async def handle_check_g(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_check_g(event: OneBotV11MessageEvent):
     """处理测G命令"""
     user_id = await get_user_id(event, auto_create=True)
     
@@ -95,7 +92,7 @@ async def handle_check_g(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 g_help_cmd = on_command("G市帮助", priority=5, block=True)
 
 @g_help_cmd.handle()
-async def handle_g_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_g_help(event: OneBotV11MessageEvent):
     """处理G市帮助命令"""
     try:
         with codecs.open('text/生草系统-G市帮助.txt', 'r', 'utf-8') as f:
@@ -108,7 +105,7 @@ async def handle_g_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 check_f_cmd = on_command("测F", priority=5, block=True)
 
 @check_f_cmd.handle()
-async def handle_check_f(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_check_f(event: OneBotV11MessageEvent):
     """处理测F命令"""
     await send_finish(check_f_cmd, '啊，这……')
 
@@ -117,7 +114,7 @@ async def handle_check_f(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 check_h_cmd = on_command("测H", priority=5, block=True)
 
 @check_h_cmd.handle()
-async def handle_check_h(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_check_h(event: OneBotV11MessageEvent):
     """处理测H命令"""
     await send_finish(check_h_cmd, '您不够H^ ^')
 
@@ -126,7 +123,7 @@ async def handle_check_h(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 check_star_cmd = on_command("测*", priority=5, block=True)
 
 @check_star_cmd.handle()
-async def handle_check_star(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_check_star(event: OneBotV11MessageEvent):
     """处理测*命令"""
     await send_finish(check_star_cmd, '*^ ^*')
 
@@ -135,7 +132,7 @@ async def handle_check_star(event: Union[OneBotV11MessageEvent, QQMessageEvent])
 trade_summary_cmd = on_command("交易总结", priority=5, block=True)
 
 @trade_summary_cmd.handle()
-async def handle_trade_summary(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_trade_summary(event: OneBotV11MessageEvent):
     """处理交易总结命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(trade_summary_cmd, '请在G市结算完成后再查询交易总结^ ^')
@@ -166,7 +163,7 @@ async def handle_trade_summary(event: Union[OneBotV11MessageEvent, QQMessageEven
 last_trade_summary_cmd = on_command("上期交易总结", priority=5, block=True)
 
 @last_trade_summary_cmd.handle()
-async def handle_last_trade_summary(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_last_trade_summary(event: OneBotV11MessageEvent):
     """处理上期交易总结命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(last_trade_summary_cmd, '请在G市结算完成后再查询上期交易总结^ ^')
@@ -177,15 +174,72 @@ async def handle_last_trade_summary(event: Union[OneBotV11MessageEvent, QQMessag
     summary = await GMarketService.get_last_cycle_summary(user_id)
     
     st = '您上周期的G市交易总结：\n'
-    st += f"上周期共投入{summary['all_cost_kusa']:,}草，共取出{summary['all_gain_kusa']:,}草，总盈亏：{summary['profit']:,}草。"
+    st += f"上周期共投入{summary['all_cost_kusa']:,}草，共取出{summary['all_gain_kusa']:,}草，总盈亏：{summary['profit']:,}草。\n\n"
+    
+    # 上周期收盘价
+    last_cycle_g_values = await g_value_db.getLastCycleGValues()
+    if last_cycle_g_values:
+        last_g_value = last_cycle_g_values[-1]
+        st += '上周期各G的收盘价为：\n'
+        for area in ['东', '南', '北', '珠', '深']:
+            value_field = GMarketService.AREA_MAP[area][1]
+            current = getattr(last_g_value, value_field)
+            start_value = GMarketService.START_VALUE_MAP[area]
+            st += GMarketService.format_g_value(current, start_value, area.replace('珠', '珠海').replace('深', '深圳'))
+        st += '\n'
+    
+    st += '使用 !上期G线图 可以查看上周期的G值走势图。'
     await send_finish(last_trade_summary_cmd, st)
+
+
+# 上期G线图命令
+last_g_pic_cmd = on_command("上期G线图", priority=5, block=True)
+
+last_g_pic_cache: Dict[str, Optional[bytes]] = {
+    '东': None,
+    '南': None,
+    '北': None,
+    '珠': None,
+    '深': None,
+    'all': None,
+}
+
+@last_g_pic_cmd.handle()
+async def handle_last_g_pic(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+    """处理上期G线图命令"""
+    stripped_arg = args.extract_plain_text().strip()
+    school = re.findall(r'[东南北珠深]', stripped_arg)
+    school = school[0] if school and school[0] in '东南北珠深' else 'all'
+
+    if last_g_pic_cache[school] is None:
+        await create_last_g_pic()
+
+    pic = imgBytesToBase64(last_g_pic_cache[school])
+    await send_finish(last_g_pic_cmd, pic)
+
+
+async def create_last_g_pic():
+    """创建上期G线图"""
+    global last_g_pic_cache
+    g_values_list = await g_value_db.getLastCycleGValues()
+
+    if not g_values_list:
+        return
+
+    g_values_col_map = get_g_values_col_map(g_values_list)
+
+    for school in '东南北珠深':
+        g_type = area_translate_value(school)
+        last_g_pic_cache[school] = create_g_pic_single(g_values_col_map[g_type])
+
+    last_g_pic_cache['all'] = create_g_pic_all(g_values_col_map)
 
 
 # 交易记录命令 - 支持全局翻页
 trade_record_cmd = on_command("交易记录", priority=5, block=True)
 
 @trade_record_cmd.handle()
-async def handle_trade_record(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_trade_record(event: OneBotV11MessageEvent, args: Message = CommandArg()):
     """处理交易记录命令"""
     user_id = await get_user_id(event, auto_create=True)
     
@@ -228,7 +282,7 @@ async def format_trade_records(records: list, current_page: int, total_pages: in
 g_buy_cmd = on_command("G买入", priority=5, block=True)
 
 @g_buy_cmd.handle()
-async def handle_g_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_g_buy(event: OneBotV11MessageEvent, args: Message = CommandArg()):
     """处理G买入命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(g_buy_cmd, '当前是结算时间，无法进行G交易^ ^')
@@ -268,7 +322,7 @@ async def handle_g_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args
 g_sell_cmd = on_command("G卖出", priority=5, block=True)
 
 @g_sell_cmd.handle()
-async def handle_g_sell(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_g_sell(event: OneBotV11MessageEvent, args: Message = CommandArg()):
     """处理G卖出命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(g_sell_cmd, '当前是结算时间，无法进行G交易^ ^')
@@ -309,7 +363,7 @@ async def handle_g_sell(event: Union[OneBotV11MessageEvent, QQMessageEvent], arg
 g_pic_cmd = on_command("G线图", priority=5, block=True)
 
 @g_pic_cmd.handle()
-async def handle_g_pic(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_g_pic(event: OneBotV11MessageEvent, args: Message = CommandArg()):
     """处理G线图命令"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)
@@ -318,18 +372,8 @@ async def handle_g_pic(event: Union[OneBotV11MessageEvent, QQMessageEvent], args
     if g_pic_cache[school] is None:
         await create_g_pic()
     
-    # 根据平台使用不同的图片发送方式
-    if is_onebot_v11_event(event):
-        # OneBot V11 使用 base64 图片
-        pic = imgBytesToBase64(g_pic_cache[school])
-        await send_finish(g_pic_cmd, pic)
-    elif is_qq_event(event):
-        # QQ 官方 Bot 使用 file_image
-        from nonebot.adapters.qq import MessageSegment as QQMS
-        pic = QQMS.file_image(g_pic_cache[school])
-        await send_finish(g_pic_cmd, pic)
-    else:
-        await send_finish(g_pic_cmd, "当前平台不支持图片发送")
+    pic = imgBytesToBase64(g_pic_cache[school])
+    await send_finish(g_pic_cmd, pic)
 
 
 def get_g_values_col_map(g_values_list):
@@ -477,26 +521,9 @@ if scheduler:
             last_cycle_g_value = await g_value_db.getLastCycleGValues()
             pic_data = create_g_pic_all(get_g_values_col_map(last_cycle_g_value))
             
-            # 获取Bot实例并根据平台发送
-            from multi_platform import get_napcat_bot, is_onebot_v11_bot, is_qq_bot
-            bot = get_napcat_bot()
-            if bot:
-                if is_onebot_v11_bot(bot):
-                    # OneBot V11 使用 base64 图片
-                    from utils import imgBytesToBase64
-                    pic = imgBytesToBase64(pic_data)
-                    await send_group_msg(main_group, output_str)
-                    await send_group_msg(main_group, pic)
-                elif is_qq_bot(bot):
-                    # QQ 官方 Bot 使用 file_image
-                    from nonebot.adapters.qq import MessageSegment as QQMS
-                    await send_group_msg(main_group, output_str)
-                    pic = QQMS.file_image(pic_data)
-                    await send_group_msg(main_group, pic)
-                else:
-                    await send_group_msg(main_group, output_str + "\n[当前平台不支持图片发送]")
-            else:
-                await send_group_msg(main_group, output_str + "\n[无法获取Bot实例]")
+            pic = imgBytesToBase64(pic_data)
+            await send_group_msg(main_group, output_str)
+            await send_group_msg(main_group, pic)
         else:
             output_str = "上周期暂无G市交易记录"
             await send_group_msg(main_group, output_str)

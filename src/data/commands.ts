@@ -468,9 +468,10 @@ export const commands: Command[] = [
   {
     name: '上期交易总结',
     params: '',
-    description: '查看上一周期的G市交易总结，包括投入、取出和总盈亏。',
+    description: '查看上一周期的G市交易总结，包括投入、取出、总盈亏及各G收盘价。',
     details: [
       '显示上周期总投入草数、总取出草数、总盈亏（取出 - 投入）',
+      '显示上周期各校区G的收盘价及对比初始值的涨跌幅百分比',
       '结算时间无法查询'
     ],
     category: '生草系统',
@@ -524,6 +525,17 @@ export const commands: Command[] = [
     name: 'G线图',
     params: '[校区]',
     description: '查看本周期G值走势图。',
+    details: [
+      '可选参数：东/南/北/珠/深，指定查看某校区G线图',
+      '不指定校区时，显示所有校区对比图（归一化后对数坐标）'
+    ],
+    category: '生草系统',
+    subcategory: 'G市'
+  },
+  {
+    name: '上期G线图',
+    params: '[校区]',
+    description: '查看上一周期的G值走势图。',
     details: [
       '可选参数：东/南/北/珠/深，指定查看某校区G线图',
       '不指定校区时，显示所有校区对比图（归一化后对数坐标）'
