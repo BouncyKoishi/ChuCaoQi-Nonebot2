@@ -145,6 +145,30 @@ def intToRomanNum(intNum):
     return romanNumList[intNum - 1] if 0 < intNum <= 10 else ""
 
 
+async def is_at_bot(event) -> bool:
+    """检查 OneBot V11 群消息是否@了bot"""
+    if not NONE_BOT_AVAILABLE:
+        return False
+    from nonebot.adapters.onebot.v11 import GroupMessageEvent
+    if not isinstance(event, GroupMessageEvent):
+        return False
+    bot_self_id = getattr(event, 'self_id', None)
+    if not bot_self_id:
+        return False
+    for seg in event.get_message():
+        if seg.type == 'at' and str(seg.data.get('qq', '')) == str(bot_self_id):
+            return True
+    return False
+
+
+async def get_group_member_nickname(bot, group_id: int, user_id: int) -> str:
+    """获取群成员昵称，优先用群名片"""
+    info = await getGroupMemberInfoFromCache(bot, group_id, user_id)
+    if info:
+        return info.get('card') or info.get('nickname') or str(user_id)
+    return str(user_id)
+
+
 # 支持k,m,b单位的数字字符串转换为int
 def convertNumStrToInt(numStr):
     match = re.search(r'([\d,]+)([kmbKMB]?)', numStr)
