@@ -63,7 +63,7 @@ auto_reply_groups = auto_reply_config.get('groups', [])
 auto_reply_talk_value = auto_reply_config.get('talkValue', 0.1)
 auto_reply_min_msg = auto_reply_config.get('minMsgCount', 10)
 auto_reply_cooldown = auto_reply_config.get('cooldown', 120)
-auto_reply_max_context = auto_reply_config.get('maxContext', 15)
+auto_reply_max_context = auto_reply_config.get('maxContext', 10)
 auto_reply_sample_size = auto_reply_config.get('sampleSize', 30)
 auto_reply_enabled = True
 
@@ -163,7 +163,7 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
 
     system_prompt = '你需要从以下怪话中选择一句语义最适宜的话来回答用户说的内容。你的回答内容只能是怪话列表中的某一句话，不包括任何其它内容。\n'
     user_prompt = f"用户发言：{input_str}\n\n怪话列表：\n"
-    for _ in range(10):
+    for _ in range(15):
         user_prompt += random.choice(available) + '\n'
 
     prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
@@ -207,7 +207,10 @@ async def get_sentence_list_advance(group_num: int, input_str: str) -> list:
                     if not isinstance(reply_list[i], str):
                         print(f'输出内容为:"{reply}" 匹配怪话库失败，输出随机怪话')
                         reply_list[i] = random.choice(model_sentence_list)
-                return reply_list
+                # 不足3句时用随机怪话补齐
+                while len(reply_list) < 3:
+                    reply_list.append(random.choice(model_sentence_list))
+                return reply_list[:3]
         except Exception as e:
             print(f'解析输出内容失败，错误信息：{e}')
 
