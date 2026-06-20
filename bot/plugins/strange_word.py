@@ -14,6 +14,7 @@
 - #怪话 - 说点怪话指令的回复版本
 """
 
+import asyncio
 import math
 import random
 import os
