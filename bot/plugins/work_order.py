@@ -79,7 +79,7 @@ async def handle_回复工单(bot: Bot, event: Event, args: Message = CommandArg
     orderId, reply = args_list if len(args_list) == 2 else [None, None]
     
     if not orderId or not reply:
-        await send_finish(回复工单_cmd, '参数异常，请自检^ ^')
+        await send_finish(回复工单_cmd, '参数异常，正确格式：!回复工单 工单ID 回复内容')
         return
 
     order = await orderDB.getWorkOrderById(orderId)

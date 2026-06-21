@@ -414,7 +414,7 @@ async def handle_kusa_ban(
             await bot.set_group_ban(group_id=group_id, user_id=receiver_qq, duration=seconds)
             status_msg = '已解除相关人员的口球(如果有的话)'
     else:
-        status_msg = '参数不正确^ ^'
+        status_msg = '参数不正确，正确格式：!口球 qq=QQ号 sec=秒数'
 
     await send_finish(kusa_ban_cmd, status_msg)
 
@@ -456,11 +456,11 @@ async def handle_transfer_kusa(
         # 使用qq
         target_user = await WarehouseService.get_transfer_target_by_qq(str(receiver_qq))
     else:
-        await send_finish(transfer_kusa_cmd, '需要被转让人的QQ号(qq=xxx)或用户ID(id=xxx)！')
+        await send_finish(transfer_kusa_cmd, '需要被转让人的QQ号(qq=xxx)或用户ID(id=xxx)！正确格式：!草转让 qq=QQ号 kusa=草数 或 !草转让 id=用户ID kusa=草数')
         return
 
     if not transfer_kusa:
-        await send_finish(transfer_kusa_cmd, '待转让的草数不合法！')
+        await send_finish(transfer_kusa_cmd, '待转让的草数不合法！正确格式：!草转让 qq=QQ号 kusa=草数 或 !草转让 id=用户ID kusa=草数')
         return
 
     if not target_user:
@@ -540,14 +540,17 @@ async def handle_give_envelope(
     number = int(number_match.group(0)) if number_match else None
     total_kusa = convertNumStrToInt(total_kusa_match.group(0)) if total_kusa_match else 0
 
+    if not number and not total_kusa:
+        await send_finish(give_envelope_cmd, '参数不正确，正确格式：!发草包 num=人数 kusa=草数')
+        return
     if not number:
-        await send_finish(give_envelope_cmd, '需要发放草包的个数！')
+        await send_finish(give_envelope_cmd, '缺少草包个数(num)，正确格式：!发草包 num=人数 kusa=草数')
         return
     if number <= 0:
         await send_finish(give_envelope_cmd, '草包个数不合法！')
         return
     if total_kusa < number:
-        await send_finish(give_envelope_cmd, '待发的草数不合法！')
+        await send_finish(give_envelope_cmd, '待发的草数不合法！需大于等于人数，正确格式：!发草包 num=人数 kusa=草数')
         return
 
     if not await base_db.deductKusa(user_id, total_kusa):
