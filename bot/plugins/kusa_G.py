@@ -499,9 +499,9 @@ if scheduler:
         summary_result = await GMarketService.get_cycle_summary()
         
         if summary_result['has_records']:
-            output_str = (f"上周期的G神为 {summary_result['max_user_name']} 和 {summary_result['min_user_name']}：\n"
-                         f"{summary_result['max_user_name']}在G市盈利{summary_result['max_profit']:,}草\n"
-                         f"{summary_result['min_user_name']}在G市盈利{summary_result['min_profit']:,}草\n")
+            output_str = (f"上周期的G神为 {summary_result['max_display_name']} 和 {summary_result['min_display_name']}：\n"
+                         f"{summary_result['max_display_name']}在G市盈利{summary_result['max_profit']:,}草\n"
+                         f"{summary_result['min_display_name']}在G市盈利{summary_result['min_profit']:,}草\n")
             
             output_str += '\n上周期各G的收盘价为：\n'
             area_value_key_map = {

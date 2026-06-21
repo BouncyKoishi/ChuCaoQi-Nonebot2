@@ -109,23 +109,27 @@ async def stop_envelope(envelope_id: str):
     user = await base_db.getKusaUser(envelope_info.userId)
     user_qq = await user_db.getRealQQByUserId(envelope_info.userId)
     user_name = user.name if user and user.name else (user_qq or str(envelope_info.userId))
+    user_title = user.title if user and user.title else ""
+    display_name = f"「{user_title}」{user_name}" if user_title else user_name
 
     if envelope_info.userLimit == 0:
         max_user = await base_db.getKusaUser(envelope_info.maxUserId)
         max_user_qq = await user_db.getRealQQByUserId(envelope_info.maxUserId)
         max_user_name = max_user.name if max_user and max_user.name else (max_user_qq or str(envelope_info.maxUserId))
+        max_user_title = max_user.title if max_user and max_user.title else ""
+        max_display_name = f"「{max_user_title}」{max_user_name}" if max_user_title else max_user_name
         d_time = datetime.now() - envelope_info.startTime
         s_total = int(d_time.total_seconds())
         await send_group_msg(
             plugin_config.get('group', {}).get('main'),
-            f'玩家 {user_name} 发的草包已被抢完，耗时{s_total // 60}min{s_total % 60}s\n'
-            f'玩家 {max_user_name} 是手气王，抢到了{envelope_info.maxGot}草'
+            f'玩家 {display_name} 发的草包已被抢完，耗时{s_total // 60}min{s_total % 60}s\n'
+            f'玩家 {max_display_name} 是手气王，抢到了{envelope_info.maxGot}草'
         )
     else:
         await base_db.changeKusa(envelope_info.userId, envelope_info.kusaLimit)
         await send_group_msg(
             plugin_config.get('group', {}).get('main'),
-            f'玩家 {user_name} 发的草包超时未抢完，剩余{envelope_info.kusaLimit}草已退回'
+            f'玩家 {display_name} 发的草包超时未抢完，剩余{envelope_info.kusaLimit}草已退回'
         )
 
 

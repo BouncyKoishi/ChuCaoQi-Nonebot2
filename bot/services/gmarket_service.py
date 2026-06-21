@@ -743,6 +743,14 @@ class GMarketService:
         name_list = await baseDB.getNameListByKusaUserId([max_profit_user_id, min_profit_user_id])
         max_user_name = name_list.get(max_profit_user_id, max_profit_user_id)
         min_user_name = name_list.get(min_profit_user_id, min_profit_user_id)
+
+        # 获取称号
+        max_user = await baseDB.getKusaUser(max_profit_user_id)
+        min_user = await baseDB.getKusaUser(min_profit_user_id)
+        max_user_title = max_user.title if max_user and max_user.title else ""
+        min_user_title = min_user.title if min_user and min_user.title else ""
+        max_display_name = f"「{max_user_title}」{max_user_name}" if max_user_title else max_user_name
+        min_display_name = f"「{min_user_title}」{min_user_name}" if min_user_title else min_user_name
         
         last_cycle_g_value = await gValueDB.getLastCycleGValues()
         end_g_values = last_cycle_g_value[-1] if last_cycle_g_value else None
@@ -751,6 +759,8 @@ class GMarketService:
             'has_records': True,
             'max_user_name': max_user_name,
             'min_user_name': min_user_name,
+            'max_display_name': max_display_name,
+            'min_display_name': min_display_name,
             'max_profit': operator_profit_map[max_profit_user_id],
             'min_profit': operator_profit_map[min_profit_user_id],
             'end_values': {

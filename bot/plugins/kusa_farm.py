@@ -784,20 +784,22 @@ async def send_report_msg(field, report_type, sad_news_count=0, chain_str=""):
     user = await base_db.getKusaUser(field.user_id)
     user_qq = await getRealQQByUserId(field.user_id)
     user_name = user.name if user and user.name else (user_qq or str(field.user_id))
+    user_title = user.title if user and user.title else ""
+    display_name = f"「{user_title}」{user_name}" if user_title else user_name
     report_str = ""
     
     if report_type == '悲报':
         quality_level = await item_db.getTechLevel(field.user_id, '生草质量')
         item_name = "生草质量" + intToRomanNum(quality_level)
-        report_str = f"喜报\n玩家 {user_name} 使用 {item_name} 在连续{sad_news_count}次生草中未获得草之精华！"
+        report_str = f"喜报\n玩家 {display_name} 使用 {item_name} 在连续{sad_news_count}次生草中未获得草之精华！"
     
     if report_type in ['质量喜报', '草精喜报']:
         kusa_type = field.kusaType if field.kusaType else "普通草"
-        report_str = f"喜报\n玩家 {user_name} 使用 {kusa_type} 获得了{field.advKusaResult}个草之精华！大家快来围殴他吧！"
+        report_str = f"喜报\n玩家 {display_name} 使用 {kusa_type} 获得了{field.advKusaResult}个草之精华！大家快来围殴他吧！"
     
     if report_type == '连号喜报':
         chain_bonus = get_chain_bonus_amount(chain_str)
-        report_str = f"喜报\n魔法少女纯酱为生{field.kusaType}达成{get_chain_length_str(chain_str)}的玩家 {user_name} 召唤了额外的{chain_bonus}草之精华喵(*^▽^)/★*☆"
+        report_str = f"喜报\n魔法少女纯酱为生{field.kusaType}达成{get_chain_length_str(chain_str)}的玩家 {display_name} 召唤了额外的{chain_bonus}草之精华喵(*^▽^)/★*☆"
     
     if not report_str:
         return
