@@ -24,6 +24,7 @@ class ChatService:
     _openai_client: Optional[OpenAI] = None
     _deepseek_client: Optional[OpenAI] = None
     _gemini_client: Optional[OpenAI] = None
+    _lzusa_client: Optional[OpenAI] = None
     
     @staticmethod
     def _init_clients():
@@ -35,6 +36,8 @@ class ChatService:
             openai_key = web_config.get('openai', {}).get('key', '')
             deepseek_key = web_config.get('deepseek', {}).get('key', '')
             gemini_key = web_config.get('gemini', {}).get('key', '')
+            lzusa_key = web_config.get('lzusa', {}).get('key', '')
+            lzusa_base_url = web_config.get('lzusa', {}).get('base_url', '')
             
             deepseek_base_url = "https://api.deepseek.com"
             gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
@@ -48,17 +51,25 @@ class ChatService:
             ChatService._openai_client = OpenAI(api_key=openai_key)
             ChatService._gemini_client = OpenAI(api_key=gemini_key, base_url=gemini_base_url)
             ChatService._deepseek_client = OpenAI(api_key=deepseek_key, base_url=deepseek_base_url)
+            if lzusa_key and lzusa_base_url:
+                ChatService._lzusa_client = OpenAI(api_key=lzusa_key, base_url=lzusa_base_url)
     
     @staticmethod
-    def _get_client(model: str) -> OpenAI:
-        """根据模型名称获取对应的客户端"""
+    def _get_client(model: str) -> tuple[OpenAI, str]:
+        """根据模型名称获取对应的客户端和实际模型名
+
+        Returns:
+            (client, actual_model_name)
+        """
         ChatService._init_clients()
+        if model == 'lzusa':
+            return ChatService._lzusa_client, model
         if 'deepseek' in model:
-            return ChatService._deepseek_client
+            return ChatService._deepseek_client, model
         elif 'gemini' in model:
-            return ChatService._gemini_client
+            return ChatService._gemini_client, model
         else:
-            return ChatService._openai_client
+            return ChatService._openai_client, model
     
     @staticmethod
     async def get_chat_reply(model: str, messages: list) -> tuple[str, int, dict]:
@@ -71,18 +82,22 @@ class ChatService:
         Returns:
             (回复内容, token使用量, 完整响应字典)
         """
-        client = ChatService._get_client(model)
+        client, actual_model = ChatService._get_client(model)
         
         loop = asyncio.get_event_loop()
         
         def _get_response():
+            kwargs = dict(messages=messages, timeout=120)
+            if actual_model:
+                kwargs['model'] = actual_model
             if 'deepseek' in model:
-                return client.chat.completions.create(model=model, messages=messages, timeout=120)
+                return client.chat.completions.create(**kwargs)
             elif 'gemini' in model:
-                return client.chat.completions.create(model=model, messages=messages, timeout=120)
+                return client.chat.completions.create(**kwargs)
             elif 'gpt-5' in model:
-                return client.chat.completions.create(model=model, messages=messages, timeout=120, reasoning_effort="low")
-            return client.chat.completions.create(model=model, messages=messages, timeout=120)
+                kwargs['reasoning_effort'] = "low"
+                return client.chat.completions.create(**kwargs)
+            return client.chat.completions.create(**kwargs)
         
         response = await loop.run_in_executor(None, _get_response)
         response_dict = response.to_dict()

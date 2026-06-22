@@ -10,7 +10,7 @@ from reloader import db_command as on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from utils import nameDetailSplit, imgUrlTobase64
+from utils import nameDetailSplit, imgUrlTobase64, extractImgUrls
 from services.chat_service import ChatService
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
@@ -334,6 +334,11 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
             newModel = "deepseek-reasoner"
         elif "deepseek" in strippedText:
             newModel = "deepseek-chat"
+        elif strippedText == "lzusa":
+            if not await permissionCheck(event, "model"):
+                await send_finish(model_change_cmd, "需要高级模型权限！")
+                return
+            newModel = "lzusa"
         else:
             newModel = strippedText
             await send_reply(model_change_cmd, "注意，你定义的模型名称不在预设列表，chat可能报错！")
@@ -470,7 +475,7 @@ async def handle_chat_help(bot: Bot, event: Event):
         output += ("\nrole_change: 切换当前角色\nrole_detail: 查看角色描述信息\n"
                    "role_update: 新增/更新角色描述信息(-g 设置为全局角色)\nrole_delete: 删除角色")
     if chatUser.allowAdvancedModel:
-        output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5/gpt-5-mini）"
+        output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5/gpt-5-mini/lzusa）"
     else:
         output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5-mini）"
     if await is_super_admin(user_id):
@@ -482,6 +487,9 @@ async def handle_chat_help(bot: Bot, event: Event):
 async def getChatContent(event: Event, args: Message):
     inputText = args.extract_plain_text()
     userContent = [{"type": "text", "text": inputText}]
+    imgUrls = extractImgUrls(args)
+    for url in imgUrls:
+        userContent.append({"type": "image_url", "image_url": {"url": url}})
     return userContent
 
 
@@ -506,7 +514,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
             roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
-        modelSign = "(GPT-5)" if model == "gpt-5" else ("(deepseek)" if "deepseek" in model else "")
+        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if model == "lzusa" else ("(deepseek)" if "deepseek" in model else ""))
         tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
