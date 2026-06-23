@@ -168,7 +168,7 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
         user_prompt += random.choice(available) + '\n'
 
     prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-    reply, _, _ = await ChatService.get_chat_reply("deepseek-chat", prompt)
+    reply, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", prompt)
 
     matched = match_strange_word(reply, model_sentence_list)
     if not matched:
@@ -196,7 +196,7 @@ async def get_sentence_list_advance(group_num: int, input_str: str) -> list:
         user_prompt += random.choice(model_sentence_list) + '\n'
 
     prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-    reply, _, _ = await ChatService.get_chat_reply("deepseek-chat", prompt)
+    reply, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", prompt)
 
     if reply.startswith('[') and reply.endswith(']'):
         reply = reply.replace('"', '"').replace('"', '"').replace("'", "'").replace("'", "'")
@@ -261,7 +261,7 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
     ]
 
     try:
-        reply, _, _ = await ChatService.get_chat_reply("deepseek-chat", prompt)
+        reply, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", prompt)
     except Exception as e:
         print(f'[怪话] 自动选句API调用失败: {e}')
         return None

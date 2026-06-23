@@ -135,7 +135,7 @@ class ChatUser(Model):
     allowPrivate = BooleanField(default=False)
     allowRole = BooleanField(default=False)
     allowAdvancedModel = BooleanField(default=False)
-    chosenModel = CharField(max_length=32, default="deepseek-chat")
+    chosenModel = CharField(max_length=32, default="deepseek-v4-flash")
     tokenUse = IntField(default=0)
     todayTokenUse = IntField(default=0)
     dailyTokenLimit = IntField(default=10000)

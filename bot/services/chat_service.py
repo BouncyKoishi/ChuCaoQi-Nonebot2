@@ -142,7 +142,7 @@ class ChatService:
         ]
         
         try:
-            reply, _, _ = await ChatService.get_chat_reply("deepseek-chat", messages)
+            reply, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", messages)
             
             import json
             result = json.loads(reply)

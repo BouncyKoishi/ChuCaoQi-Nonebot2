@@ -95,7 +95,7 @@ async def handle_解卦(bot: Bot, event: Event, args: Message = CommandArg()):
     base_result_str = getFinalWords(result['trigram64'], result['changedTrigram64'], result['changeableIndex'])
     
     chat_gpt_prompt = getChatGPTPrompt(result['stripped_arg'], base_result_str)
-    reply_msg, _, _ = await ChatService.get_chat_reply("deepseek-chat", chat_gpt_prompt)
+    reply_msg, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", chat_gpt_prompt)
     
     await send_finish(解卦_cmd, f'{reply_msg}\n\n注：以上解卦内容由AI生成，仅供参考。')
 
