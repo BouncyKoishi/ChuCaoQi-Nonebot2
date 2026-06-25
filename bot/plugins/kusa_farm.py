@@ -686,7 +686,7 @@ async def kusa_harvest(field):
 
     await field_db.kusaStopGrowing(field, False)
 
-    await send_private_msg(field.user_id, output_msg)
+    # await send_private_msg(field.user_id, output_msg)  # 临时禁用生草完成私聊推送
 
 
 async def good_news_report(field):
@@ -728,10 +728,10 @@ async def get_chain_bonus(field):
     for chain_str in chains:
         chain_bonus = get_chain_bonus_amount(chain_str)
         chain_bonus_total += chain_bonus
-        await send_private_msg(
-            field.user_id,
-            f'{get_chain_length_str(chain_str)}！魔法少女纯酱召唤了额外的{chain_bonus}个草之精华喵(*^▽^)/★*☆'
-        )
+        # await send_private_msg(  # 临时禁用连号奖励私聊推送
+        #     field.user_id,
+        #     f'{get_chain_length_str(chain_str)}！魔法少女纯酱召唤了额外的{chain_bonus}个草之精华喵(*^▽^)/★*☆'
+        # )
         if len(chain_str) >= 4 and chain_bonus > 18:
             await send_report_msg(field, '连号喜报', chain_str=chain_str)
     
