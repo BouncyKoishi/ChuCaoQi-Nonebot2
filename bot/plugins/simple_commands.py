@@ -118,9 +118,15 @@ async def handle_thanks(bot: Bot, event: Event, args: Message = CommandArg()):
     if not user_id:
         return
     
-    # 从命令参数中获取年份
+    # 从命令参数中获取年份或ALL
     year_str = args.extract_plain_text().strip()
-    year = year_str if year_str and year_str.isdigit() and 2020 <= int(year_str) <= 2099 else None
+    current_year = str(datetime.datetime.now().year)
+    if year_str.upper() == 'ALL':
+        year = None
+    elif year_str and year_str.isdigit() and 2020 <= int(year_str) <= 2099:
+        year = year_str
+    else:
+        year = current_year
     donateAmount = await db.getDonateAmount(int(user_id))
     output = ''
 
@@ -139,7 +145,7 @@ async def handle_thanks(bot: Bot, event: Event, args: Message = CommandArg()):
         output += f'{year}年度暂无捐助信息= ='
         await send_finish(thanks_cmd, output)
         return
-    output += f'以下是{year}年度的捐助信息' if year else '以下是累计捐助信息'
+    output += f'以下是{year}年度的捐助信息' if year else '以下是全部累计捐助信息'
     output += f'(篇幅较长，仅展示前25条)：\n' if len(donateRank) > 25 else '：\n'
 
     nameList = await db.getNameListByKusaUserId(list(donateRank.keys()))

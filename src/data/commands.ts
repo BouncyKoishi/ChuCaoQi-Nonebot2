@@ -1194,11 +1194,12 @@ export const commands: Command[] = [
   },
   {
     name: 'THANKS',
-    params: '[年份]',
+    params: '[年份/ALL]',
     description: '查看为除草器提供捐助的信息和排行榜。',
     details: [
       '可选输入年份（2020-2099）查看该年度捐助信息',
-      '不输入年份则显示累计捐助信息',
+      '输入ALL查看全部累计捐助信息',
+      '不输入参数则默认显示本年度捐助信息',
       '十分感谢您对除草器的支持~'
     ],
     category: '实用功能',
