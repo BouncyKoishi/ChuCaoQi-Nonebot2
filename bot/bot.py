@@ -112,9 +112,6 @@ async def setup_error_handling():
     loop.set_exception_handler(global_exception_handler)
     print("[OK] Global exception handler configured")
 
-# 加载插件
-nonebot.load_plugins("plugins")
-
 # 运行 Bot
 if __name__ == "__main__":
     nonebot.run()
