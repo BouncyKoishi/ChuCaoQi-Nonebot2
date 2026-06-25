@@ -112,6 +112,9 @@ async def setup_error_handling():
     loop.set_exception_handler(global_exception_handler)
     print("[OK] Global exception handler configured")
 
+# 从 pyproject.toml 加载插件配置
+nonebot.load_from_toml("pyproject.toml")
+
 # 运行 Bot
 if __name__ == "__main__":
     nonebot.run()
