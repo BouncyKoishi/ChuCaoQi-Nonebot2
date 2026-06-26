@@ -16,7 +16,7 @@ import dbConnection.kusa_item as itemDB
 import dbConnection.user as user_db
 import dbConnection.chat as chatDB
 from dbConnection.models import UnifiedUser, KusaBase, KusaItemList, KusaItemStorage
-from tortoise.query_utils import Q
+from tortoise.expressions import Q
 from services import WarehouseService
 from services import identity_service
 
