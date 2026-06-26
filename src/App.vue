@@ -75,6 +75,10 @@
             <el-icon><InfoFilled /></el-icon>
             <template #title>关于</template>
           </el-menu-item>
+          <el-menu-item v-if="isAdmin" index="admin">
+            <el-icon><Setting /></el-icon>
+            <template #title>后台</template>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       <!-- 侧边栏遮罩层 -->
@@ -92,7 +96,7 @@
 
 <script setup lang="ts">
 import { useUserStore } from '@/stores/user'
-import { DataLine, House, InfoFilled, Menu, PieChart, Present, ShoppingCart, Star, SwitchButton, TrendCharts } from '@element-plus/icons-vue'
+import { DataLine, House, InfoFilled, Menu, PieChart, Present, Setting, ShoppingCart, Star, SwitchButton, TrendCharts } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -100,6 +104,8 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+const isAdmin = computed(() => userStore.isLoggedIn && userStore.userInfo?.isSuperAdmin)
 
 // 侧边栏折叠状态
 const isSidebarCollapsed = ref(false)
@@ -118,6 +124,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/expedition')) return 'expedition'
   if (path.startsWith('/ability')) return 'ability'
   if (path.startsWith('/about')) return 'about'
+  if (path.startsWith('/admin')) return 'admin'
   return ''
 })
 

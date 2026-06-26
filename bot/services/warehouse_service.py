@@ -8,13 +8,39 @@ import sys
 import os
 from typing import Dict, Any, List
 import time
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
 import dbConnection.kusa_system as baseDB
 import dbConnection.kusa_item as itemDB
 import dbConnection.user as user_db
-from dbConnection.models import UnifiedUser, KusaBase
+from dbConnection.models import UnifiedUser, KusaBase, KusaHistory
+
+
+async def _get_active_user_ids(days: int = 90) -> set:
+    """获取近 N 天有生草记录的用户 ID 集合"""
+    start_ts = (datetime.now() - timedelta(days=days)).timestamp()
+    records = await KusaHistory.filter(createTimeTs__gt=start_ts).distinct().values('user_id')
+    return {r['user_id'] for r in records}
+
+
+async def _filter_users(user_list, unified_user_map, level_max, show_inactive, show_subaccount, active_ids=None):
+    """通用过滤：等级/小号/不活跃"""
+    if not show_inactive and active_ids is None:
+        active_ids = await _get_active_user_ids()
+
+    filtered = []
+    for user in user_list:
+        if user.vipLevel > level_max:
+            continue
+        uu = unified_user_map.get(user.user_id)
+        if not show_subaccount and uu and uu.relatedUserId:
+            continue
+        if not show_inactive and user.user_id not in active_ids:
+            continue
+        filtered.append(user)
+    return filtered
 
 _rank_cache = {}
 _cache_ttl = 300
@@ -321,7 +347,8 @@ class WarehouseService:
         }
     
     @staticmethod
-    async def get_kusa_rank(limit: int = 25) -> List[Dict[str, Any]]:
+    async def get_kusa_rank(limit: int = 25, level_max: int = 10,
+                            show_inactive: bool = False, show_subaccount: bool = True) -> List[Dict[str, Any]]:
         """获取草排行榜"""
         user_list = await baseDB.getAllKusaUser()
 
@@ -331,14 +358,13 @@ class WarehouseService:
             bot_user_ids.add(u.id)
 
         user_list = [u for u in user_list if u.user_id not in bot_user_ids]
-        user_list = sorted(user_list, key=lambda x: x.kusa, reverse=True)
 
-        unified_user_ids = [u.user_id for u in user_list[:limit]]
-        unified_users_map = {}
-        for uid in unified_user_ids:
-            uu = await user_db.getUnifiedUser(uid)
-            if uu:
-                unified_users_map[uid] = uu
+        unified_user_ids = [u.user_id for u in user_list]
+        unified_users_all = await UnifiedUser.filter(id__in=unified_user_ids).all()
+        unified_users_map = {u.id: u for u in unified_users_all}
+
+        user_list = await _filter_users(user_list, unified_users_map, level_max, show_inactive, show_subaccount)
+        user_list = sorted(user_list, key=lambda x: x.kusa, reverse=True)
 
         result = []
         for i, user in enumerate(user_list[:limit]):
@@ -347,11 +373,12 @@ class WarehouseService:
                 'rank': i + 1,
                 'qq': unified_user.realQQ if unified_user else None,
                 'userId': user.user_id,
-                'name': user.name or (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id)),
-                'kusa': user.kusa
+                'name': user.name,
+                'kusa': user.kusa,
+                'vipLevel': user.vipLevel
             })
         return result
-    
+
     @staticmethod
     async def get_user_stats(userId: int) -> Dict[str, Any]:
         """获取用户统计"""
@@ -407,10 +434,10 @@ class WarehouseService:
             ]
     
     @staticmethod
-    async def get_kusa_rank_with_adv(limit: int = 25, sort_by: str = 'kusa') -> List[Dict[str, Any]]:
+    async def get_kusa_rank_with_adv(limit: int = 25, sort_by: str = 'kusa',
+                                     level_max: int = 10, show_inactive: bool = False,
+                                     show_subaccount: bool = True) -> List[Dict[str, Any]]:
         """获取草排行榜（包含草之精华）"""
-        from dbConnection.models import UnifiedUser
-        
         user_list = await baseDB.getAllKusaUser()
 
         bot_user_ids = set()
@@ -420,18 +447,17 @@ class WarehouseService:
 
         user_list = [u for u in user_list if u.user_id not in bot_user_ids]
 
+        unified_user_ids = [u.user_id for u in user_list]
+        unified_users_all = await UnifiedUser.filter(id__in=unified_user_ids).all()
+        unified_users_map = {u.id: u for u in unified_users_all}
+
+        user_list = await _filter_users(user_list, unified_users_map, level_max, show_inactive, show_subaccount)
+
         if sort_by == 'advKusa':
             user_list = sorted(user_list, key=lambda x: x.advKusa, reverse=True)
         else:
             user_list = sorted(user_list, key=lambda x: x.kusa, reverse=True)
 
-        unified_user_ids = [u.user_id for u in user_list[:limit]]
-        unified_users_map = {}
-        for uid in unified_user_ids:
-            uu = await user_db.getUnifiedUser(uid)
-            if uu:
-                unified_users_map[uid] = uu
-        
         result = []
         for i, user in enumerate(user_list[:limit]):
             unified_user = unified_users_map.get(user.user_id)
@@ -439,9 +465,10 @@ class WarehouseService:
                 'rank': i + 1,
                 'qq': unified_user.realQQ if unified_user else None,
                 'userId': user.user_id,
-                'name': user.name or (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id)),
+                'name': user.name,
                 'kusa': user.kusa,
-                'advKusa': user.advKusa
+                'advKusa': user.advKusa,
+                'vipLevel': user.vipLevel
             })
         return result
     
@@ -532,26 +559,25 @@ class WarehouseService:
                 return cached
         
         user_list = await baseDB.getAllKusaUser()
-        
+
         from dbConnection.models import UnifiedUser
         unified_user_ids = [user.user_id for user in user_list]
         unified_users = await UnifiedUser.filter(id__in=unified_user_ids).all()
         unified_user_map = {u.id: u for u in unified_users}
-        
-        filtered_users = []
+
+        # 去重 + 排除 bot
         seen_user_ids = set()
+        deduped = []
         for user in user_list:
             if user.user_id in seen_user_ids:
                 continue
             seen_user_ids.add(user.user_id)
             if str(user.user_id) == 'bot':
                 continue
-            if user.vipLevel > level_max:
-                continue
-            unified_user = unified_user_map.get(user.user_id)
-            if not show_subaccount and unified_user and unified_user.relatedUserId:
-                continue
-            filtered_users.append(user)
+            deduped.append(user)
+
+        # 统一过滤（等级/小号/不活跃）
+        filtered_users = await _filter_users(deduped, unified_user_map, level_max, show_inactive, show_subaccount)
         
         all_trade_records = await baseDB.getAllTradeRecordsByCostItem('草之精华')
         
@@ -580,7 +606,7 @@ class WarehouseService:
             user_total_adv.append({
                 'userId': user.user_id,
                 'qq': real_qq,
-                'name': user.name or (real_qq if real_qq else str(user.user_id)),
+                'name': user.name,
                 'vipLevel': user.vipLevel,
                 'totalAdvKusa': total_adv,
                 'nowAdvKusa': now_adv,

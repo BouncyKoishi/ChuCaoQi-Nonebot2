@@ -1,12 +1,8 @@
-import re
 import os
 import glob
 import random
 import pytz
-import shutil
-import hashlib
 from datetime import datetime
-from urllib.request import urlretrieve
 
 from nonebot import on_command, get_bot, logger
 from nonebot.adapters import Bot, Event
@@ -20,27 +16,15 @@ from nonebot.typing import T_State
 from kusa_base import plugin_config, is_super_admin
 from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
 from utils import extractImgUrls, imgLocalPathToBase64
+from services import pic_archive_service as pic_service
+from services.pic_archive_service import ARCHIVE_INFO as archiveInfo
 
 
-BASE_PIC_PATH = os.path.join(plugin_config.get('basePath', ''), 'picArchive')
-SAVE_PATH = os.path.join(BASE_PIC_PATH, '私藏')
-EXAMINE_PATH = os.path.join(BASE_PIC_PATH, '待分类')
+# bot 运行时维护的状态（web 端不共享，进程隔离）
+SAVE_PATH = pic_service.get_save_path()
+EXAMINE_PATH = pic_service.get_examine_path()
 
-archiveInfo = {
-    "jun": {"onlinePath": os.path.join(BASE_PIC_PATH, 'jun', 'online'), "displayName": "罗俊"},
-    "junOrigin": {"onlinePath": os.path.join(BASE_PIC_PATH, 'jun', 'origin'), "displayName": "纯净罗俊"},
-    "xhb": {"onlinePath": os.path.join(BASE_PIC_PATH, 'xhb'), "displayName": "xhb"},
-    "tudou": {"onlinePath": os.path.join(BASE_PIC_PATH, '土豆泥'), "displayName": "土豆"},
-    "zundamon": {"onlinePath": os.path.join(BASE_PIC_PATH, '豆包2.0'), "displayName": "俊达萌"},
-    "zundamon2": {"onlinePath": os.path.join(BASE_PIC_PATH, '豆包'), "displayName": "俊达萌美图"},
-    "pusheen": {"onlinePath": os.path.join(BASE_PIC_PATH, 'libmmc'), "displayName": "猫猫虫"},
-    "cat": {"onlinePath": os.path.join(BASE_PIC_PATH, 'cat'), "displayName": "怪猫"},
-    "251": {"onlinePath": os.path.join(BASE_PIC_PATH, '251图库'), "displayName": "251"},
-    "xiba": {"onlinePath": os.path.join(BASE_PIC_PATH, '西八兔子图库'), "displayName": "西八兔"},
-    "nczw": {"onlinePath": os.path.join(BASE_PIC_PATH, '鸟澄珠乌'), "displayName": "鸟澄珠乌"},
-    "fumo": {"onlinePath": os.path.join(BASE_PIC_PATH, 'Fumo Emoji'), "displayName": "Fumo Emoji"},
-}
-
+# 初始化各分类的 onlineFilePaths 缓存（rollPic 用，bot 特有）
 for value in archiveInfo.values():
     if os.path.exists(value['onlinePath']):
         value['onlineFilePaths'] = [f for f in glob.glob(os.path.join(value['onlinePath'], '*')) if os.path.isfile(f)]
@@ -51,70 +35,28 @@ for value in archiveInfo.values():
 _pic_md5_set: set[str] = set()
 
 
-def _compute_md5(file_path: str) -> str:
-    md5 = hashlib.md5()
-    with open(file_path, 'rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
-            md5.update(chunk)
-    return md5.hexdigest()
-
-
 def _build_md5_index():
+    """构建 MD5 索引到 bot 内存（commitpic 查重用）"""
     global _pic_md5_set
-    _pic_md5_set = set()
-    all_dirs = [EXAMINE_PATH, SAVE_PATH] + [v['onlinePath'] for v in archiveInfo.values()]
-    total = 0
-    for dir_path in all_dirs:
-        if not os.path.exists(dir_path):
-            continue
-        for file_path in glob.glob(os.path.join(dir_path, '*')):
-            if not os.path.isfile(file_path):
-                continue
-            try:
-                _pic_md5_set.add(_compute_md5(file_path))
-                total += 1
-            except Exception as e:
-                logger.warning(f'计算MD5失败: {file_path}, {e}')
+    _pic_md5_set, total = pic_service.build_md5_index()
     logger.info(f'图库MD5索引构建完成，共 {total} 张图片，{len(_pic_md5_set)} 个唯一MD5')
 
 
 def _add_to_archive_paths(archive_key: str, file_path: str):
+    """分类后更新 bot 的 onlineFilePaths 缓存（rollPic 用）"""
     if file_path not in archiveInfo[archive_key]['onlineFilePaths']:
         archiveInfo[archive_key]['onlineFilePaths'].append(file_path)
         archiveInfo[archive_key]['onlineFilePaths'].sort()
 
 
-def _extract_ext_from_url(url: str) -> str:
-    from urllib.parse import urlparse
-    path = urlparse(url).path
-    _, ext = os.path.splitext(path)
-    if ext and len(ext) <= 5 and ext.lstrip('.').isalnum():
-        return ext
-    return '.jpg'
-
-
 def _download_and_check_dup(imgUrls: list[str], user_id) -> tuple[int, int]:
-    os.makedirs(EXAMINE_PATH, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    success_count = 0
-    duplicate_count = 0
-    for i, url in enumerate(imgUrls):
-        ext = _extract_ext_from_url(url)
-        safeFilename = re.sub(r'[^\w\.-]', '_', f"pic_{i}") + ext
-        newFilename = f'{user_id}-{timestamp}-{safeFilename}'
-        file_path = os.path.join(EXAMINE_PATH, newFilename)
-        try:
-            urlretrieve(url, file_path)
-            file_md5 = _compute_md5(file_path)
-            if file_md5 in _pic_md5_set:
-                os.remove(file_path)
-                duplicate_count += 1
-                logger.info(f'重复图片已拦截: {newFilename}, MD5: {file_md5}')
-            else:
-                _pic_md5_set.add(file_md5)
-                success_count += 1
-        except Exception as e:
-            logger.error(f'下载图片失败: {e}')
+    """下载图片并查重（复用 service 层，传入 bot 维护的 md5_set）"""
+    global _pic_md5_set
+    success_count, duplicate_count, _pic_md5_set = pic_service.download_and_check_dup(
+        imgUrls, user_id, _pic_md5_set
+    )
+    if duplicate_count > 0:
+        logger.info(f'本次上传拦截 {duplicate_count} 张重复图片')
     return success_count, duplicate_count
 
 
@@ -122,6 +64,7 @@ _build_md5_index()
 
 
 def getExamineFiles():
+    """获取待审核文件列表（兼容旧接口，复用 service 层路径）"""
     if os.path.exists(EXAMINE_PATH):
         return glob.glob(os.path.join(EXAMINE_PATH, '*'))
     return []
@@ -283,19 +226,18 @@ async def handle_examinepic(event: Event, state: T_State):
                 await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
                 return
 
+            fileName = os.path.basename(currentFile)
             if choice == 'd':
+                # 删除时同步从 bot 的 md5_set 移除
                 try:
-                    file_md5 = _compute_md5(currentFile)
+                    file_md5 = pic_service.compute_md5(currentFile)
                     _pic_md5_set.discard(file_md5)
                 except Exception:
                     pass
-                os.remove(currentFile)
+                pic_service.delete_pic(fileName)
                 logger.info(f'已删除图片: {currentFile}')
             elif choice == 's':
-                os.makedirs(SAVE_PATH, exist_ok=True)
-                fileName = os.path.basename(currentFile)
-                new_path = os.path.join(SAVE_PATH, fileName)
-                shutil.move(currentFile, new_path)
+                pic_service.save_pic(fileName)
                 logger.info(f'已保存图片: {fileName}')
             elif choice == '0':
                 pass
@@ -303,11 +245,9 @@ async def handle_examinepic(event: Event, state: T_State):
                 archiveIndex = int(choice) - 1
                 if 0 <= archiveIndex < len(archive_keys):
                     archiveKey = archive_keys[archiveIndex]
-                    targetPath = archiveInfo[archiveKey]['onlinePath']
-                    os.makedirs(targetPath, exist_ok=True)
-                    fileName = os.path.basename(currentFile)
-                    new_path = os.path.join(targetPath, fileName)
-                    shutil.move(currentFile, new_path)
+                    pic_service.classify_pic(fileName, archiveKey)
+                    # 更新 bot 的 onlineFilePaths 缓存（rollPic 用）
+                    new_path = os.path.join(archiveInfo[archiveKey]['onlinePath'], fileName)
                     _add_to_archive_paths(archiveKey, new_path)
                     logger.info(f'已分类到 {archiveInfo[archiveKey]["displayName"]}: {fileName}')
             else:

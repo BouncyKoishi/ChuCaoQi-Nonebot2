@@ -10,7 +10,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import is_super_admin, config, parse_user_identifier
 from functools import wraps
-from services import WarehouseService
+from services import WarehouseService, admin_service
 from multi_platform import get_user_id,  send_finish
 from typing import Union
 
@@ -49,7 +49,7 @@ async def handle_admin_help(event: Union[OneBotV11MessageEvent, QQMessageEvent])
     outputStr += "KUSA_ADV_RANK 总草精排行榜\n"
     outputStr += "TITLE_LIST 系统称号列表\n"
     outputStr += "GIVE_TITLE [userId] [称号] 给予称号\n"
-    outputStr += "SET_DONATION [userId] [金额] (qq/ifd) 设置捐赠金额\n"
+    outputStr += "SET_DONATION [userId] [金额] (qq/ifd/wx/other) 设置捐赠金额\n"
     outputStr += "SET_NAME [userId] (名字) 设置名称（默认从昵称取）"
     await send_finish(admin_help_cmd, outputStr)
 
@@ -358,25 +358,22 @@ give_title_cmd = on_command('GIVE_TITLE', priority=5, block=True)
 async def handle_give_title(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     userId_str, title = stripped_arg.split(" ")
-    
+
     # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(give_title_cmd, "用户不存在")
         return
-    
-    user = await baseDB.getKusaUser(userId)
-    if not user:
-        await send_finish(give_title_cmd, "用户不存在")
-        return
-    
-    item = await itemDB.getItem(title)
-    if not item or item.type != '称号':
-        await send_finish(give_title_cmd, '你想给出的称号不存在')
-        return
-    
-    await itemDB.changeItemAmount(userId, title, 1)
-    await send_finish(give_title_cmd, f'成功赠送用户{userId}称号{title}')
+
+    result = await admin_service.give_title(userId, title)
+    if result.get('success'):
+        await send_finish(give_title_cmd, result['message'])
+    else:
+        # 兼容原提示文案
+        err = result.get('error', '操作失败')
+        if err == '该称号不存在':
+            err = '你想给出的称号不存在'
+        await send_finish(give_title_cmd, err)
 
 
 set_donation_cmd = on_command('SET_DONATION', priority=5, block=True)
@@ -389,27 +386,20 @@ async def handle_set_donation(event: Union[OneBotV11MessageEvent, QQMessageEvent
     userId_str = parts[0]
     amount = parts[1] if len(parts) > 1 else "0"
     source = parts[2] if len(parts) > 2 else "qq"
-    
+
     # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(set_donation_cmd, "用户不存在")
         return
-    
-    user = await baseDB.getKusaUser(userId)
-    if not user:
-        await send_finish(set_donation_cmd, "用户不存在")
-        return
-    
-    await baseDB.setDonateRecord(userId, float(amount), source)
-    await send_finish(set_donation_cmd, f'成功添加用户{userId}通过{source}捐赠{amount}元的记录')
-    
-    total_donate = await baseDB.getDonateAmount(userId)
-    if total_donate >= 20:
-        have_title = await itemDB.getItemAmount(userId, "投喂者")
-        if not have_title:
-            await itemDB.changeItemAmount(userId, "投喂者", 1)
-            await send_finish(set_donation_cmd, f'为用户{userId}自动添加了称号"投喂者"')
+
+    result = await admin_service.set_donation(userId, float(amount), source)
+    if result.get('success'):
+        await send_finish(set_donation_cmd, f'成功添加用户{userId}通过{source}捐赠{amount}元的记录')
+        for title_name in result.get('autoTitles', []):
+            await send_finish(set_donation_cmd, f'为用户{userId}自动添加了称号"{title_name}"')
+    else:
+        await send_finish(set_donation_cmd, result.get('error', '操作失败'))
 
 
 set_name_cmd = on_command('SET_NAME', priority=5, block=True)
@@ -419,13 +409,14 @@ set_name_cmd = on_command('SET_NAME', priority=5, block=True)
 async def handle_set_name(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     userId_str, name = stripped_arg.split(" ") if " " in stripped_arg else (stripped_arg, None)
-    
+
     # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(set_name_cmd, "用户不存在")
         return
-    
+
+    # 未传 name 时从用户昵称取默认值（指令交互特有逻辑）
     if not name:
         user = await baseDB.getKusaUser(userId)
         if user and user.name:
@@ -433,11 +424,9 @@ async def handle_set_name(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
         else:
             await send_finish(set_name_cmd, "无法获取用户昵称")
             return
-    
-    user = await baseDB.getKusaUser(userId)
-    if not user:
-        await send_finish(set_name_cmd, "用户不存在")
-        return
-    
-    await baseDB.changeKusaUserName(userId, name)
-    await send_finish(set_name_cmd, f'成功修改用户{userId}的名字为{name}')
+
+    result = await WarehouseService.change_name(userId, name)
+    if result.get('success'):
+        await send_finish(set_name_cmd, f'成功修改用户{userId}的名字为{name}')
+    else:
+        await send_finish(set_name_cmd, '修改失败')

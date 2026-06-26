@@ -78,6 +78,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Docs',
     component: () => import('@/views/Docs.vue'),
     meta: { requiresAuth: false }
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/admin/AdminLayout.vue'),
+    meta: { requiresAuth: true, requireAdmin: true }
   }
 ]
 
@@ -95,6 +101,11 @@ router.beforeEach(async (to, from, next) => {
       try {
         const success = await userStore.verifySession()
         if (success) {
+          // 校验超级管理员权限
+          if (to.meta.requireAdmin && !userStore.userInfo?.isSuperAdmin) {
+            next('/')
+            return
+          }
           next()
           return
         }
@@ -104,9 +115,16 @@ router.beforeEach(async (to, from, next) => {
       }
     }
     next('/login')
-  } else {
-    next()
+    return
   }
+
+  // 已登录时校验超级管理员权限
+  if (to.meta.requireAdmin && !userStore.userInfo?.isSuperAdmin) {
+    next('/')
+    return
+  }
+
+  next()
 })
 
 
