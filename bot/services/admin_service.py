@@ -334,6 +334,80 @@ async def generate_web_token_for_user(userId: int) -> Dict[str, Any]:
     return {'success': True, 'token': token}
 
 
+async def get_user_friend_code(userId: int) -> Dict[str, Any]:
+    """生成用户的好友码（确定性计算，跨进程一致）"""
+    unified_user = await user_db.getUnifiedUser(userId)
+    if not unified_user:
+        return {'success': False, 'error': '用户不存在'}
+    if not unified_user.realQQ:
+        return {'success': False, 'error': '用户未绑定QQ号'}
+
+    code = identity_service.generate_friend_code(unified_user.realQQ)
+    return {'success': True, 'code': code, 'qq': unified_user.realQQ}
+
+
+async def get_account_marks(userId: int) -> Dict[str, Any]:
+    """获取用户帐号标记（小号关联 + 机械臂标记）"""
+    unified_user = await user_db.getUnifiedUser(userId)
+    if not unified_user:
+        return {'success': False, 'error': '用户不存在'}
+
+    related_user = None
+    if unified_user.relatedUserId:
+        related_uu = await user_db.getUnifiedUser(unified_user.relatedUserId)
+        if related_uu:
+            related_ku = await baseDB.getKusaUser(unified_user.relatedUserId)
+            related_user = {
+                'userId': related_uu.id,
+                'qq': related_uu.realQQ,
+                'name': related_ku.name if related_ku else None
+            }
+
+    return {
+        'success': True,
+        'relatedUserId': unified_user.relatedUserId,
+        'relatedUser': related_user,
+        'isRobot': unified_user.isRobot
+    }
+
+
+async def update_account_marks(userId: int, related_user_id: Optional[int], is_robot: bool) -> Dict[str, Any]:
+    """设置用户帐号标记
+
+    校验：
+    - relatedUserId 不能等于自身（防自关联）
+    - relatedUserId 指向的用户必须存在
+    - 防循环关联：目标用户的 relatedUserId 不能等于当前 userId
+    """
+    unified_user = await user_db.getUnifiedUser(userId)
+    if not unified_user:
+        return {'success': False, 'error': '用户不存在'}
+
+    # 处理小号关联
+    if related_user_id is not None:
+        if related_user_id == userId:
+            return {'success': False, 'error': '不能关联到自身'}
+        target_user = await user_db.getUnifiedUser(related_user_id)
+        if not target_user:
+            return {'success': False, 'error': '关联的目标用户不存在'}
+        # 防循环：目标用户不能已关联到当前用户
+        if target_user.relatedUserId == userId:
+            return {'success': False, 'error': '不能形成循环关联'}
+        unified_user.relatedUserId = related_user_id
+    else:
+        unified_user.relatedUserId = None
+
+    unified_user.isRobot = is_robot
+    await unified_user.save()
+
+    return {
+        'success': True,
+        'message': f'已更新用户{userId}的帐号标记',
+        'relatedUserId': unified_user.relatedUserId,
+        'isRobot': unified_user.isRobot
+    }
+
+
 # ===== 称号管理 =====
 
 async def get_title_list_with_owners() -> List[Dict[str, Any]]:

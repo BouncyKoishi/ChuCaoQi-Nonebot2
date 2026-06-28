@@ -193,6 +193,12 @@ export const adminApi = {
   ) => api.post(`/admin/users/${userId}/chat-permission`, payload),
   generateUserWebToken: (userId: number) =>
     api.post<{ success: boolean; token?: string; error?: string }>(`/admin/users/${userId}/web-token`),
+  generateFriendCode: (userId: number) =>
+    api.post<{ success: boolean; code?: string; qq?: string; error?: string }>(`/admin/users/${userId}/friend-code`),
+  getAccountMarks: (userId: number) =>
+    api.get<{ success: boolean; relatedUserId?: number | null; relatedUser?: any; isRobot?: boolean; error?: string }>(`/admin/users/${userId}/account-marks`),
+  updateAccountMarks: (userId: number, data: { relatedUserId: number | null; isRobot: boolean }) =>
+    api.post(`/admin/users/${userId}/account-marks`, data),
 
   // 称号管理
   getTitles: () => api.get<any[]>('/admin/titles'),

@@ -76,6 +76,8 @@
                     <el-dropdown-item command="donations">捐赠信息</el-dropdown-item>
                     <el-dropdown-item command="chat">查看/设置 Chat 权限</el-dropdown-item>
                     <el-dropdown-item command="token">生成 webToken</el-dropdown-item>
+                    <el-dropdown-item command="friendCode">查看好友码</el-dropdown-item>
+                    <el-dropdown-item command="marks">帐号标记</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -358,6 +360,68 @@
       </template>
     </el-dialog>
 
+    <!-- 生成好友码弹窗 -->
+    <el-dialog v-model="friendCodeDialog.visible" title="查看好友码" width="500px">
+      <div v-loading="friendCodeDialog.loading">
+        <p style="margin: 0 0 12px">
+          用户 <strong>{{ friendCodeDialog.userName }} (QQ: {{ friendCodeDialog.qq }})</strong> 的好友码：
+        </p>
+        <el-input
+          v-if="friendCodeDialog.code"
+          v-model="friendCodeDialog.code"
+          readonly
+          style="font-size: 18px; text-align: center"
+        />
+        <el-alert
+          v-if="friendCodeDialog.code"
+          type="info"
+          :closable="false"
+          title="好友码每日更新，用户需在好友申请备注中填写当日好友码，bot 将自动通过申请"
+          style="margin-top: 12px"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="friendCodeDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 帐号标记弹窗 -->
+    <el-dialog v-model="marksDialog.visible" title="帐号标记" width="500px">
+      <div v-loading="marksDialog.loading">
+        <p style="margin: 0 0 16px">
+          用户 <strong>{{ marksDialog.userName }} (ID: {{ marksDialog.userId }})</strong>
+        </p>
+        <el-form label-width="100px">
+          <el-form-item label="小号关联">
+            <el-select
+              v-model="marksDialog.relatedUserId"
+              filterable
+              remote
+              clearable
+              :remote-method="searchUserForMarks"
+              :loading="marksDialog.searchLoading"
+              placeholder="搜索 QQ号或昵称选择主号，留空取消关联"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="u in marksDialog.searchResults"
+                :key="u.id"
+                :label="`${u.name || '(无昵称)'} (${u.qq || u.id})`"
+                :value="u.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="机械臂标记">
+            <el-switch v-model="marksDialog.isRobot" />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="marksDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="marksDialog.submitting" @click="submitMarks">确认</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 新增称号弹窗 -->
     <el-dialog v-model="createTitleDialog.visible" title="新增称号" width="400px">
       <el-form label-width="80px">
@@ -558,6 +622,12 @@ const handleCommand = (cmd: string, row: any) => {
       break
     case 'token':
       openTokenDialog(row)
+      break
+    case 'friendCode':
+      openFriendCodeDialog(row)
+      break
+    case 'marks':
+      openMarksDialog(row)
       break
   }
 }
@@ -876,6 +946,121 @@ const submitGenerateToken = async () => {
     ElMessage.error(e.message || '生成失败')
   } finally {
     tokenDialog.loading = false
+  }
+}
+
+// ==================== 生成好友码 ====================
+const friendCodeDialog = reactive({
+  visible: false,
+  userId: 0,
+  userName: '',
+  qq: '',
+  code: '',
+  loading: false
+})
+
+const openFriendCodeDialog = async (row: any) => {
+  friendCodeDialog.visible = true
+  friendCodeDialog.userId = row.id
+  friendCodeDialog.userName = row.name || '(无昵称)'
+  friendCodeDialog.qq = row.qq || ''
+  friendCodeDialog.code = ''
+  friendCodeDialog.loading = true
+  try {
+    const res: any = await adminApi.generateFriendCode(row.id)
+    if (res.success && res.code) {
+      friendCodeDialog.code = res.code
+      friendCodeDialog.qq = res.qq || friendCodeDialog.qq
+    } else {
+      ElMessage.error(res.error || '生成失败')
+      friendCodeDialog.visible = false
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '生成失败')
+    friendCodeDialog.visible = false
+  } finally {
+    friendCodeDialog.loading = false
+  }
+}
+
+// ==================== 帐号标记 ====================
+const marksDialog = reactive({
+  visible: false,
+  userId: 0,
+  userName: '',
+  relatedUserId: null as number | null,
+  isRobot: false,
+  loading: false,
+  submitting: false,
+  searchLoading: false,
+  searchResults: [] as any[]
+})
+
+const openMarksDialog = async (row: any) => {
+  marksDialog.visible = true
+  marksDialog.userId = row.id
+  marksDialog.userName = row.name ? `${row.name}(${row.qq})` : row.qq || `ID:${row.id}`
+  marksDialog.relatedUserId = null
+  marksDialog.isRobot = false
+  marksDialog.searchResults = []
+  marksDialog.loading = true
+  try {
+    const res: any = await adminApi.getAccountMarks(row.id)
+    if (res.success) {
+      marksDialog.relatedUserId = res.relatedUserId ?? null
+      marksDialog.isRobot = res.isRobot ?? false
+      // 如果已有关联用户，放入搜索结果供显示
+      if (res.relatedUser) {
+        marksDialog.searchResults = [{
+          id: res.relatedUser.userId,
+          qq: res.relatedUser.qq,
+          name: res.relatedUser.name
+        }]
+      }
+    } else {
+      ElMessage.error(res.error || '获取标记失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取标记失败')
+  } finally {
+    marksDialog.loading = false
+  }
+}
+
+const searchUserForMarks = async (query: string) => {
+  if (!query) {
+    marksDialog.searchResults = []
+    return
+  }
+  marksDialog.searchLoading = true
+  try {
+    const res: any = await adminApi.getUsers(1, 20, query)
+    marksDialog.searchResults = res.list || []
+  } catch {
+    marksDialog.searchResults = []
+  } finally {
+    marksDialog.searchLoading = false
+  }
+}
+
+const submitMarks = async () => {
+  marksDialog.submitting = true
+  try {
+    const res: any = await adminApi.updateAccountMarks(marksDialog.userId, {
+      relatedUserId: marksDialog.relatedUserId,
+      isRobot: marksDialog.isRobot
+    })
+    if (res.success) {
+      ElMessage.success('帐号标记已更新')
+      marksDialog.visible = false
+      fetchUsers()
+    } else {
+      ElMessage.error(res.error || '更新失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '更新失败')
+  } finally {
+    marksDialog.submitting = false
   }
 }
 

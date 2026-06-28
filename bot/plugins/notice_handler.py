@@ -6,6 +6,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
 from multi_platform import get_user_id
+from services import identity_service
 
 friendHandleTimestamp = 0
 
@@ -96,7 +97,7 @@ async def handle_friend_request(event: FriendRequestEvent):
     friendHandleTimestamp = time.time()
 
     adderId = event.user_id
-    friendCode = getFriendAddCode(str(adderId))
+    friendCode = identity_service.generate_friend_code(str(adderId))
     logInfo = f'收到一个来自{adderId}的好友申请，'
     if event.comment == friendCode:
         await event.approve()
@@ -105,11 +106,6 @@ async def handle_friend_request(event: FriendRequestEvent):
     else:
         await event.reject(reason='好友码错误，请向维护者申请好友码')
         await send_log(logInfo + '因好友码错误已自动拒绝')
-
-
-def getFriendAddCode(friendId):
-    hashingStr = friendId + 'confounding'
-    return f'{hash(hashingStr) % 100000000 :0>8}'
 
 
 # WebSocket 连接初始化 - 使用 LifecycleMetaEvent

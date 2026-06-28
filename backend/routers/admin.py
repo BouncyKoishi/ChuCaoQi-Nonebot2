@@ -193,6 +193,47 @@ async def generate_user_web_token(userId: int, request: Request):
     return result
 
 
+@router.post("/users/{userId}/friend-code")
+async def generate_friend_code(userId: int, request: Request):
+    """生成用户好友码"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+
+    result = await admin_service.get_user_friend_code(userId)
+    return result
+
+
+@router.get("/users/{userId}/account-marks")
+async def get_account_marks(userId: int, request: Request):
+    """获取用户帐号标记（小号关联 + 机械臂）"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+
+    result = await admin_service.get_account_marks(userId)
+    return result
+
+
+@router.post("/users/{userId}/account-marks")
+async def update_account_marks(userId: int, request: Request):
+    """设置用户帐号标记"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+
+    body = await request.json()
+    related_user_id = body.get('relatedUserId')
+    is_robot = body.get('isRobot', False)
+
+    result = await admin_service.update_account_marks(
+        userId,
+        int(related_user_id) if related_user_id else None,
+        bool(is_robot)
+    )
+    return result
+
+
 # ==================== 称号管理 ====================
 
 @router.get("/titles")

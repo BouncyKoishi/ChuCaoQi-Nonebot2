@@ -6,6 +6,7 @@
 from typing import Optional
 from dbConnection.models import UnifiedUser, KusaBase, KusaField
 from dbConnection import user as user_db
+import hashlib
 import secrets
 import string
 import datetime
@@ -13,6 +14,18 @@ import datetime
 
 def get_now():
     return datetime.datetime.now().astimezone()
+
+
+def generate_friend_code(real_qq: str) -> str:
+    """生成好友码（跨进程确定性，使用 md5 替代内置 hash 避免随机化）
+
+    种子包含当前日期，使好友码每日更新，防止一次拿到就永久跨帐号使用。
+    bot 端验证和 web 端展示用相同的日期种子，确保同一天内一致。
+    """
+    today = datetime.datetime.now().strftime('%Y%m%d')
+    hashing_str = real_qq + 'confounding' + today
+    hash_val = int(hashlib.md5(hashing_str.encode()).hexdigest(), 16)
+    return f'{hash_val % 100000000:0>8}'
 
 
 async def get_unified_user_by_platform(platform: str, platform_id: str) -> Optional[UnifiedUser]:
