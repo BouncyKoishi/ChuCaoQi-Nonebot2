@@ -16,5 +16,6 @@ from .item_service import ItemService
 from .gmarket_service import GMarketService
 from .industrial_service import IndustrialService
 from .lottery_service import LotteryService
+from .statistic_service import StatisticService
 
-__all__ = ['FarmService', 'WarehouseService', 'ItemService', 'GMarketService', 'IndustrialService', 'LotteryService']
+__all__ = ['FarmService', 'WarehouseService', 'ItemService', 'GMarketService', 'IndustrialService', 'LotteryService', 'StatisticService']

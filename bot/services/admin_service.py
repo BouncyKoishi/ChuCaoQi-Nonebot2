@@ -18,6 +18,7 @@ import dbConnection.chat as chatDB
 from dbConnection.models import UnifiedUser, KusaBase, KusaItemList, KusaItemStorage
 from tortoise.expressions import Q
 from services import WarehouseService
+from services import StatisticService
 from services import identity_service
 
 # ===== 用户管理 =====
@@ -489,88 +490,53 @@ async def generate_custom_rank(
     """
     生成自定义排行榜
 
-    dimension: 'kusa' | 'advKusa' | 'totalAdvKusa' | 'item'
+    dimension: 'kusa' | 'advKusa' | 'totalAdvKusa' | 'kusaOnce' | 'advKusaOnce' | 'item'
     """
     if dimension == 'kusa':
-        data = await WarehouseService.get_kusa_rank(
+        data = await StatisticService.get_kusa_rank(
             limit=limit, level_max=level_max,
             show_inactive=show_inactive, show_subaccount=show_subaccount
         )
         return {'success': True, 'data': data, 'columns': ['rank', 'name', 'kusa', 'vipLevel']}
 
     elif dimension == 'advKusa':
-        data = await WarehouseService.get_kusa_rank_with_adv(
+        data = await StatisticService.get_kusa_rank_with_adv(
             limit=limit, sort_by='advKusa',
             level_max=level_max, show_inactive=show_inactive, show_subaccount=show_subaccount
         )
         return {'success': True, 'data': data, 'columns': ['rank', 'name', 'advKusa', 'vipLevel']}
 
     elif dimension == 'totalAdvKusa':
-        data = await WarehouseService.get_total_adv_kusa_rank(
+        data = await StatisticService.get_total_adv_kusa_rank(
             limit=limit, level_max=level_max,
             show_inactive=show_inactive, show_subaccount=show_subaccount
         )
         return {'success': True, 'data': data, 'columns': ['rank', 'name', 'totalAdvKusa', 'nowAdvKusa', 'titleAdvKusa', 'itemAdvKusa', 'vipLevel']}
 
+    elif dimension == 'kusaOnce':
+        data = await StatisticService.get_kusa_once_ranking(
+            limit=limit, level_max=level_max,
+            show_inactive=show_inactive, show_subaccount=show_subaccount
+        )
+        return {'success': True, 'data': data, 'columns': ['rank', 'name', 'kusaResult', 'createTimeTs', 'vipLevel']}
+
+    elif dimension == 'advKusaOnce':
+        data = await StatisticService.get_adv_kusa_once_ranking(
+            limit=limit, level_max=level_max,
+            show_inactive=show_inactive, show_subaccount=show_subaccount
+        )
+        return {'success': True, 'data': data, 'columns': ['rank', 'name', 'advKusaResult', 'createTimeTs', 'vipLevel']}
+
     elif dimension == 'item':
         if not item_name:
             return {'success': False, 'error': '物品排行需要指定物品名称'}
-        data = await get_item_rank(
+        data = await StatisticService.get_item_rank(
             item_name, limit,
             level_max=level_max, show_inactive=show_inactive, show_subaccount=show_subaccount
         )
         return {'success': True, 'data': data, 'columns': ['rank', 'name', 'amount', 'vipLevel']}
 
     return {'success': False, 'error': f'未知的排序维度: {dimension}'}
-
-
-async def get_item_rank(item_name: str, limit: int = 25,
-                        level_max: int = 10, show_inactive: bool = False,
-                        show_subaccount: bool = True) -> List[Dict[str, Any]]:
-    """物品持有量排行"""
-    storages = await itemDB.getStoragesOrderByAmountDesc(item_name)
-
-    if not storages:
-        return []
-
-    user_ids = [s.user_id for s in storages]
-    unified_users = await UnifiedUser.filter(id__in=user_ids).all()
-    kusa_users = await KusaBase.filter(user_id__in=user_ids).all()
-    uu_map = {u.id: u for u in unified_users}
-    ku_map = {k.user_id: k for k in kusa_users}
-
-    # 过滤
-    from services.warehouse_service import _filter_users, _get_active_user_ids
-    active_ids = None
-    if not show_inactive:
-        active_ids = await _get_active_user_ids()
-
-    filtered = []
-    for s in storages:
-        ku = ku_map.get(s.user_id)
-        uu = uu_map.get(s.user_id)
-        if ku and ku.vipLevel > level_max:
-            continue
-        if not show_subaccount and uu and uu.relatedUserId:
-            continue
-        if not show_inactive and s.user_id not in active_ids:
-            continue
-        filtered.append(s)
-
-    result = []
-    for i, s in enumerate(filtered[:limit]):
-        uu = uu_map.get(s.user_id)
-        ku = ku_map.get(s.user_id)
-        name = ku.name if ku else None
-        result.append({
-            'rank': i + 1,
-            'userId': s.user_id,
-            'qq': uu.realQQ if uu else None,
-            'name': name,
-            'amount': s.amount,
-            'vipLevel': ku.vipLevel if ku else 0
-        })
-    return result
 
 
 async def get_all_item_names() -> List[Dict[str, str]]:

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
 os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 
 from services import WarehouseService
+from services import StatisticService
 from services import IndustrialService
 from services import GMarketService
 
@@ -126,7 +127,7 @@ async def get_user_stats(request: Request):
     if not userId:
         return {"success": False, "error": "未登录或登录已过期"}
     
-    result = await WarehouseService.get_user_stats(userId=userId)
+    result = await StatisticService.get_user_stats(userId=userId)
     if 'error' in result:
         return {"success": False, "error": result['error']}
     return {"success": True, "data": result}

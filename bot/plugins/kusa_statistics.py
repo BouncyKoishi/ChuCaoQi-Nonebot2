@@ -10,7 +10,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import is_super_admin, config, parse_user_identifier
 from functools import wraps
-from services import WarehouseService, admin_service
+from services import WarehouseService, StatisticService, admin_service
 from multi_platform import get_user_id,  send_finish
 from typing import Union
 
@@ -59,7 +59,7 @@ total_kusa_cmd = on_command('TOTAL_KUSA', priority=5, block=True)
 @total_kusa_cmd.handle()
 @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_total_kusa(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    result = await WarehouseService.get_total_stats()
+    result = await StatisticService.get_total_stats()
     
     await send_finish(total_kusa_cmd,
         f'系统总草数: {result["totalKusa"]}\n'
@@ -74,7 +74,7 @@ kusa_rank_cmd = on_command('KUSA_RANK', priority=5, block=True)
 @kusa_rank_cmd.handle()
 @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_kusa_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    rank_list = await WarehouseService.get_kusa_rank(limit=25)
+    rank_list = await StatisticService.get_kusa_rank(limit=25)
     
     output = "草排行榜：\n"
     for item in rank_list:
@@ -116,7 +116,7 @@ async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
             await send_finish(kusa_adv_cmd, "用户不存在")
             return
     
-    result = await WarehouseService.get_user_stats(userId=userId)
+    result = await StatisticService.get_user_stats(userId=userId)
     
     if 'error' in result:
         await send_finish(kusa_adv_cmd, "用户不存在")
@@ -172,95 +172,47 @@ async def handle_kusa_adv_rank(event: Union[OneBotV11MessageEvent, QQMessageEven
 
 
 async def getKusaAdvRank(userId=None, levelMax: int = 10, showInactiveUsers: bool = False, showSubAccount: bool = True) -> str:
-    """获取草精排行榜（优化版本）"""
-    from datetime import datetime, timedelta
-    from dbConnection.user import getUnifiedUsersByIds
-    from dbConnection.kusa_item import getItemStorageInfo
+    """获取草精排行榜（基于 StatisticService，无蓝图过滤）
 
-    userList = await baseDB.getAllKusaUser()
+    调用 StatisticService.get_total_adv_kusa_rank(limit=None) 获取完整排行榜，
+    再在调用端计算"我的排名"上下文（上一名/下一名差距）。
+    """
+    rank_list = await StatisticService.get_total_adv_kusa_rank(
+        limit=None,
+        level_max=levelMax,
+        show_inactive=showInactiveUsers,
+        show_subaccount=showSubAccount,
+        use_cache=False
+    )
 
-    all_trade_records = await baseDB.getAllTradeRecordsByCostItem('草之精华')
-    user_trade_amount = {}
-    for record in all_trade_records:
-        if '升级' in (record.tradeType or ''):
-            continue
-        uid = record.user_id
-        user_trade_amount[uid] = user_trade_amount.get(uid, 0) + record.costItemAmount
+    def _display(item):
+        if item.get('name'):
+            return item['name']
+        if item.get('qq'):
+            return item['qq']
+        return str(item['userId'])
 
-    users_with_blueprint = set()
-    for user in userList:
-        try:
-            storage = await getItemStorageInfo(user.user_id, '生草工业园区蓝图')
-            if storage and storage.amount > 0:
-                users_with_blueprint.add(user.user_id)
-        except:
-            pass
-
-    if not showInactiveUsers:
-        cutoff_time = datetime.now() - timedelta(days=90)
-        cutoff_timestamp = cutoff_time.timestamp()
-        from dbConnection.kusa_field import getKusaHistory
-        recent_kusa_records = await getKusaHistory(cutoff_timestamp)
-        active_users = {record.user_id for record in recent_kusa_records}
-    else:
-        active_users = None
-
-    unified_user_ids = [user.user_id for user in userList]
-    unified_users = await getUnifiedUsersByIds(unified_user_ids)
-    unified_user_map = {u.id: u for u in unified_users}
-    
-    userAdvKusaDict = {}
-    seen_user_ids = set()
-    for user in userList:
-        if user.user_id in seen_user_ids:
-            continue
-        seen_user_ids.add(user.user_id)
-        if user.vipLevel > levelMax:
-            continue
-        unified_user = unified_user_map.get(user.user_id)
-        if not showSubAccount and unified_user and unified_user.relatedUserId:
-            continue
-        if user.user_id not in users_with_blueprint:
-            continue
-        if not showInactiveUsers and active_users is not None:
-            if user.user_id not in active_users:
-                continue
-        
-        nowKusaAdv = user.advKusa or 0
-        titleKusaAdv = sum(10 ** (i - 4) for i in range(5, user.vipLevel + 1)) if user.vipLevel > 4 else 0
-        itemKusaAdv = user_trade_amount.get(user.user_id, 0)
-        total = nowKusaAdv + titleKusaAdv + itemKusaAdv
-        userAdvKusaDict[user.user_id] = (user, total)
-    
-    userAdvKusaDict = sorted(userAdvKusaDict.items(), key=lambda x: x[1][1], reverse=True)
     outputStr = "\n"
+    for item in rank_list[:25]:
+        outputStr += f"{item['rank']}. {_display(item)}: {item['totalAdvKusa']}\n"
 
-    for i in range(min(len(userAdvKusaDict), 25)):
-        user = userAdvKusaDict[i][1][0]
-        unified_user = unified_user_map.get(user.user_id)
-        user_display = user.name if user.name else (unified_user.realQQ if unified_user and unified_user.realQQ else str(user.user_id))
-        outputStr += f'{i + 1}. {user_display}: {userAdvKusaDict[i][1][1]}\n'
     if userId:
-        userRank, userKusaAdv, prevInfo, nextInfo = -1, 0, None, None
-        for i, (uid, (user, kusaAdv)) in enumerate(userAdvKusaDict):
-            if user.user_id == userId:
-                userRank, userKusaAdv = i + 1, kusaAdv
-                if i > 0:
-                    prevInfo = (userAdvKusaDict[i - 1][1][0], userAdvKusaDict[i - 1][1][1])
-                if i < len(userAdvKusaDict) - 1:
-                    nextInfo = (userAdvKusaDict[i + 1][1][0], userAdvKusaDict[i + 1][1][1])
+        user_index = -1
+        for i, item in enumerate(rank_list):
+            if item['userId'] == userId:
+                user_index = i
                 break
 
-        if userRank != -1:
-            outputStr += f"\n您的排名：{userRank}\n"
-            if prevInfo:
-                prev_unified = unified_user_map.get(prevInfo[0].user_id)
-                prev_display = prevInfo[0].name if prevInfo[0].name else (prev_unified.realQQ if prev_unified and prev_unified.realQQ else str(prevInfo[0].user_id))
-                outputStr += f"距上一名 {prev_display} 还差 {prevInfo[1] - userKusaAdv}草精\n"
-            if nextInfo:
-                next_unified = unified_user_map.get(nextInfo[0].user_id)
-                next_display = nextInfo[0].name if nextInfo[0].name else (next_unified.realQQ if next_unified and next_unified.realQQ else str(nextInfo[0].user_id))
-                outputStr += f"下一名 {next_display} 距您 {userKusaAdv - nextInfo[1]}草精\n"
+        if user_index != -1:
+            user_item = rank_list[user_index]
+            user_kusa_adv = user_item['totalAdvKusa']
+            outputStr += f"\n您的排名：{user_item['rank']}\n"
+            if user_index > 0:
+                prev_item = rank_list[user_index - 1]
+                outputStr += f"距上一名 {_display(prev_item)} 还差 {prev_item['totalAdvKusa'] - user_kusa_adv}草精\n"
+            if user_index < len(rank_list) - 1:
+                next_item = rank_list[user_index + 1]
+                outputStr += f"下一名 {_display(next_item)} 距您 {user_kusa_adv - next_item['totalAdvKusa']}草精\n"
         else:
             outputStr += "\n您不在这个排行榜上^ ^\n"
     return outputStr[:-1]
@@ -281,28 +233,26 @@ async def getKusaAdv(user):
 async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId = await get_user_id(event, auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
-    
+
     if self_mode:
         rank_list = await fieldDB.kusaOnceRanking(userId=userId)
         user = await baseDB.getKusaUser(userId)
         user_qq = await userDB.getRealQQByUserId(userId)
         user_display = user.name if user.name else (user_qq or str(user.user_id))
         output = f"生草打分榜({user_display})：\n"
-    else:
-        rank_list = await fieldDB.kusaOnceRanking()
-        output = "生草打分榜：\n"
-    
-    for i, rank in enumerate(rank_list):
-        create_time = datetime.fromtimestamp(rank.createTimeTs)
-        time_str = create_time.strftime("%Y-%m-%d %H:%M")
-        if self_mode:
+        for i, rank in enumerate(rank_list):
+            create_time = datetime.fromtimestamp(rank.createTimeTs)
+            time_str = create_time.strftime("%Y-%m-%d %H:%M")
             output += f"{i + 1}. {rank.kusaResult}草({time_str})\n"
-        else:
-            rank_user = await baseDB.getKusaUser(rank.user_id)
-            rank_qq = await userDB.getRealQQByUserId(rank.user_id)
-            user_display = rank_user.name if rank_user.name else (rank_qq or str(rank_user.user_id))
-            output += f"{i + 1}. {user_display}：{rank.kusaResult}草({time_str})\n"
-    
+    else:
+        rank_list = await StatisticService.get_kusa_once_ranking(limit=25)
+        output = "生草打分榜：\n"
+        for rank in rank_list:
+            create_time = datetime.fromtimestamp(rank['createTimeTs'])
+            time_str = create_time.strftime("%Y-%m-%d %H:%M")
+            user_display = rank['name'] if rank['name'] else (rank['qq'] or str(rank['userId']))
+            output += f"{rank['rank']}. {user_display}：{rank['kusaResult']}草({time_str})\n"
+
     await send_finish(生草打分榜_cmd, output[:-1])
 
 
@@ -313,28 +263,26 @@ async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
 async def handle_草精打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId = await get_user_id(event, auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
-    
+
     if self_mode:
         rank_list = await fieldDB.kusaAdvOnceRanking(userId=userId)
         user = await baseDB.getKusaUser(userId)
         user_qq = await userDB.getRealQQByUserId(userId)
         user_display = user.name if user.name else (user_qq or str(user.user_id))
         output = f"草精打分榜({user_display})：\n"
-    else:
-        rank_list = await fieldDB.kusaAdvOnceRanking()
-        output = "草精打分榜：\n"
-    
-    for i, rank in enumerate(rank_list):
-        create_time = datetime.fromtimestamp(rank.createTimeTs)
-        time_str = create_time.strftime("%Y-%m-%d %H:%M")
-        if self_mode:
+        for i, rank in enumerate(rank_list):
+            create_time = datetime.fromtimestamp(rank.createTimeTs)
+            time_str = create_time.strftime("%Y-%m-%d %H:%M")
             output += f"{i + 1}. {rank.advKusaResult}草精({time_str})\n"
-        else:
-            rank_user = await baseDB.getKusaUser(rank.user_id)
-            rank_qq = await userDB.getRealQQByUserId(rank.user_id)
-            user_display = rank_user.name if rank_user.name else (rank_qq or str(rank_user.user_id))
-            output += f"{i + 1}. {user_display}：{rank.advKusaResult}草精({time_str})\n"
-    
+    else:
+        rank_list = await StatisticService.get_adv_kusa_once_ranking(limit=25)
+        output = "草精打分榜：\n"
+        for rank in rank_list:
+            create_time = datetime.fromtimestamp(rank['createTimeTs'])
+            time_str = create_time.strftime("%Y-%m-%d %H:%M")
+            user_display = rank['name'] if rank['name'] else (rank['qq'] or str(rank['userId']))
+            output += f"{rank['rank']}. {user_display}：{rank['advKusaResult']}草精({time_str})\n"
+
     await send_finish(草精打分榜_cmd, output[:-1])
 
 

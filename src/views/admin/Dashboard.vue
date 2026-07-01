@@ -63,6 +63,8 @@
             <el-option label="当前草数" value="kusa" />
             <el-option label="当前草精数" value="advKusa" />
             <el-option label="累计草精" value="totalAdvKusa" />
+            <el-option label="单次生草打分" value="kusaOnce" />
+            <el-option label="单次草精打分" value="advKusaOnce" />
             <el-option label="物品持有量" value="item" />
           </el-select>
         </el-form-item>
@@ -117,7 +119,7 @@
                 {{ formatCol(col.key, row[col.key]) }}
               </template>
             </el-table-column>
-            <el-table-column prop="vipLevel" label="等级" width="70" />
+            <el-table-column prop="vipLevel" :label="vipLevelLabel" width="70" />
           </el-table>
         </div>
         <el-empty v-else-if="rankGenerated && !rankLoading" description="无数据" />
@@ -217,7 +219,7 @@ const rankResult = ref<any[]>([])
 const rankColumns = ref<string[]>([])
 
 const rankForm = reactive({
-  dimension: 'kusa' as 'kusa' | 'advKusa' | 'totalAdvKusa' | 'item',
+  dimension: 'kusa' as 'kusa' | 'advKusa' | 'totalAdvKusa' | 'kusaOnce' | 'advKusaOnce' | 'item',
   limit: 25,
   levelMax: 10,
   showInactive: false,
@@ -234,6 +236,9 @@ const columnLabels: Record<string, string> = {
   nowAdvKusa: '当前草精',
   titleAdvKusa: '称号草精',
   itemAdvKusa: '物品草精',
+  kusaResult: '单次草数',
+  advKusaResult: '单次草精',
+  createTimeTs: '时间',
   amount: '数量',
   vipLevel: '等级'
 }
@@ -245,12 +250,27 @@ const dynamicColumns = computed(() => {
     .map(c => ({
       key: c,
       label: columnLabels[c] || c,
-      width: c === 'amount' ? 100 : 120
+      width: c === 'amount' ? 100 : (c === 'createTimeTs' ? 160 : 120)
     }))
+})
+
+// 单次打分维度下，等级列标题改为"用户等级"以更明确
+const vipLevelLabel = computed(() => {
+  return (rankForm.dimension === 'kusaOnce' || rankForm.dimension === 'advKusaOnce') ? '用户等级' : '等级'
 })
 
 const formatCol = (key: string, value: any) => {
   if (value === undefined || value === null) return '-'
+  if (key === 'createTimeTs') {
+    // 时间戳（秒）→ YY-MM-DD HH:mm
+    const d = new Date(value * 1000)
+    const yy = String(d.getFullYear()).slice(-2)
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mi = String(d.getMinutes()).padStart(2, '0')
+    return `${yy}-${mm}-${dd} ${hh}:${mi}`
+  }
   if (typeof value === 'number') return value.toLocaleString()
   return value
 }

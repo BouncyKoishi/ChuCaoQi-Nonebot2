@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
 os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
 
-from services import WarehouseService
+from services import StatisticService
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ async def get_kusa_rank(sort_by: str = Query('kusa', description="排序字段: 
     """获取草排行榜"""
     if sort_by not in ['kusa', 'advKusa']:
         sort_by = 'kusa'
-    result = await WarehouseService.get_kusa_rank_with_adv(sort_by=sort_by)
+    result = await StatisticService.get_kusa_rank_with_adv(sort_by=sort_by)
     return {"success": True, "data": result}
 
 
@@ -29,8 +29,8 @@ async def get_total_adv_kusa_rank(
     level_max: int = Query(10, description="最大VIP等级限制")
 ):
     """获取累计草精排行榜"""
-    result = await WarehouseService.get_total_adv_kusa_rank(
-        limit=limit, 
+    result = await StatisticService.get_total_adv_kusa_rank(
+        limit=limit,
         level_max=level_max,
         show_inactive=False,
         show_subaccount=True,
