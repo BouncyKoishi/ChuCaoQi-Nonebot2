@@ -1000,6 +1000,18 @@ export const commands: Command[] = [
   },
 
   {
+    name: 'rollwife',
+    params: '',
+    description: '从本群群友列表中随机选出一位作为老婆。',
+    details: [
+      '仅在群聊中可用',
+      '从当前群成员列表中随机选择一位作为"老婆"'
+    ],
+    tags: [{ text: '群聊', type: 'warning' }],
+    category: '群聊互动',
+    subcategory: '其他互动'
+  },
+  {
     name: '爆柠檬',
     params: '',
     description: '发送一个柠檬emoji。',

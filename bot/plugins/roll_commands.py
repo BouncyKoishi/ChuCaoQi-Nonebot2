@@ -11,8 +11,7 @@ from nonebot import on_command
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.typing import T_State
-
-from multi_platform import get_platform_user_id
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot as OneBotV11Bot
 
 
 roll_cmd = on_command("roll", priority=5, block=True)
@@ -127,3 +126,19 @@ async def handle_judge(state: T_State, args: Message = CommandArg()):
     hashing_str = stripped_arg + str(user_id) + time.strftime("%Y-%m-%d", time.localtime()) + 'confounding'
     result = answer[hash(hashing_str) % 2]
     await judge_cmd.finish(f'{stripped_arg}\n判断：{result}')
+
+
+# rollwife 指令
+rollwife_cmd = on_command("rollwife", priority=5, block=True)
+
+
+@rollwife_cmd.handle()
+async def handle_rollwife(bot: OneBotV11Bot, event: GroupMessageEvent):
+    """从本群群友列表中随机选出一位作为老婆"""
+    group_id = event.group_id
+    
+    member_list = await bot.get_group_member_list(group_id=group_id)
+    nickname_list = [member['nickname'] for member in member_list]
+    
+    output_str = '你的老婆是：' + nickname_list[int(random.random() * len(nickname_list))]
+    await rollwife_cmd.finish(output_str)
