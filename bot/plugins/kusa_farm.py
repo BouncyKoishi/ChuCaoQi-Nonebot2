@@ -686,7 +686,8 @@ async def kusa_harvest(field):
 
     await field_db.kusaStopGrowing(field, False)
 
-    # await send_private_msg(field.user_id, output_msg)  # 临时禁用生草完成私聊推送
+    if await base_db.getFlagValue(field.user_id, '生草完毕私聊提示'):
+        await send_private_msg(field.user_id, output_msg)
 
 
 async def good_news_report(field):

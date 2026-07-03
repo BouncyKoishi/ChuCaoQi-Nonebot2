@@ -130,3 +130,4 @@ INSERT INTO "flag" ("name", "value", "forAll") VALUES ('除草后自动生草', 
 INSERT INTO "flag" ("name", "value", "forAll") VALUES ('过载结束提示', 0, 1);
 INSERT INTO "flag" ("name", "value", "forAll") VALUES ('G市重置提示', 0, 1);
 INSERT INTO "flag" ("name", "value", "forAll") VALUES ('物品转让提示', 0, 1);
+INSERT INTO "flag" ("name", "value", "forAll") VALUES ('生草完毕私聊提示', 0, 1);
