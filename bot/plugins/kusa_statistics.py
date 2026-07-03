@@ -78,7 +78,8 @@ async def handle_kusa_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     
     output = "草排行榜：\n"
     for item in rank_list:
-        output += f"{item['rank']}. {item['name']}: {item['kusa']:,}\n"
+        display = item['name'] if item['name'] else (item['qq'] or str(item['userId']))
+        output += f"{item['rank']}. {display}: {item['kusa']:,}\n"
     
     await send_finish(kusa_rank_cmd, output[:-1])
 
