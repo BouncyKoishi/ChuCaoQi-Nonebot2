@@ -42,7 +42,7 @@ NMC_RADAR_BASE_URL = "http://www.nmc.cn/publish/radar/"
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache", "radar")
 GIF_CACHE_DIR = os.path.join(CACHE_DIR, "gif")
 
-MAX_GIF_SIZE = 1024 * 1024
+MAX_GIF_SIZE = int(2.5 * 1024 * 1024)
 GIF_DURATION = 200
 MAX_FRAMES = 30
 
@@ -432,7 +432,7 @@ async def _generate_radar_gif(region: str, radar_url: str) -> Tuple[Optional[byt
     now = datetime.now()
     latest_dt = _parse_radar_timestamp(latest_ts, now) or now
 
-    cutoff_time = latest_dt - timedelta(hours=1)
+    cutoff_time = latest_dt - timedelta(hours=2)
 
     valid_pairs = []
     for ts, url in timestamp_url_pairs:
