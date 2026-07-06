@@ -83,7 +83,7 @@ RATE_LIMITS = {
     'warehouse_vip_advanced_upgrade': '30/minute',
     'warehouse_compress_kusa': '30/minute',
     'farm_plant': '60/minute',
-    'farm_harvest': '60/minute',
+    'farm_weed': '60/minute',
     'farm_test_recover_capacity': '30/minute',
     'farm_release_spare_capacity': '30/minute',
     'item_compose_ticket': '60/minute',

@@ -72,15 +72,15 @@ async def plant_kusa(request: Request):
     return result
 
 
-@router.post("/harvest")
+@router.post("/weed")
 @limiter.limit("60/minute")
-async def harvest_kusa(request: Request):
+async def weed_kusa(request: Request):
     """除草"""
     userId = get_user_id(request)
     if not userId:
         return {"success": False, "error": "未登录或登录已过期"}
-    
-    result = await FarmService.harvest(userId=userId)
+
+    result = await FarmService.weed(userId=userId)
     
     if result.get("success"):
         status = await FarmService.get_status(userId=userId)

@@ -164,11 +164,11 @@
                 <span v-if="kusaField.predictAdvKusa > 0" style="color: #e6a23c;">，草之精华 {{ formatNumber(kusaField.predictAdvKusa) }}</span>
               </div>
             </div>
-            <el-button 
-              v-if="kusaField.hasWeeder" 
-              type="danger" 
-              @click="handleHarvest" 
-              :loading="harvesting"
+            <el-button
+              v-if="kusaField.hasWeeder"
+              type="danger"
+              @click="handleWeed"
+              :loading="weeding"
               style="margin-top: 8px"
             >
               除草
@@ -219,7 +219,7 @@ const histories = ref<KusaHistory[]>([])
 const availableKusaTypes = ref<{name: string, displayName: string, available: boolean}[]>([])
 const loading = ref(false)
 const planting = ref(false)
-const harvesting = ref(false)
+const weeding = ref(false)
 const selectedKusaType = ref('草')
 const hasOverloadMagic = ref(false)
 const isDev = ref(false)
@@ -354,10 +354,10 @@ const handlePlant = async () => {
   }
 }
 
-const handleHarvest = async () => {
-  harvesting.value = true
+const handleWeed = async () => {
+  weeding.value = true
   try {
-    const result = await farmApi.harvestKusa()
+    const result = await farmApi.weedKusa()
     ElMessage.success('除草成功！草已清除')
     const lastType = localStorage.getItem('lastKusaType')
     if (lastType) {
@@ -367,7 +367,7 @@ const handleHarvest = async () => {
   } catch (error: any) {
     ElMessage.error(error.message || '除草失败')
   } finally {
-    harvesting.value = false
+    weeding.value = false
   }
 }
 

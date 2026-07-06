@@ -97,7 +97,7 @@ export const itemApi = {
 export const farmApi = {
   getField: () => api.get<KusaField>('/farm'),
   plantKusa: (kusaType: string, overload: boolean = false) => api.post<{ success: boolean; message: string; kusaType: string; kusaFinishTs: number; growTime: number }>('/farm/plant', { kusaType, overload }),
-  harvestKusa: () => api.post<{ success: boolean; kusa: number; advKusa: number; kusaType: string }>('/farm/harvest'),
+  weedKusa: () => api.post<{ success: boolean; kusa: number; advKusa: number; kusaType: string }>('/farm/weed'),
   getHistory: () => api.get<any[]>('/farm/history'),
   getAvailableKusaTypes: () => api.get<any[]>('/farm/available-kusa-types'),
   releaseSpareCapacity: () => api.post<{ success: boolean; message: string; newCapacity: number }>('/farm/release-spare-capacity'),

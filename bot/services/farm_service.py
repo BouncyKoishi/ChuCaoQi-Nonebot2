@@ -388,27 +388,27 @@ class FarmService:
         }
     
     @staticmethod
-    async def harvest(userId: int) -> Dict[str, Any]:
-        """除草"""
+    async def weed(userId: int) -> Dict[str, Any]:
+        """除草（主动清除正在生长的草，不获得产物）"""
         field = await fieldDB.getKusaField(userId)
-        
+
         if not field:
             return {'success': False, 'error': 'FIELD_NOT_FOUND'}
-        
+
         if not field.kusaFinishTs:
             return {'success': False, 'error': 'NO_KUSA_TO_HARVEST'}
-        
+
         weeder = await itemDB.getItemAmount(userId, '除草机')
         if not weeder:
             return {'success': False, 'error': 'NO_WEEDER'}
-        
+
         await fieldDB.kusaStopGrowing(field, True)
         await itemDB.removeTimeLimitedItem(userId, '灵性标记')
-        
+
         fallow_sign = await itemDB.getItemAmount(userId, '休耕标记')
         if fallow_sign:
             await itemDB.changeItemAmount(userId, '休耕标记', -1)
-        
+
         return {'success': True, 'message': '除草成功', 'data': {'action': 'weed_removal'}}
     
     @staticmethod

@@ -213,32 +213,32 @@ async def handle_overload_plant(
     await notify_web_status_update(user_id)
 
 
-harvest_cmd = on_command("除草", priority=5, block=True)
+weed_cmd = on_command("除草", priority=5, block=True)
 
-@harvest_cmd.handle()
-async def handle_harvest(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+@weed_cmd.handle()
+async def handle_weed(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     """处理除草命令"""
     user_id = await get_user_id(event, auto_create=True)
-    result = await FarmService.harvest(userId=user_id)
-    
+    result = await FarmService.weed(userId=user_id)
+
     if not result['success']:
         error_code = result.get('error', 'UNKNOWN_ERROR')
         if error_code == 'NO_WEEDER':
-            await send_finish(harvest_cmd, '你没有除草机，无法除草^ ^')
+            await send_finish(weed_cmd, '你没有除草机，无法除草^ ^')
         elif error_code == 'NO_KUSA_TO_HARVEST':
-            await send_finish(harvest_cmd, '当前没有生草，无法除草^ ^')
+            await send_finish(weed_cmd, '当前没有生草，无法除草^ ^')
         else:
-            await send_finish(harvest_cmd, '除草失败')
+            await send_finish(weed_cmd, '除草失败')
         return
-    
-    await send_reply(harvest_cmd, '除草成功^ ^')
-    
+
+    await send_reply(weed_cmd, '除草成功^ ^')
+
     try:
         if await base_db.getFlagValue(user_id, '除草后自动生草'):
             auto_result = await FarmService.start_planting(userId=user_id)
             if auto_result['success']:
                 output_str = format_plant_result(auto_result['data'], "自动开始")
-                await send_reply(harvest_cmd, output_str)
+                await send_reply(weed_cmd, output_str)
     except Exception as e:
         print(f'除草后自动生草失败: {e}')
 
