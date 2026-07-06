@@ -61,13 +61,18 @@ ChuCaoQi-Web/
 │   ├── common.py               # 共享配置
 │   ├── main.py                 # FastAPI 入口
 │   └── websocket_manager.py    # WebSocket 管理
-├── src/                        # Web 前端 (Vue 3 + TypeScript)
-│   ├── api/                    # API 接口封装
-│   ├── router/                 # 路由配置
-│   ├── stores/                 # Pinia 状态管理
-│   ├── types/                  # TypeScript 类型定义
-│   ├── views/                  # 页面组件
-│   └── main.ts                 # 入口文件
+├── frontend/                   # Web 前端 (Vue 3 + TypeScript + Vite)
+│   ├── src/                    # 前端源码
+│   │   ├── api/                # API 接口封装
+│   │   ├── router/             # 路由配置
+│   │   ├── stores/             # Pinia 状态管理
+│   │   ├── types/              # TypeScript 类型定义
+│   │   ├── views/              # 页面组件
+│   │   └── main.ts             # 入口文件
+│   ├── index.html              # 入口 HTML
+│   ├── package.json            # 前端依赖
+│   ├── vite.config.ts          # Vite 配置
+│   └── tsconfig.json           # TypeScript 配置
 ├── config/                     # 统一配置目录
 │   ├── plugin_config.yaml      # 主配置
 │   ├── backend.yaml            # Backend 配置
@@ -78,13 +83,9 @@ ChuCaoQi-Web/
 │   ├── chatHistory/            # 对话历史
 │   ├── picArchive/             # 图片归档
 │   └── cache/                  # 缓存
-├── resources/                  # 静态资源
-│   ├── text/                   # 帮助文本、公告
-│   └── font/                   # 字体文件
-├── scripts/                    # 临时脚本/运维脚本
-├── package.json                # 前端依赖
-├── vite.config.ts              # Vite 配置
-└── tsconfig.json               # TypeScript 配置
+└── resources/                  # 静态资源
+    ├── text/                   # 帮助文本、公告
+    └── font/                   # 字体文件
 ```
 
 <br />
@@ -151,6 +152,7 @@ npm install
 **Web 前端依赖：**
 
 ```bash
+cd frontend
 npm install
 ```
 
@@ -175,6 +177,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 **启动 Web 前端：**
 
 ```bash
+cd frontend
 npm run dev
 ```
 

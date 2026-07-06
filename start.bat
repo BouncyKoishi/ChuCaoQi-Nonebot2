@@ -33,8 +33,8 @@ if %errorlevel% neq 0 (
 )
 
 echo 正在安装前端依赖...
-if not exist "node_modules" (
-    call npm install
+if not exist "frontend\node_modules" (
+    cd /d %~dp0frontend && call npm install
     if %errorlevel% neq 0 (
         echo 错误: 前端依赖安装失败
         pause
@@ -54,7 +54,7 @@ start "生草系统后端" cmd /k "cd /d %~dp0backend && call %~dp0bot\venv\Scri
 timeout /t 3 /nobreak >nul
 
 echo 正在启动前端服务 (端口 3000)...
-start "生草系统前端" cmd /k "cd /d %~dp0 && npm run dev"
+start "生草系统前端" cmd /k "cd /d %~dp0frontend && npm run dev"
 
 echo.
 echo ========================================
