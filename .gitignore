@@ -21,9 +21,9 @@ chuchu_backup.sqlite
 # 配置文件
 config.json
 .env
-bot/config/plugin_config.yaml
-bot/config/sensitive_words.txt
-backend/config.yaml
+config/plugin_config.yaml
+config/sensitive_words.txt
+config/backend.yaml
 
 # 临时文件
 __pycache__/
@@ -47,13 +47,10 @@ Thumbs.db
 *~
 
 # bot工作文件
-bot/chatHistory/
-bot/cache/
+data/
 bot/database/
 bot/plugins/hidden.py
 bot/scripts/
-bot/font/
-bot/picArchive/
 
 # 自测文件
 test/

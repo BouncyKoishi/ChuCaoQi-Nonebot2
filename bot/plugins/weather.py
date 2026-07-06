@@ -39,7 +39,7 @@ CMA_INDEX_URL = "http://www.nmc.cn/publish/typhoon/typhoon_new.html"
 CMA_DETAIL_URL = "http://www.nmc.cn/f/rest/getContent?dataId="
 NMC_RADAR_BASE_URL = "http://www.nmc.cn/publish/radar/"
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache", "radar")
+CACHE_DIR = os.path.join(DATA_DIR, 'cache', 'radar')
 GIF_CACHE_DIR = os.path.join(CACHE_DIR, "gif")
 
 MAX_GIF_SIZE = int(2.5 * 1024 * 1024)

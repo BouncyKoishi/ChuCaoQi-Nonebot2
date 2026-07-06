@@ -10,8 +10,7 @@ import yaml
 from datetime import datetime
 from typing import Dict, Tuple
 
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-BOT_DIR = os.path.join(BACKEND_DIR, '..', 'bot')
+from core.config import PROJECT_ROOT, plugin_config
 
 
 def _load_yaml(path: str) -> Dict:
@@ -21,13 +20,10 @@ def _load_yaml(path: str) -> Dict:
     return {}
 
 
-_backend_config_path = os.path.join(BACKEND_DIR, 'config.yaml')
+_backend_config_path = os.path.join(PROJECT_ROOT, 'config', 'backend.yaml')
 _backend_config = _load_yaml(_backend_config_path)
 
-_plugin_config_path = os.path.join(BOT_DIR, 'config', 'plugin_config.yaml')
-_plugin_config = _load_yaml(_plugin_config_path)
-
-ENV = _backend_config.get('env', _plugin_config.get('env', 'dev'))
+ENV = _backend_config.get('env', plugin_config.get('env', 'dev'))
 
 INTERNAL_API_TOKEN = os.getenv(
     'INTERNAL_API_TOKEN',
@@ -39,7 +35,7 @@ ALLOW_LEGACY_LOGIN = os.getenv(
     str(_backend_config.get('allowLegacyLogin', False))
 ).lower() == 'true'
 
-draw_config = _plugin_config.get('drawItem', {})
+draw_config = plugin_config.get('drawItem', {})
 BAN_RISK = draw_config.get('banRisk', 0)
 
 disabled_users: Dict[str, int] = {}

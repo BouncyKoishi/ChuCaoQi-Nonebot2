@@ -11,6 +11,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from utils import nameDetailSplit, imgUrlTobase64, extractImgUrls
+from core.config import DATA_DIR
 from core.services.chat_service import ChatService
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
@@ -20,7 +21,7 @@ from multi_platform import (
     send_finish,
 )
 
-HISTORY_PATH = u"chatHistory/"
+HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
 
 from sensitive_filter import get_sensitive_filter
 

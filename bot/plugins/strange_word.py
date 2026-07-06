@@ -31,6 +31,7 @@ from nonebot import get_driver
 from nonebot_plugin_apscheduler import scheduler
 
 from kusa_base import plugin_config
+from core.config import DATA_DIR
 from .reply_commands import reply_text_command
 from core.services.chat_service import ChatService
 from sensitive_filter import get_sensitive_filter

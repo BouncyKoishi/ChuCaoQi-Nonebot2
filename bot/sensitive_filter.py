@@ -116,12 +116,8 @@ def get_sensitive_filter() -> SensitiveFilter:
     global _instance
     if _instance is None:
         _instance = SensitiveFilter()
-        try:
-            from config import config
-            base_path = config.base_path if hasattr(config, 'base_path') else os.path.dirname(os.path.abspath(__file__))
-        except Exception:
-            base_path = os.path.dirname(os.path.abspath(__file__))
-        filepath = os.path.join(base_path, 'config', 'sensitive_words.txt')
+        from core.config import CONFIG_DIR
+        filepath = os.path.join(CONFIG_DIR, 'sensitive_words.txt')
         _instance.load_from_file(filepath)
     return _instance
 
@@ -129,11 +125,7 @@ def get_sensitive_filter() -> SensitiveFilter:
 def reload_sensitive_filter() -> SensitiveFilter:
     global _instance
     _instance = SensitiveFilter()
-    try:
-        from config import config
-        base_path = config.base_path if hasattr(config, 'base_path') else os.path.dirname(os.path.abspath(__file__))
-    except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(base_path, 'config', 'sensitive_words.txt')
+    from core.config import CONFIG_DIR
+    filepath = os.path.join(CONFIG_DIR, 'sensitive_words.txt')
     _instance.load_from_file(filepath)
     return _instance

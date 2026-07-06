@@ -12,6 +12,7 @@ from PIL import Image, ImageFont, ImageDraw, ImageFilter
 
 from utils import imgLocalPathToBase64, extractImgUrls
 from kusa_base import plugin_config
+from core.config import DATA_DIR
 from multi_platform import send_finish, get_user_id, is_onebot_v11_event
 from nonebot import on_command, on_message
 from nonebot.adapters import Bot, Event
@@ -22,9 +23,8 @@ from .reply_commands import reply_command, ReplyCommandResult, store_result, get
 
 proxy = plugin_config.get('web', {}).get('proxy', None)
 saucenaoApiKey = plugin_config.get('web', {}).get('saucenao', {}).get('key', '')
-_basePath = plugin_config.get('basePath', '')
-fontPath = os.path.join(_basePath, 'font') if _basePath else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'font')
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache")
+fontPath = os.path.join(DATA_DIR, 'font')
+CACHE_DIR = os.path.join(DATA_DIR, 'cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
 generalHeader = {
     "sec-ch-ua": '"Chromium";v="104", " Not A;Brand";v="99", "Google Chrome";v="104"',

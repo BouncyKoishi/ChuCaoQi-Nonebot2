@@ -3,19 +3,10 @@
 提供用户检查、消息发送、交易功能等基础功能
 """
 
-import yaml
 from typing import Union, List, Dict, Any, Optional
 import os
 
-try:
-    from config import config
-    plugin_config_path = config.plugin_config_path
-except ImportError:
-    config = None
-    plugin_config_path = os.path.join(os.path.dirname(__file__), "config", "plugin_config.yaml")
-
-with open(plugin_config_path, 'r', encoding='utf-8') as f:
-    plugin_config: Dict[str, Any] = yaml.safe_load(f)
+from core.config import plugin_config
 
 friend_list: List[str] = []
 

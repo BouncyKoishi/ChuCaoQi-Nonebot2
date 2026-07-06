@@ -31,7 +31,7 @@ driver = get_driver()
 raw_config = {
     "command_start": getattr(driver.config, "command_start", {"!"}),
     "superusers": getattr(driver.config, "superusers", set()),
-    "plugin_config_path": getattr(driver.config, "plugin_config_path", "config/plugin_config.yaml"),
+    "plugin_config_path": getattr(driver.config, "plugin_config_path", "../config/plugin_config.yaml"),
     "database_path": getattr(driver.config, "database_path", "database/chuchu.sqlite"),
 }
 

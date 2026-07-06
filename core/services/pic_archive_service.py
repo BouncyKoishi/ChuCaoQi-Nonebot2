@@ -17,14 +17,14 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 
 import sys
 
-from core.config import plugin_config
+from core.config import plugin_config, DATA_DIR
 
 
 # ==================== 路径与分类定义 ====================
 
 def get_base_pic_path() -> str:
     """图片归档根路径"""
-    return os.path.join(plugin_config.get('basePath', ''), 'picArchive')
+    return os.path.join(DATA_DIR, 'picArchive')
 
 
 def get_save_path() -> str:

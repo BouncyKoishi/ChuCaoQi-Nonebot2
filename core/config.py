@@ -7,11 +7,8 @@ import yaml
 import os
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_DIR = os.path.join(PROJECT_ROOT, 'config')
+DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
 
-# 阶段1：配置文件仍在 bot/config/；阶段2将迁移到 config/
-_config_path = os.path.join(PROJECT_ROOT, 'bot', 'config', 'plugin_config.yaml')
-if not os.path.exists(_config_path):
-    _config_path = os.path.join(PROJECT_ROOT, 'config', 'plugin_config.yaml')
-
-with open(_config_path, 'r', encoding='utf-8') as f:
+with open(os.path.join(CONFIG_DIR, 'plugin_config.yaml'), 'r', encoding='utf-8') as f:
     plugin_config: dict = yaml.safe_load(f)

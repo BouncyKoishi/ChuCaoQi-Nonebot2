@@ -8,7 +8,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, B
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from kusa_base import is_super_admin, config, parse_user_identifier
+from kusa_base import is_super_admin, parse_user_identifier
 from functools import wraps
 from core.services import WarehouseService, StatisticService, admin_service
 from multi_platform import get_user_id,  send_finish

@@ -1,4 +1,7 @@
 from tortoise import Tortoise
+import os
+
+from core.config import DATA_DIR
 
 # 全局数据库初始化标志
 _db_initialized = False
@@ -10,8 +13,9 @@ async def init_db():
         return
 
     from . import models
+    db_path = os.path.join(DATA_DIR, 'database', 'chuchu.sqlite')
     await Tortoise.init(
-        db_url="sqlite://database/chuchu.sqlite?journal_mode=WAL&timeout=10",
+        db_url=f"sqlite://{db_path}?journal_mode=WAL&timeout=10",
         modules={"models": ["core.db.models"]},
         use_tz=True,
         timezone="Asia/Shanghai"
