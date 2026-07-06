@@ -7,12 +7,14 @@ try:
     import nonebot
     from nonebot.adapters.onebot.v11 import MessageSegment as ms
     from nonebot.adapters.onebot.v11 import Message
+    from nonebot.adapters.onebot.v11.exception import ActionFailed
     NONE_BOT_AVAILABLE = True
 except ImportError:
     NONE_BOT_AVAILABLE = False
     nonebot = None
     Message = None
     ms = None
+    ActionFailed = Exception
 
 groupMemberInfoCache = {}
 
@@ -95,7 +97,7 @@ async def checkBanAvailable(targetId, groupId):
         if botInfo['role'] == 'admin' and targetInfo['role'] == 'admin':
             return False
         return True
-    except CQHttpError as e:
+    except ActionFailed as e:
         traceback.print_exc()
         print(f'Error: cqHttpApi(GetGroupMemberInfo) not available')
         return False
@@ -110,7 +112,7 @@ async def getGroupMemberInfoFromCache(bot, groupId, userId):
         memberInfo = await bot.get_group_member_info(group_id=groupId, user_id=userId)
         groupMemberInfoCache[cacheKey] = memberInfo
         return memberInfo
-    except CQHttpError as e:
+    except ActionFailed as e:
         traceback.print_exc()
         print(f'Error: cqHttpApi(GetGroupMemberInfo) not available')
         return None

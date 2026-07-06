@@ -25,7 +25,7 @@ echo.
 
 echo [2/3] 安装依赖...
 echo 正在安装后端依赖...
-pip install -r requirements.txt
+pip install -r bot\requirements.txt
 if %errorlevel% neq 0 (
     echo 错误: 后端依赖安装失败
     pause

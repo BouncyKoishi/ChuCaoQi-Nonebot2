@@ -19,7 +19,6 @@ db.sqlite3
 chuchu_backup.sqlite
 
 # 配置文件
-config.json
 .env
 config/plugin_config.yaml
 config/sensitive_words.txt
@@ -46,11 +45,11 @@ Thumbs.db
 *.bak
 *~
 
-# bot工作文件
+# 工作文件
 data/
-bot/database/
+resources/font/
 bot/plugins/hidden.py
-bot/scripts/
+scripts/
 
 # 自测文件
 test/

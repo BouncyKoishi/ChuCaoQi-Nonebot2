@@ -12,7 +12,7 @@ from PIL import Image, ImageFont, ImageDraw, ImageFilter
 
 from utils import imgLocalPathToBase64, extractImgUrls
 from kusa_base import plugin_config
-from core.config import DATA_DIR
+from core.config import DATA_DIR, RESOURCE_DIR
 from multi_platform import send_finish, get_user_id, is_onebot_v11_event
 from nonebot import on_command, on_message
 from nonebot.adapters import Bot, Event
@@ -23,7 +23,7 @@ from .reply_commands import reply_command, ReplyCommandResult, store_result, get
 
 proxy = plugin_config.get('web', {}).get('proxy', None)
 saucenaoApiKey = plugin_config.get('web', {}).get('saucenao', {}).get('key', '')
-fontPath = os.path.join(DATA_DIR, 'font')
+fontPath = os.path.join(RESOURCE_DIR, 'font')
 CACHE_DIR = os.path.join(DATA_DIR, 'cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
 generalHeader = {

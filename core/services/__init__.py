@@ -17,5 +17,11 @@ from .gmarket_service import GMarketService
 from .industrial_service import IndustrialService
 from .lottery_service import LotteryService
 from .statistic_service import StatisticService
+from . import admin_service, chat_service, identity_service, pic_archive_service, trade_service
 
-__all__ = ['FarmService', 'WarehouseService', 'ItemService', 'GMarketService', 'IndustrialService', 'LotteryService', 'StatisticService']
+__all__ = [
+    'FarmService', 'WarehouseService', 'ItemService', 'GMarketService',
+    'IndustrialService', 'LotteryService', 'StatisticService',
+    'admin_service', 'chat_service', 'identity_service',
+    'pic_archive_service', 'trade_service',
+]

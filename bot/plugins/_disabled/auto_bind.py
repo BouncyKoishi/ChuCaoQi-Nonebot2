@@ -12,16 +12,16 @@ from nonebot.message import event_preprocessor
 from nonebot.adapters.onebot.v11 import GroupMessageEvent as OneBotV11GroupMessageEvent
 from nonebot.adapters.qq import GroupAtMessageCreateEvent
 
-from dbConnection.user import (
+from core.db.user import (
     getGroupMappingByOnebotGroupId,
     getGroupMappingByQqbotGroupOpenid,
     getUnifiedUserByRealQQ,
     getUnifiedUserByQQBotOpenid,
     bindPlatformIdentity
 )
-from dbConnection.models import UnifiedUser, KusaBase, KusaField
-from services.identity_service import get_now, merge_users
-from dbConnection.kusa_item import changeItemAmount
+from core.db.models import UnifiedUser, KusaBase, KusaField
+from core.services.identity_service import get_now, merge_users
+from core.db.kusa_item import changeItemAmount
 from kusa_base import plugin_config
 
 # 从配置文件获取官方机器人QQ号，如果未配置则禁用插件

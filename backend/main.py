@@ -14,14 +14,10 @@ import os
 # 保存 backend 目录路径
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
-BOT_DIR = os.path.join(BACKEND_DIR, '..', 'bot')
 
 # 添加 backend 和 project root 到路径
 sys.path.insert(0, BACKEND_DIR)
 sys.path.insert(0, PROJECT_ROOT)
-
-# 设置工作目录到 bot 目录
-os.chdir(BOT_DIR)
 
 # 配置日志
 logging.basicConfig(
@@ -29,7 +25,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('backend.log', encoding='utf-8')
+        logging.FileHandler(os.path.join(BACKEND_DIR, 'backend.log'), encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)

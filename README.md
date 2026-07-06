@@ -44,30 +44,47 @@
 
 ```
 ChuCaoQi-Web/
-├── backend/              # Web 后端 (FastAPI)
-│   ├── middleware/       # 中间件（限流、认证等）
-│   ├── routers/          # API 路由
-│   ├── common.py         # 共享配置
-│   ├── main.py           # FastAPI 入口
-│   └── websocket_manager.py  # WebSocket 管理
-├── bot/                  # Bot 主目录 (NoneBot2)
-│   ├── config/           # 配置文件
-│   ├── dbConnection/     # 数据库连接与模型
-│   ├── plugins/          # 插件目录
-│   ├── services/         # 服务层（业务逻辑）
-│   ├── text/             # 文本资源
-│   ├── bot.py            # Bot 入口
-│   └── config.py         # NoneBot2 配置
-├── src/                  # Web 前端 (Vue 3 + TypeScript)
-│   ├── api/              # API 接口封装
-│   ├── router/           # 路由配置
-│   ├── stores/           # Pinia 状态管理
-│   ├── types/            # TypeScript 类型定义
-│   ├── views/            # 页面组件
-│   └── main.ts           # 入口文件
-├── package.json          # 前端依赖
-├── vite.config.ts        # Vite 配置
-└── tsconfig.json         # TypeScript 配置
+├── core/                       # 共享核心域（bot/backend/scheduler 三进程共用）
+│   ├── services/               # 服务层（业务逻辑）
+│   ├── db/                     # 数据库连接与模型
+│   ├── config.py               # 统一配置加载
+│   └── utils.py                # 纯工具函数
+├── bot/                        # Bot 接入层 (NoneBot2)
+│   ├── plugins/                # 插件目录
+│   ├── kusa_base.py            # Bot 基础功能
+│   ├── multi_platform.py       # 多平台抽象
+│   ├── reloader.py             # 命令注册器
+│   └── bot.py                  # Bot 入口
+├── backend/                    # Web 后端 (FastAPI)
+│   ├── routers/                # API 路由
+│   ├── middleware/             # 中间件（限流、认证等）
+│   ├── common.py               # 共享配置
+│   ├── main.py                 # FastAPI 入口
+│   └── websocket_manager.py    # WebSocket 管理
+├── src/                        # Web 前端 (Vue 3 + TypeScript)
+│   ├── api/                    # API 接口封装
+│   ├── router/                 # 路由配置
+│   ├── stores/                 # Pinia 状态管理
+│   ├── types/                  # TypeScript 类型定义
+│   ├── views/                  # 页面组件
+│   └── main.ts                 # 入口文件
+├── config/                     # 统一配置目录
+│   ├── plugin_config.yaml      # 主配置
+│   ├── backend.yaml            # Backend 配置
+│   ├── sensitive_words.txt     # 敏感词库
+│   └── initialize.sql          # 数据库初始化 SQL
+├── data/                       # 持久化数据
+│   ├── database/               # SQLite 数据库
+│   ├── chatHistory/            # 对话历史
+│   ├── picArchive/             # 图片归档
+│   └── cache/                  # 缓存
+├── resources/                  # 静态资源
+│   ├── text/                   # 帮助文本、公告
+│   └── font/                   # 字体文件
+├── scripts/                    # 临时脚本/运维脚本
+├── package.json                # 前端依赖
+├── vite.config.ts              # Vite 配置
+└── tsconfig.json               # TypeScript 配置
 ```
 
 <br />
@@ -86,9 +103,9 @@ ChuCaoQi-Web/
 
    复制示例配置并修改：
    ```bash
-   cp bot/config/plugin_config.example.yaml bot/config/plugin_config.yaml
+   cp config/plugin_config.example.yaml config/plugin_config.yaml
    ```
-   编辑 `bot/config/plugin_config.yaml`，填入必要的配置：
+   编辑 `config/plugin_config.yaml`，填入必要的配置：
    - QQ号、群号等基础信息
    - 各API密钥（OpenAI、Deepseek、Gemini等，按需填写）
    - 代理设置（如需要）
@@ -97,22 +114,22 @@ ChuCaoQi-Web/
 
    复制示例配置并修改：
    ```bash
-   cp backend/config.example.yaml backend/config.yaml
+   cp config/backend.example.yaml config/backend.yaml
    ```
-   编辑 `backend/config.yaml`，填入必要的配置：
+   编辑 `config/backend.yaml`，填入必要的配置：
    - `env`：环境标识（`dev` / `prod`）
    - `internalApiToken`：内部 API 令牌，用于 Bot 调用后端接口
    - `allowLegacyLogin`：是否允许未设置 webToken 的用户免 Token 登录（测试时设为 `true`，生产环境应为 `false`）
 
 3. **数据库初始化**
 
-   在 `bot/database/` 目录下创建 SQLite 数据库：
+   在 `data/database/` 目录下创建 SQLite 数据库：
    ```bash
    # 创建数据库目录
-   mkdir -p bot/database
+   mkdir -p data/database
 
    # 导入初始化数据
-   sqlite3 bot/database/chuchu.sqlite < bot/config/initialize.sql
+   sqlite3 data/database/chuchu.sqlite < config/initialize.sql
    ```
 
 ### 安装依赖
@@ -169,7 +186,7 @@ npm run dev
 
 ### 访问地址
 
-- Web 前端：`http://localhost:5173`（开发模式）
+- Web 前端：`http://localhost:3000`（开发模式）
 - Web 后端 API：`http://localhost:8000`
 - API 文档：`http://localhost:8000/docs`
 
@@ -185,9 +202,9 @@ Web 端使用 Token 认证，获取方式：
 
 1. **数据库共享**：Web 端与 Bot 端共享同一个数据库，所有操作会实时同步
 2. **端口占用**：确保以下端口未被占用
-   - 5173（前端开发服务器）
+   - 3000（前端开发服务器）
    - 8000（后端 API）
-   - 8080（NoneBot2 默认端口）
+   - 8082（NoneBot2 开发端口）
 
 ## 声明
 

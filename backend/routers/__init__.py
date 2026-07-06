@@ -22,6 +22,10 @@ from . import item
 from . import notify
 from . import analytics
 from . import spellcard
+from . import shop
+from . import user
+from . import donate
+from . import admin
 
 __all__ = [
     'auth',
@@ -34,4 +38,8 @@ __all__ = [
     'notify',
     'analytics',
     'spellcard',
+    'shop',
+    'user',
+    'donate',
+    'admin',
 ]

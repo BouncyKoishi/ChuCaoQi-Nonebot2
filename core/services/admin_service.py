@@ -2,7 +2,7 @@
 管理服务模块
 
 提供超级管理员后台管理功能（用户管理、称号管理、自定义排行榜等）
-供 Web 后端路由直接调用，复用现有 dbConnection 层和 service 层。
+供 Web 后端路由直接调用，复用现有 core.db 层和 core.services 层。
 """
 
 import sys
