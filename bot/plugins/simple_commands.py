@@ -1,5 +1,6 @@
 import json
 import codecs
+import os
 import datetime
 import numpy as np
 from typing import cast
@@ -9,6 +10,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import plugin_config
+from core.config import RESOURCE_DIR
 from urllib import request
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
@@ -25,7 +27,7 @@ help_cmd = on_command('help', priority=5, block=True)
 
 @help_cmd.handle()
 async def handle_help(bot: Bot, event: Event):
-    with codecs.open(u'text/指令帮助.txt', 'r', 'utf-8') as f:
+    with codecs.open(os.path.join(RESOURCE_DIR, 'text', '指令帮助.txt'), 'r', 'utf-8') as f:
         await send_finish(help_cmd, f.read().strip())
 
 
@@ -33,7 +35,7 @@ async def handle_help(bot: Bot, event: Event):
 
 @生草系统_cmd.handle()
 async def handle_生草系统(bot: Bot, event: Event):
-    with codecs.open(u'text/生草系统-指令帮助.txt', 'r', 'utf-8') as f:
+    with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-指令帮助.txt'), 'r', 'utf-8') as f:
         await send_finish(生草系统_cmd, f.read().strip())
 
 
@@ -41,7 +43,7 @@ async def handle_生草系统(bot: Bot, event: Event):
 
 @公告_cmd.handle()
 async def handle_公告(bot: Bot, event: Event):
-    with codecs.open(u'text/公告.txt', 'r', 'utf-8') as f:
+    with codecs.open(os.path.join(RESOURCE_DIR, 'text', '公告.txt'), 'r', 'utf-8') as f:
         await send_finish(公告_cmd, f.read().strip())
 
 

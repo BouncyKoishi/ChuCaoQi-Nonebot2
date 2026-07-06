@@ -5,6 +5,7 @@ G市系统插件 - NoneBot2 版本
 
 import io
 import re
+import os
 import codecs
 import random
 from typing import Optional, Dict
@@ -18,6 +19,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
 from kusa_base import plugin_config, send_group_msg
+from core.config import RESOURCE_DIR
 from utils import imgBytesToBase64
 import core.db.kusa_system as base_db
 import core.db.g_value as g_value_db
@@ -95,7 +97,7 @@ g_help_cmd = on_command("G市帮助", priority=5, block=True)
 async def handle_g_help(event: OneBotV11MessageEvent):
     """处理G市帮助命令"""
     try:
-        with codecs.open('text/生草系统-G市帮助.txt', 'r', 'utf-8') as f:
+        with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-G市帮助.txt'), 'r', 'utf-8') as f:
             await send_finish(g_help_cmd, f.read().strip())
     except FileNotFoundError:
         await send_finish(g_help_cmd, '帮助文件未找到')

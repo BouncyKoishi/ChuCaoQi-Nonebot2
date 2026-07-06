@@ -4,6 +4,7 @@
 """
 
 import re
+import os
 import codecs
 from typing import Union
 from utils import convertNumStrToInt
@@ -13,6 +14,7 @@ from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg, ArgPlainText
 from nonebot.adapters import Message, Bot
 from nonebot.typing import T_State
+from core.config import RESOURCE_DIR
 from nonebot.exception import FinishedException, PausedException, RejectedException
 
 from kusa_base import send_private_msg
@@ -107,7 +109,7 @@ shop_help_cmd = on_command("商店帮助", priority=5, block=True)
 async def handle_shop_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     """处理商店帮助命令"""
     try:
-        with codecs.open('text/生草系统-商店帮助.txt', 'r', 'utf-8') as f:
+        with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-商店帮助.txt'), 'r', 'utf-8') as f:
             await send_finish(shop_help_cmd, f.read().strip())
     except FileNotFoundError:
         await send_finish(shop_help_cmd, '帮助文件未找到')

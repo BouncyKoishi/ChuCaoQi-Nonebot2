@@ -18,6 +18,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
 from kusa_base import plugin_config, send_group_msg
+from core.config import DATA_DIR
 
 try:
     from nonebot_plugin_apscheduler import scheduler
