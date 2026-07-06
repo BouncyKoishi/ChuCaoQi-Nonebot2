@@ -31,5 +31,5 @@ echo.
 echo 使用方法:
 echo   1. 激活环境: venv\Scripts\activate
 echo   2. 安装依赖: pip install -r requirements.txt
-echo   3. 运行 Bot: python bot.py
+echo   3. 运行 Bot: cd bot ^&^& python bot.py
 pause

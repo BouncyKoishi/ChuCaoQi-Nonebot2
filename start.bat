@@ -25,7 +25,7 @@ echo.
 
 echo [2/3] 安装依赖...
 echo 正在安装后端依赖...
-pip install -r bot\requirements.txt
+pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo 错误: 后端依赖安装失败
     pause
@@ -49,7 +49,7 @@ echo.
 
 echo [3/3] 启动服务...
 echo 正在启动后端服务 (端口 8000)...
-start "生草系统后端" cmd /k "cd /d %~dp0backend && call %~dp0bot\venv\Scripts\activate && npm run dev"
+start "生草系统后端" cmd /k "cd /d %~dp0backend && call %~dp0venv\Scripts\activate && npm run dev"
 
 timeout /t 3 /nobreak >nul
 

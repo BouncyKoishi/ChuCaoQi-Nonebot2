@@ -8,5 +8,5 @@ pip install -r requirements.txt
 
 echo.
 echo Installation completed!
-echo To run bot: python bot.py
+echo To run bot: cd bot ^&^& python bot.py
 pause

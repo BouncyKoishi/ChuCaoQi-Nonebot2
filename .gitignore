@@ -1,6 +1,6 @@
 # 依赖目录
 node_modules/
-bot/venv/
+venv/
 
 # 编译输出
 dist/

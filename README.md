@@ -135,18 +135,10 @@ ChuCaoQi-Web/
 
 ### 安装依赖
 
-**Bot 端依赖：**
+**Python 依赖（Bot + Web 后端共用）：**
 
 ```bash
-cd bot
 pip install -r requirements.txt
-```
-
-**Web 后端依赖：**
-
-```bash
-cd backend
-npm install
 ```
 
 **Web 前端依赖：**
@@ -162,9 +154,7 @@ npm install
 
 ```bash
 cd bot
-python bot.py
-# 或使用虚拟环境
-.\venv\Scripts\python.exe bot.py
+..\venv\Scripts\python.exe bot.py
 ```
 
 **启动 Web 后端：**
