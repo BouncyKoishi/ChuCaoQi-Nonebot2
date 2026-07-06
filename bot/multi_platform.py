@@ -9,7 +9,7 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.params import Event as EventParam
 
 try:
-    from services.identity_service import (
+    from core.services.identity_service import (
         get_unified_user_by_platform,
         get_or_create_unified_user,
         get_real_qq
@@ -379,7 +379,7 @@ from nonebot import get_bots
 #         真实群号或 None
 #     """
 #     try:
-#         from dbConnection.models import GroupMapping
+#         from core.db.models import GroupMapping
 #         mapping = await GroupMapping.filter(qqbotGroupOpenid=official_group_id).first()
 #         if mapping and mapping.onebotGroupId:
 #             return int(mapping.onebotGroupId)
@@ -399,7 +399,7 @@ async def get_real_user_id(unified_user_id: int) -> Optional[int]:
         真实 QQ 号或 None
     """
     try:
-        from dbConnection.models import UnifiedUser
+        from core.db.models import UnifiedUser
         user = await UnifiedUser.filter(id=unified_user_id).first()
         if user and user.realQQ:
             return int(user.realQQ)

@@ -1,7 +1,7 @@
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.kusa_field as fieldDB
-import dbConnection.user as userDB
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
+import core.db.kusa_field as fieldDB
+import core.db.user as userDB
 from datetime import datetime
 from reloader import kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
@@ -10,7 +10,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import is_super_admin, config, parse_user_identifier
 from functools import wraps
-from services import WarehouseService, StatisticService, admin_service
+from core.services import WarehouseService, StatisticService, admin_service
 from multi_platform import get_user_id,  send_finish
 from typing import Union
 

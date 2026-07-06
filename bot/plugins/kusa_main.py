@@ -19,16 +19,16 @@ from nonebot.adapters.onebot.v11 import MessageSegment as OneBotMS
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-import dbConnection.kusa_system as base_db
-import dbConnection.kusa_item as item_db
-import dbConnection.kusa_field as field_db
-import dbConnection.user as user_db
-from dbConnection.models import KusaBase
+import core.db.kusa_system as base_db
+import core.db.kusa_item as item_db
+import core.db.kusa_field as field_db
+import core.db.user as user_db
+from core.db.models import KusaBase
 from utils import convertNumStrToInt
 from kusa_base import (
     plugin_config, send_private_msg, send_group_msg, get_bot_qq
 )
-from services import WarehouseService
+from core.services import WarehouseService
 from multi_platform import (
     get_user_id,
     is_onebot_v11_event,
@@ -593,7 +593,7 @@ async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEven
         await send_finish(grab_envelope_cmd, await build_at_message(event, user_id, '当前没有草包^ ^'))
         return
 
-    from dbConnection.user import getUnifiedUser
+    from core.db.user import getUnifiedUser
     unified_user = await getUnifiedUser(user_id)
     if unified_user and unified_user.relatedUserId:
         pass
@@ -709,7 +709,7 @@ if scheduler:
     @scheduler.scheduled_job('cron', hour=4, misfire_grace_time=500)
     async def daily_report_runner():
         """生草日报"""
-        from services import FarmService
+        from core.services import FarmService
         from datetime import datetime
         now = datetime.now()
         today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
@@ -747,7 +747,7 @@ if scheduler:
     @scheduler.scheduled_job('cron', hour=4, minute=1, day_of_week='mon', misfire_grace_time=500)
     async def weekly_report_runner():
         """生草周报"""
-        from services import FarmService
+        from core.services import FarmService
         from datetime import datetime, timedelta
         now = datetime.now()
         today_start = datetime(now.year, now.month, now.day, 0, 0, 0)

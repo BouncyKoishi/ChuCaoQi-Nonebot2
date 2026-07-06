@@ -3,7 +3,7 @@ import codecs
 import datetime
 import numpy as np
 from typing import cast
-import dbConnection.kusa_system as db
+import core.db.kusa_system as db
 from nonebot import on_command, get_bot
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg

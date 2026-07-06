@@ -6,12 +6,8 @@ from fastapi import APIRouter, Request
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import GMarketService
 
-from services import GMarketService
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
 

@@ -10,9 +10,7 @@ from typing import Optional
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'bot'))
-
-from dbConnection.models import UnifiedUser
+from core.db.models import UnifiedUser
 
 
 def get_utc_now():

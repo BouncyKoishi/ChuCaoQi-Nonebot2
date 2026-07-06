@@ -12,13 +12,12 @@ from typing import Dict, Any, Tuple, List, Optional
 from datetime import datetime
 from collections import Counter
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.g_value as gValueDB
-import dbConnection.user as user_db
-from kusa_base import buying as base_buying, selling as base_selling
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
+import core.db.g_value as gValueDB
+import core.db.user as user_db
+from core.services.trade_service import buying as base_buying, selling as base_selling
 
 
 class GMarketService:
@@ -528,7 +527,7 @@ class GMarketService:
         Returns:
             交易记录数据，包含分页信息
         """
-        from utils import rd3
+        from core.utils import rd3
         
         g_values = await gValueDB.getLatestGValues()
         if not g_values:
@@ -626,7 +625,7 @@ class GMarketService:
     @staticmethod
     def get_new_g(old_g: float, change_range: float) -> float:
         """获取新的G值"""
-        from utils import rd3
+        from core.utils import rd3
         rank = change_range * (random.SystemRandom().random() - 0.498)
         new_g = rd3(old_g * (1 + rank))
         return new_g
@@ -681,7 +680,7 @@ class GMarketService:
         Returns:
             新的G值字典
         """
-        from utils import rd3
+        from core.utils import rd3
         change_ranges = {'east': 0.1, 'south': 0.1, 'north': 0.08, 'zhuhai': 0.1, 'shenzhen': 0.15}
         
         new_values = {}

@@ -32,7 +32,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 from kusa_base import plugin_config
 from .reply_commands import reply_text_command
-from services.chat_service import ChatService
+from core.services.chat_service import ChatService
 from sensitive_filter import get_sensitive_filter
 from utils import get_group_member_nickname
 

@@ -9,11 +9,8 @@ from typing import Optional
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
-
-from services import ItemService
-import dbConnection.kusa_item as itemDB
+from core.services import ItemService
+import core.db.kusa_item as itemDB
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
 

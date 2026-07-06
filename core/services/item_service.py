@@ -8,12 +8,11 @@ import sys
 import os
 from typing import Dict, Any, List, Optional
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.user as user_db
-from dbConnection.models import UnifiedUser
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
+import core.db.user as user_db
+from core.db.models import UnifiedUser
 
 
 class ItemService:
@@ -93,10 +92,10 @@ class ItemService:
     async def buy_item(userId: int, item_name: str, amount: int) -> Dict[str, Any]:
         """购买物品"""
         if item_name == '生草工厂':
-            from services import IndustrialService
+            from core.services import IndustrialService
             return await IndustrialService.buy_kusa_factory(userId, amount)
         if item_name == '草精炼厂':
-            from services import IndustrialService
+            from core.services import IndustrialService
             return await IndustrialService.buy_adv_factory(userId, amount)
 
         item = await itemDB.getItem(item_name)
@@ -137,7 +136,7 @@ class ItemService:
             if not await baseDB.deductKusa(userId, total_price, type='advKusa'):
                 return {'success': False, 'error': 'INSUFFICIENT_ADV_KUSA', 'message': f'购买{amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^'}
         elif price_type == '自动化核心':
-            from kusa_base import item_charging
+            from core.services.trade_service import item_charging
             success = await item_charging(userId, item_name, amount, '自动化核心', total_price, '商店(买)')
             if not success:
                 return {'success': False, 'error': 'INSUFFICIENT_AUTO_CORE', 'message': '自动化核心不足'}
@@ -227,7 +226,7 @@ class ItemService:
     @staticmethod
     async def get_shop_list(userId: int, shop_type: str = '全部') -> List[Dict[str, Any]]:
         """获取商店物品列表"""
-        from dbConnection.kusa_item import KusaItemList
+        from core.db.kusa_item import KusaItemList
 
         if shop_type == '全部':
             shop_items = await KusaItemList.filter(shopPrice__not_isnull=True).order_by('priceType', 'shopPrice').all()
@@ -261,7 +260,7 @@ class ItemService:
 
         if shop_type in ['全部', '自动化核心']:
             try:
-                from services.industrial_service import IndustrialService
+                from core.services.industrial_service import IndustrialService
                 next_factory_cost = await IndustrialService.get_next_factory_cost(userId)
                 items.append({
                     'name': '生草工厂',

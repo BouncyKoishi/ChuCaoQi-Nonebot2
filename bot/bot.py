@@ -5,12 +5,16 @@
 """
 
 import sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 import os
 
 # 确保工作目录正确
 bot_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(bot_dir)
 sys.path.insert(0, bot_dir)
+sys.path.insert(0, os.path.dirname(bot_dir))
 
 # 显式加载 .env 文件（确保配置生效）
 from dotenv import load_dotenv
@@ -67,7 +71,7 @@ if QQ_ADAPTER_AVAILABLE:
 @driver.on_startup
 async def init_database():
     """初始化数据库"""
-    import dbConnection.db as base_db
+    import core.db.db as base_db
     await base_db.init_db()
     print("--- Database initialized on startup ---")
 

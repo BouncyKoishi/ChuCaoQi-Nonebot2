@@ -9,18 +9,14 @@ import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from middleware.rate_limiter import limiter
 
 
 def get_utc_now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
-
-import dbConnection.kusa_system as baseDB
-from dbConnection.models import UnifiedUser
+import core.db.kusa_system as baseDB
+from core.db.models import UnifiedUser
 from common import ALLOW_LEGACY_LOGIN
 
 router = APIRouter()

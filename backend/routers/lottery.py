@@ -7,14 +7,10 @@ from typing import Optional
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import LotteryService
+import core.db.draw_item as drawItemDB
+import core.db.user as userDB
 
-from services import LotteryService
-import dbConnection.draw_item as drawItemDB
-import dbConnection.user as userDB
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from common import check_user_disabled, set_user_disabled, BAN_RISK
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter

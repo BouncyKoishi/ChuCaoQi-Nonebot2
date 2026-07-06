@@ -3,7 +3,7 @@ import datetime
 from .models import KusaItemList, KusaItemStorage
 from tortoise.expressions import F
 from . import user as user_db
-from utils import romanNumToInt
+from core.utils import romanNumToInt
 
 
 async def getItem(itemName) -> KusaItemList:

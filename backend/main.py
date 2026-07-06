@@ -7,27 +7,21 @@
 
 import logging
 import sys
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import os
 
 # 保存 backend 目录路径
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 BOT_DIR = os.path.join(BACKEND_DIR, '..', 'bot')
 
-# 添加 backend 和 bot 到路径
+# 添加 backend 和 project root 到路径
 sys.path.insert(0, BACKEND_DIR)
-sys.path.insert(0, BOT_DIR)
+sys.path.insert(0, PROJECT_ROOT)
 
 # 设置工作目录到 bot 目录
 os.chdir(BOT_DIR)
-
-# Mock nonebot for service imports
-sys.modules['nonebot'] = type('NoneType', (), {
-    'on_startup': lambda *args, **kwargs: args[0] if args else lambda *a, **k: None,
-    'get_bot': lambda: None
-})()
-
-import builtins
-builtins.on_startup = lambda *args, **kwargs: args[0] if args else lambda *a, **k: None
 
 # 配置日志
 logging.basicConfig(
@@ -46,7 +40,7 @@ from fastapi.responses import JSONResponse
 import traceback
 
 # 导入数据库模块
-import dbConnection.db as baseDB
+import core.db.db as baseDB
 
 # 导入路由
 from routers import auth, farm, warehouse, rank, gmarket, lottery, item, shop, notify, user, donate, analytics, spellcard, admin

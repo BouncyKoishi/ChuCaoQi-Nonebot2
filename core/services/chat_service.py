@@ -10,11 +10,10 @@ import asyncio
 from typing import Dict, Any, Optional
 from openai import OpenAI
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.chat as chatDB
-from kusa_base import plugin_config
+import core.db.kusa_system as baseDB
+import core.db.chat as chatDB
+from core.config import plugin_config
 
 
 class ChatService:

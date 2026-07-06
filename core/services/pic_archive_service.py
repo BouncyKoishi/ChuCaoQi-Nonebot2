@@ -16,9 +16,8 @@ from urllib.request import urlretrieve
 from typing import Dict, Any, List, Optional, Tuple, Set
 
 import sys
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-from kusa_base import plugin_config
+from core.config import plugin_config
 
 
 # ==================== 路径与分类定义 ====================

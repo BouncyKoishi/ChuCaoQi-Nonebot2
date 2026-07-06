@@ -9,12 +9,11 @@ import os
 import random
 from typing import Dict, Any, List, Optional
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.draw_item as drawItemDB
-import dbConnection.kusa_item as itemDB
-from services.chat_service import ChatService
+import core.db.kusa_system as baseDB
+import core.db.draw_item as drawItemDB
+import core.db.kusa_item as itemDB
+from core.services.chat_service import ChatService
 
 
 class LotteryService:

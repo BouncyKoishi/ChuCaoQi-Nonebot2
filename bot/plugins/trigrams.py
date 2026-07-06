@@ -7,7 +7,7 @@ from nonebot.adapters import Message
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import send_reply, send_finish, get_user_id, get_real_qq_by_event
 
-from services.chat_service import ChatService
+from core.services.chat_service import ChatService
 
 
 gptUseRecord = {}

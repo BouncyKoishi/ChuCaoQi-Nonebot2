@@ -8,15 +8,11 @@ from fastapi import APIRouter, Query, Request
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import WarehouseService
+from core.services import StatisticService
+from core.services import IndustrialService
+from core.services import GMarketService
 
-from services import WarehouseService
-from services import StatisticService
-from services import IndustrialService
-from services import GMarketService
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
 
@@ -144,7 +140,7 @@ async def get_grass_stats_personal(
         return {"success": False, "error": "未登录或登录已过期"}
 
     try:
-        from services import FarmService
+        from core.services import FarmService
         stats = await FarmService.get_grass_stats(userId=userId, period=period)
         return {"success": True, "data": stats['personal']}
     except Exception as e:
@@ -159,7 +155,7 @@ async def get_grass_stats_total(
 ):
     """获取全服生草统计"""
     try:
-        from services import FarmService
+        from core.services import FarmService
         stats = await FarmService.get_grass_stats(period=period)
         return {"success": True, "data": stats['total']}
     except Exception as e:

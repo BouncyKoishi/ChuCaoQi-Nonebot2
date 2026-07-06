@@ -8,12 +8,8 @@ import os
 import json
 import logging
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import FarmService
 
-from services import FarmService
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from websocket_manager import manager
 from common import INTERNAL_API_TOKEN
 

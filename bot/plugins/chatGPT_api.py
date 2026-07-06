@@ -4,14 +4,14 @@ import os
 import time
 import json
 
-import dbConnection.chat as db
+import core.db.chat as db
 from kusa_base import is_super_admin, plugin_config, send_log
 from reloader import db_command as on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from utils import nameDetailSplit, imgUrlTobase64, extractImgUrls
-from services.chat_service import ChatService
+from core.services.chat_service import ChatService
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
     get_user_id,

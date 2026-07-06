@@ -16,8 +16,8 @@ from nonebot.typing import T_State
 from kusa_base import plugin_config, is_super_admin
 from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
 from utils import extractImgUrls, imgLocalPathToBase64
-from services import pic_archive_service as pic_service
-from services.pic_archive_service import ARCHIVE_INFO as archiveInfo
+from core.services import pic_archive_service as pic_service
+from core.services.pic_archive_service import ARCHIVE_INFO as archiveInfo
 
 
 # bot 运行时维护的状态（web 端不共享，进程隔离）

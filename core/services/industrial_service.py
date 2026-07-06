@@ -9,10 +9,9 @@ import os
 import math
 from typing import Dict, Any
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
 
 
 class IndustrialService:
@@ -201,7 +200,7 @@ class IndustrialService:
         remi_production_magic = await itemDB.getItemStorageInfo(userId, '蕾米球的生产魔法')
         remi_bonus = 0
         if remi_production_magic and remi_production_magic.allowUse:
-            import dbConnection.kusa_field as fieldDB
+            import core.db.kusa_field as fieldDB
             kusa_field = await fieldDB.getKusaField(userId)
             extra_magnification = max(0.04 * (kusa_field.soilCapacity - 20), 0)
             remi_bonus = extra_magnification

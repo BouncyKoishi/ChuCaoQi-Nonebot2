@@ -8,12 +8,11 @@ import sys
 import os
 from typing import Dict, Any, List
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.user as user_db
-from dbConnection.models import UnifiedUser, KusaBase
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
+import core.db.user as user_db
+from core.db.models import UnifiedUser, KusaBase
 
 
 class WarehouseService:

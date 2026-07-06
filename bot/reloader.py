@@ -13,8 +13,8 @@ from nonebot.rule import Rule
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.adapters.qq import GroupAtMessageCreateEvent
 
-import dbConnection.user as user_db
-import dbConnection.kusa_system as kusa_db
+import core.db.user as user_db
+import core.db.kusa_system as kusa_db
 
 _registered_kusa_events: set[int] = set()
 _registered_db_events: set[int] = set()

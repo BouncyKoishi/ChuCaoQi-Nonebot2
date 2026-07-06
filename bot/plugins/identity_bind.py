@@ -18,13 +18,13 @@ from multi_platform import (
     is_group_message,
     send_finish,
 )
-from services.identity_service import (
+from core.services.identity_service import (
     get_unified_user_by_id,
     get_unified_user_by_real_qq,
     generate_web_token,
 
 )
-from dbConnection.user import saveUnifiedUser
+from core.db.user import saveUnifiedUser
 from kusa_base import is_super_admin
 
 bind_codes: Dict[str, Dict] = {}

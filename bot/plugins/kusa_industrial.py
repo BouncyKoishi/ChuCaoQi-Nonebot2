@@ -10,12 +10,12 @@ from reloader import kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 
-import dbConnection.kusa_system as base_db
-import dbConnection.kusa_item as item_db
-import dbConnection.kusa_field as field_db
-import dbConnection.user as user_db
+import core.db.kusa_system as base_db
+import core.db.kusa_item as item_db
+import core.db.kusa_field as field_db
+import core.db.user as user_db
 from kusa_base import send_log, is_super_admin, plugin_config, send_group_msg
-from services import IndustrialService
+from core.services import IndustrialService
 from . import scheduler
 from multi_platform import (
     get_user_id,

@@ -76,7 +76,7 @@ async def send_private_msg(user_id: Union[int, str], message: Union[str, object]
     
     try:
         from nonebot import get_bots
-        from dbConnection.models import UnifiedUser
+        from core.db.models import UnifiedUser
         
         bots = get_bots()
         if not bots:
@@ -132,13 +132,13 @@ async def send_log(message: str) -> bool:
 
 
 async def is_super_admin(userId: int) -> bool:
-    from dbConnection.models import UnifiedUser
+    from core.db.models import UnifiedUser
     unified_user = await UnifiedUser.filter(id=userId).first()
     return unified_user is not None and unified_user.isSuperAdmin
 
 
 async def parse_user_identifier(identifier: Union[int, str]) -> int:
-    from dbConnection.models import UnifiedUser
+    from core.db.models import UnifiedUser
     
     try:
         num = int(identifier)
@@ -169,8 +169,8 @@ async def buying(
     is_using_adv_kusa: bool = False,
     detail: str = None,
 ) -> bool:
-    import dbConnection.kusa_system as base_db
-    import dbConnection.kusa_item as item_db
+    import core.db.kusa_system as base_db
+    import core.db.kusa_item as item_db
 
     user = await base_db.getKusaUser(userId)
     item = await item_db.getItem(item_name_buying)
@@ -217,8 +217,8 @@ async def selling(
     trade_type: str,
     is_using_adv_kusa: bool = False
 ) -> bool:
-    import dbConnection.kusa_system as base_db
-    import dbConnection.kusa_item as item_db
+    import core.db.kusa_system as base_db
+    import core.db.kusa_item as item_db
 
     user = await base_db.getKusaUser(userId)
     item = await item_db.getItem(item_name_selling)
@@ -263,8 +263,8 @@ async def item_charging(
     trade_type: str,
     detail: str = None
 ) -> bool:
-    import dbConnection.kusa_system as base_db
-    import dbConnection.kusa_item as item_db
+    import core.db.kusa_system as base_db
+    import core.db.kusa_item as item_db
 
     user = await base_db.getKusaUser(userId)
     item_gain = await item_db.getItem(item_name_gain)

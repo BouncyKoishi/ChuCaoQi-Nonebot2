@@ -9,14 +9,10 @@ from fastapi.responses import JSONResponse, FileResponse
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import WarehouseService
+from core.services import admin_service
+from core.services import pic_archive_service as pic_service
 
-from services import WarehouseService
-from services import admin_service
-from services import pic_archive_service as pic_service
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from middleware.session_auth import get_user_id, get_unified_user
 from middleware.rate_limiter import limiter
 

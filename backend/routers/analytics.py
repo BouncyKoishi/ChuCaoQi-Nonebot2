@@ -6,10 +6,7 @@ import re
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
-
-from dbConnection.models import PageView
+from core.db.models import PageView
 
 router = APIRouter()
 

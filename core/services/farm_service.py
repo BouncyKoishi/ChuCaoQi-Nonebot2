@@ -11,12 +11,11 @@ import math
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_field as fieldDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.user as user_db
+import core.db.kusa_system as baseDB
+import core.db.kusa_field as fieldDB
+import core.db.kusa_item as itemDB
+import core.db.user as user_db
 
 
 ADV_KUSA_PROBABILITY_DICT = {0: 0, 1: 0.125, 2: 0.5, 3: 0.5, 4: 0.625}
@@ -51,7 +50,7 @@ class FarmService:
         
         field = await fieldDB.getKusaField(userId)
         if not field:
-            from dbConnection.models import KusaField
+            from core.db.models import KusaField
             unified_user = await user_db.getUnifiedUser(userId)
             field = await KusaField.create(
                 user=unified_user,
@@ -178,14 +177,14 @@ class FarmService:
         field = await fieldDB.getKusaField(userId)
         
         if not field:
-            from dbConnection.models import KusaField
+            from core.db.models import KusaField
             unified_user = await user_db.getUnifiedUser(userId)
             field = await KusaField.create(
                 user=unified_user,
                 soilCapacity=25,
                 defaultKusaType="草"
             )
-        
+
         if field.kusaFinishTs:
             predict_time = datetime.fromtimestamp(field.kusaFinishTs) + timedelta(minutes=1)
             rest_time = predict_time - datetime.now()
@@ -424,7 +423,7 @@ class FarmService:
         
         field = await fieldDB.getKusaField(userId)
         if not field:
-            from dbConnection.models import KusaField
+            from core.db.models import KusaField
             unified_user = await user_db.getUnifiedUser(userId)
             field = await KusaField.create(
                 user=unified_user,

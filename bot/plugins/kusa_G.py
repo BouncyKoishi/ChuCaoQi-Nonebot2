@@ -19,9 +19,9 @@ from nonebot.adapters import Message
 
 from kusa_base import plugin_config, send_group_msg
 from utils import imgBytesToBase64
-import dbConnection.kusa_system as base_db
-import dbConnection.g_value as g_value_db
-from services import GMarketService
+import core.db.kusa_system as base_db
+import core.db.g_value as g_value_db
+from core.services import GMarketService
 from .pagination_helper import register_pagination_handler, set_pagination_state
 from . import scheduler
 from multi_platform import (

@@ -20,13 +20,13 @@ from nonebot.adapters.onebot.v11 import MessageSegment as MS
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-import dbConnection.kusa_system as base_db
-import dbConnection.kusa_field as field_db
-import dbConnection.kusa_item as item_db
-from dbConnection.user import getUnifiedUser, getRealQQByUserId
+import core.db.kusa_system as base_db
+import core.db.kusa_field as field_db
+import core.db.kusa_item as item_db
+from core.db.user import getUnifiedUser, getRealQQByUserId
 from kusa_base import plugin_config, send_private_msg, send_group_msg
 from utils import intToRomanNum
-from services import FarmService
+from core.services import FarmService
 from multi_platform import (
     get_user_id,
     get_group_id,

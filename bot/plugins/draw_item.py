@@ -8,11 +8,11 @@ from nonebot.adapters import Message, Bot
 from kusa_base import plugin_config
 from utils import nameDetailSplit
 from itertools import groupby
-import dbConnection.kusa_system as baseDB
-import dbConnection.draw_item as drawItemDB
-import dbConnection.kusa_item as usefulItemDB
-import dbConnection.user as userDB
-from services import LotteryService
+import core.db.kusa_system as baseDB
+import core.db.draw_item as drawItemDB
+import core.db.kusa_item as usefulItemDB
+import core.db.user as userDB
+from core.services import LotteryService
 from .pagination_helper import register_pagination_handler, set_pagination_state
 from multi_platform import (
     get_user_id,

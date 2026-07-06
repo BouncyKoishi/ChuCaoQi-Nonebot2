@@ -4,9 +4,9 @@ from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-import dbConnection.kusa_system as kusaDB
-import dbConnection.work_order as orderDB
-import dbConnection.user as userDB
+import core.db.kusa_system as kusaDB
+import core.db.work_order as orderDB
+import core.db.user as userDB
 from kusa_base import is_super_admin, send_private_msg
 from multi_platform import send_reply, send_finish, get_user_id
 from utils import nameDetailSplit

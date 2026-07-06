@@ -2,10 +2,10 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "除草器Bot Web API服务",
-  "main": "bot_api_server.py",
+  "main": "main.py",
   "scripts": {
     "dev": "nodemon",
-    "start": "python -m uvicorn bot_api_server:app --host 127.0.0.1 --port 8000",
+    "start": "python -m uvicorn main:app --host 127.0.0.1 --port 8000",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

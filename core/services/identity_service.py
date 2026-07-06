@@ -4,8 +4,8 @@
 """
 
 from typing import Optional
-from dbConnection.models import UnifiedUser, KusaBase, KusaField
-from dbConnection import user as user_db
+from core.db.models import UnifiedUser, KusaBase, KusaField
+from core.db import user as user_db
 import hashlib
 import secrets
 import string
@@ -47,7 +47,7 @@ async def create_unified_user_for_onebot(realQQ: str) -> UnifiedUser:
     if not existing_kusa_base:
         await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
         await KusaField.create(user=unified_user)
-        from dbConnection.kusa_item import changeItemAmount
+        from core.db.kusa_item import changeItemAmount
         await changeItemAmount(unified_user.id, "草地", 1)
     
     return unified_user
@@ -60,7 +60,7 @@ async def create_unified_user_for_qqbot(openid: str) -> UnifiedUser:
     if not existing_kusa_base:
         await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
         await KusaField.create(user=unified_user)
-        from dbConnection.kusa_item import changeItemAmount
+        from core.db.kusa_item import changeItemAmount
         await changeItemAmount(unified_user.id, "草地", 1)
     
     return unified_user
@@ -119,7 +119,7 @@ async def reset_web_token(unified_user: UnifiedUser) -> str:
 
 
 async def delete_user_data(userId: int):
-    from dbConnection.models import (
+    from core.db.models import (
         KusaBase, KusaField, KusaHistory, DrawItemStorage,
         KusaItemStorage, ChatUser, DonateRecord, TradeRecord
     )

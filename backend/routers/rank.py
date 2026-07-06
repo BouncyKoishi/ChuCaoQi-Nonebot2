@@ -6,10 +6,7 @@ from fastapi import APIRouter, Query
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
-
-from services import StatisticService
+from core.services import StatisticService
 
 router = APIRouter()
 

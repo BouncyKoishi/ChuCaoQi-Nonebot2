@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
 from multi_platform import get_user_id
-from services import identity_service
+from core.services import identity_service
 
 friendHandleTimestamp = 0
 

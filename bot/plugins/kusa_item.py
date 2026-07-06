@@ -16,9 +16,9 @@ from nonebot.typing import T_State
 from nonebot.exception import FinishedException, PausedException, RejectedException
 
 from kusa_base import send_private_msg
-import dbConnection.kusa_system as base_db
-import dbConnection.kusa_item as item_db
-from services import ItemService
+import core.db.kusa_system as base_db
+import core.db.kusa_item as item_db
+from core.services import ItemService
 from . import scheduler
 from multi_platform import (
     get_user_id,
@@ -248,7 +248,7 @@ async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state:
 
 async def handle_buy_factory(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State, user_id: int, buying_amount: int, factory_type: str):
     """处理工厂购买"""
-    from services import IndustrialService
+    from core.services import IndustrialService
     
     if factory_type == '生草工厂':
         if buying_amount > 100:
@@ -409,7 +409,7 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
         return
     
     # 检查目标用户
-    from services.item_service import ItemService
+    from core.services.item_service import ItemService
     receiver_user = None
     if receiver_id:
         # 优先使用id

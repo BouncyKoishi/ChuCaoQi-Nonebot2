@@ -9,17 +9,16 @@ import sys
 import os
 from typing import Dict, Any, List, Optional
 
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 
-import dbConnection.kusa_system as baseDB
-import dbConnection.kusa_item as itemDB
-import dbConnection.user as user_db
-import dbConnection.chat as chatDB
-from dbConnection.models import UnifiedUser, KusaBase, KusaItemList, KusaItemStorage
+import core.db.kusa_system as baseDB
+import core.db.kusa_item as itemDB
+import core.db.user as user_db
+import core.db.chat as chatDB
+from core.db.models import UnifiedUser, KusaBase, KusaItemList, KusaItemStorage
 from tortoise.expressions import Q
-from services import WarehouseService
-from services import StatisticService
-from services import identity_service
+from core.services import WarehouseService
+from core.services import StatisticService
+from core.services import identity_service
 
 # ===== 用户管理 =====
 
@@ -171,7 +170,7 @@ async def delete_donation_record(record_id: int) -> Dict[str, Any]:
     - 猫粮供应商：累计从≥200降到<200时回收
     回收时若用户当前正在使用该称号，则清空当前称号。
     """
-    from dbConnection.models import DonateRecord
+    from core.db.models import DonateRecord
     record = await DonateRecord.filter(id=record_id).first()
     if not record:
         return {'success': False, 'error': '记录不存在'}

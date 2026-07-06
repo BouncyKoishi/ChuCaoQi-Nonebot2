@@ -6,14 +6,10 @@ from fastapi import APIRouter, Query, Request
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__) + '/../../bot')
-os.chdir(os.path.join(os.path.dirname(__file__), '..', '..', 'bot'))
+from core.services import FarmService
+import core.db.kusa_item as itemDB
+import core.db.kusa_field as fieldDB
 
-from services import FarmService
-import dbConnection.kusa_item as itemDB
-import dbConnection.kusa_field as fieldDB
-
-sys.path.insert(0, os.path.dirname(__file__) + '/..')
 from websocket_manager import manager
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
