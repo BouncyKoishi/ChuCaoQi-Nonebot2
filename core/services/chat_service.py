@@ -62,7 +62,7 @@ class ChatService:
         """
         ChatService._init_clients()
         if model == 'lzusa':
-            return ChatService._lzusa_client, model
+            return ChatService._lzusa_client, 'qwen-35b'
         if 'deepseek' in model:
             return ChatService._deepseek_client, model
         elif 'gemini' in model:
