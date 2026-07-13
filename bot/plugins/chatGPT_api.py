@@ -316,30 +316,34 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
     strippedText = args.extract_plain_text().strip()
     
     if strippedText:
-        if "gpt" in strippedText:
-            if strippedText in ["gpt-5", "gpt5"]:
+        parts = strippedText.split(maxsplit=1)
+        if "gpt" in parts[0]:
+            if parts[0] in ["gpt-5", "gpt5"]:
                 if not await permissionCheck(event, "model"):
                     await send_finish(model_change_cmd, "需要高级模型权限！")
                     return
                 newModel = "gpt-5"
             else:
                 newModel = "gpt-5-mini"
-        elif "gemini" in strippedText:
+        elif "gemini" in parts[0]:
             if not await permissionCheck(event, "admin"):
                 return
-            if "pro" in strippedText:
+            if "pro" in parts[0]:
                 newModel = "gemini-2.5-pro"
             else:
                 newModel = "gemini-2.5-flash"
-        elif "deepseek-pro" in strippedText:
+        elif "deepseek-pro" in parts[0]:
             newModel = "deepseek-v4-pro"
-        elif "deepseek" in strippedText:
+        elif "deepseek" in parts[0]:
             newModel = "deepseek-v4-flash"
-        elif strippedText == "lzusa":
+        elif parts[0] == "lzusa":
             if not await permissionCheck(event, "model"):
                 await send_finish(model_change_cmd, "需要高级模型权限！")
                 return
-            newModel = "lzusa"
+            if len(parts) > 1:
+                newModel = f"lzusa:{parts[1]}"
+            else:
+                newModel = "lzusa"
         else:
             newModel = strippedText
             await send_reply(model_change_cmd, "注意，你定义的模型名称不在预设列表，chat可能报错！")
@@ -347,7 +351,13 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
         newModel = "deepseek-v4-flash"
     
     await db.updateUsingModel(user_id, newModel)
-    output = f"已切换到{newModel}模型"
+    if newModel.startswith('lzusa:'):
+        display = f"Lzusa ({newModel.split(':', 1)[1]})"
+    elif newModel == 'lzusa':
+        display = "Lzusa"
+    else:
+        display = newModel
+    output = f"已切换到{display}模型"
     await send_finish(model_change_cmd, output)
 
 
@@ -515,7 +525,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
             roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
-        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if model == "lzusa" else ("(deepseek)" if "deepseek" in model else ""))
+        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if "lzusa" in model else ("(deepseek)" if "deepseek" in model else ""))
         tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
