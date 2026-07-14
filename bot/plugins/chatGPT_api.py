@@ -335,11 +335,16 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
             newModel = "deepseek-v4-pro"
         elif "deepseek" in strippedText:
             newModel = "deepseek-v4-flash"
-        elif strippedText == "lzusa":
+        elif strippedText == "lzusa" or strippedText.startswith("lzusa ") or strippedText.startswith("lzusa:"):
             if not await permissionCheck(event, "model"):
                 await send_finish(model_change_cmd, "需要高级模型权限！")
                 return
-            newModel = "lzusa"
+            if strippedText == "lzusa":
+                newModel = "lzusa"
+            elif strippedText.startswith("lzusa:"):
+                newModel = strippedText
+            else:
+                newModel = f"lzusa:{strippedText[6:].strip()}"
         else:
             newModel = strippedText
             await send_reply(model_change_cmd, "注意，你定义的模型名称不在预设列表，chat可能报错！")
@@ -515,7 +520,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
             roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
-        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if model == "lzusa" else ("(deepseek)" if "deepseek" in model else ""))
+        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if "lzusa" in model else ("(deepseek)" if "deepseek" in model else ""))
         tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
