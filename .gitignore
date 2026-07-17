@@ -47,7 +47,7 @@ Thumbs.db
 *~
 
 # 工作文件
-data/
+/data/
 resources/font/
 bot/plugins/hidden.py
 scripts/

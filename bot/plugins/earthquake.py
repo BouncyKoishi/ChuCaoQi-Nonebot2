@@ -7,9 +7,11 @@
 # ==================== 导入模块 ====================
 
 import re
+import os
 import json
 import math
 import httpx
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
 
 from nonebot import on_command
@@ -66,46 +68,25 @@ PROVINCES = {
     '香港', '澳门',
 }
 
-# 主要城市经纬度坐标（WGS84），用于城市级别"附近"查询
-CITY_COORDS: Dict[str, Tuple[float, float]] = {
-    # 直辖市
-    '北京': (39.90, 116.40), '上海': (31.23, 121.47),
-    '天津': (39.08, 117.20), '重庆': (29.56, 106.55),
-    # 省会
-    '石家庄': (38.04, 114.51), '太原': (37.87, 112.55),
-    '沈阳': (41.80, 123.43), '长春': (43.82, 125.32),
-    '哈尔滨': (45.80, 126.53), '南京': (32.06, 118.80),
-    '杭州': (30.27, 120.15), '合肥': (31.82, 117.23),
-    '福州': (26.07, 119.30), '南昌': (28.68, 115.86),
-    '济南': (36.65, 116.98), '郑州': (34.75, 113.65),
-    '武汉': (30.59, 114.31), '长沙': (28.23, 112.94),
-    '广州': (23.13, 113.26), '海口': (20.02, 110.35),
-    '成都': (30.67, 104.07), '贵阳': (26.65, 106.71),
-    '昆明': (25.04, 102.72), '西安': (34.27, 108.95),
-    '兰州': (36.06, 103.83), '西宁': (36.62, 101.78),
-    '台北': (25.03, 121.57),
-    # 自治区首府
-    '呼和浩特': (40.84, 111.75), '南宁': (22.82, 108.37),
-    '拉萨': (29.65, 91.13), '银川': (38.49, 106.23),
-    '乌鲁木齐': (43.83, 87.62),
-    # 其他主要城市
-    '深圳': (22.55, 114.06), '青岛': (36.07, 120.38),
-    '大连': (38.91, 121.60), '厦门': (24.48, 118.09),
-    '宁波': (29.87, 121.54), '苏州': (31.30, 120.62),
-    '无锡': (31.49, 120.31), '温州': (27.99, 120.67),
-    '烟台': (37.46, 121.45), '唐山': (39.63, 118.18),
-    '洛阳': (34.62, 112.45), '绵阳': (31.46, 104.73),
-    '宜宾': (28.77, 104.62), '南充': (30.84, 106.11),
-    '泸州': (28.87, 105.44), '德阳': (31.13, 104.40),
-    '西昌': (27.89, 102.27), '康定': (30.05, 101.96),
-    '大理': (25.69, 100.16), '丽江': (26.87, 100.23),
-    '日喀则': (29.27, 88.88), '林芝': (29.65, 94.36),
-    '喀什': (39.47, 75.99), '伊宁': (43.91, 81.33),
-    '阿克苏': (41.17, 80.26), '库尔勒': (41.76, 86.15),
-    '敦煌': (40.14, 94.66), '格尔木': (36.42, 94.93),
-    '海西': (37.37, 97.37), '海北': (36.95, 100.90),
-    '玉树': (33.00, 97.01), '果洛': (34.48, 100.24),
-}
+# 城市经纬度坐标（WGS84），从 JSON 文件加载，用于附近搜索
+_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_PLUGIN_DIR))
+_CITY_COORDS_PATH = os.path.join(_PROJECT_ROOT, 'resources', 'data', 'city_coords.json')
+
+
+def _load_city_coords() -> Dict[str, Tuple[float, float]]:
+    """从 resources/data/city_coords.json 加载城市坐标表"""
+    try:
+        with open(_CITY_COORDS_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        # 跳过以 _ 开头的说明字段，转换为 tuple
+        return {k: tuple(v) for k, v in data.items() if not k.startswith('_')}
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"[地震] 城市坐标表加载失败: {e}")
+        return {}
+
+
+CITY_COORDS: Dict[str, Tuple[float, float]] = _load_city_coords()
 
 
 # ==================== 命令注册 ====================
@@ -144,16 +125,6 @@ def _parse_user_args(raw_arg: str) -> Tuple[float, str]:
         location = raw_arg.strip()
 
     return mag, location
-
-
-def _is_province(query: str) -> bool:
-    """判断查询词是否为省级行政区（用字符串匹配模式）"""
-    return query in PROVINCES
-
-
-def _is_city(query: str) -> bool:
-    """判断查询词是否为已知城市（用 Haversine 附近模式）"""
-    return query in CITY_COORDS
 
 
 async def _fetch_cenc_earthquake_data() -> Optional[List[Dict]]:
@@ -240,7 +211,7 @@ def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> f
 
 def _filter_nearby(records: List[Dict], lat: float, lon: float,
                    radius_km: float = NEARBY_RADIUS) -> List[Dict]:
-    """筛选指定坐标 radius_km 范围内的地震，按距离排序"""
+    """筛选指定坐标 radius_km 范围内的地震，保持时间倒序（原数据顺序）"""
     nearby = []
     for r in records:
         try:
@@ -248,67 +219,99 @@ def _filter_nearby(records: List[Dict], lat: float, lon: float,
             eq_lon = float(r.get("longitude", 0))
             dist = _haversine_distance(lat, lon, eq_lat, eq_lon)
             if dist <= radius_km:
-                nearby.append((dist, r))
+                nearby.append(r)
         except (ValueError, TypeError):
             continue
 
-    nearby.sort(key=lambda x: x[0])
-    return [r for _, r in nearby]
+    return nearby
 
 
-def _resolve_location(records: List[Dict], location: str) -> Tuple[List[Dict], str]:
+def _resolve_location(records: List[Dict], location: str) -> Tuple[List[Dict], List[Dict], str, str]:
     """
-    根据地点查询策略解析地震记录
+    解析地点查询，同时尝试精确匹配和附近搜索
 
     策略：
-      - 省份     -> 字符串匹配（location 字段子串匹配）
-      - 城市     -> Haversine 附近模式（以城市坐标为圆心，半径 nearby_radius km）
-      - 其他     -> 尝试字符串匹配作为兜底
+      1. 始终尝试字符串匹配（location 字段子串包含）-> 精确匹配
+      2. 如果是已知城市（在 CITY_COORDS 中），同时做 Haversine 附近搜索
+      3. 附近搜索结果去掉与精确匹配重复的记录
 
-    返回: (匹配记录列表, 模式描述)
+    返回: (exact_matches, nearby_matches, exact_desc, nearby_desc)
+      exact_desc 如 "精确匹配：成都"，nearby_desc 如 "成都附近（500km内）" 或空字符串
     """
-    if _is_province(location):
-        matched = _filter_by_location(records, location)
-        return matched, f"地点匹配：{location}"
+    exact = _filter_by_location(records, location)
+    exact_desc = f"精确匹配：{location}"
 
-    if _is_city(location):
+    if location in CITY_COORDS:
         lat, lon = CITY_COORDS[location]
-        matched = _filter_nearby(records, lat, lon)
-        return matched, f"{location}附近（{int(NEARBY_RADIUS)}km内）"
+        nearby_all = _filter_nearby(records, lat, lon)
+        # 去重：排除已在精确匹配中的记录
+        exact_ids = {r.get("id") for r in exact}
+        nearby = [r for r in nearby_all if r.get("id") not in exact_ids]
+        nearby_desc = f"{location}附近（{int(NEARBY_RADIUS)}km内）"
+    else:
+        nearby = []
+        nearby_desc = ""
 
-    # 兜底：字符串匹配（可能匹配到国家名、地区名等）
-    matched = _filter_by_location(records, location)
-    return matched, f"关键词匹配：{location}"
+    return exact, nearby, exact_desc, nearby_desc
 
 
-def _format_earthquake_text(records: List[Dict], mode_desc: str = "") -> str:
-    """将地震数据列表格式化为群聊可读的纯文本消息"""
-    if not records:
-        if mode_desc:
-            return f"近期未找到{mode_desc}的地震记录。"
-        return "近期无地震记录。"
+def _is_recent(time_str: str, hours: int = 12) -> bool:
+    """判断地震时间是否在当前时间的 hours 小时内"""
+    try:
+        eq_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+        return datetime.now() - eq_time <= timedelta(hours=hours)
+    except (ValueError, TypeError):
+        return False
 
-    header = f"🌍 最近 {len(records)} 条地震信息（来源：中国地震台网）"
-    if mode_desc:
-        header += f" ｜ {mode_desc}"
-    time_range = _get_time_range(records)
-    if time_range:
-        header += f"\n📅 {time_range}"
-    lines = [header + "\n"]
 
-    for i, eq in enumerate(records, 1):
-        o_time   = eq.get("time", "未知")
-        mag      = eq.get("magnitude", "?")
-        lat      = eq.get("latitude", "?")
-        lon      = eq.get("longitude", "?")
-        depth    = eq.get("depth", "?")
-        location = eq.get("location", "未知")
+def _format_single_eq(index: int, eq: Dict) -> str:
+    """格式化单条地震记录，12小时内添加[新]标记"""
+    o_time   = eq.get("time", "未知")
+    mag      = eq.get("magnitude", "?")
+    lat      = eq.get("latitude", "?")
+    lon      = eq.get("longitude", "?")
+    depth    = eq.get("depth", "?")
+    location = eq.get("location", "未知")
+    marker = "[新] " if _is_recent(o_time) else ""
+    return (
+        f"{index}. {marker}{location}\n"
+        f"   震级 {mag}  |  时间 {o_time}\n"
+        f"   纬度 {lat}  经度 {lon}  |  深度 {depth}km"
+    )
 
-        lines.append(
-            f"{i}. 📍 {location}\n"
-            f"   震级 {mag}  |  时间 {o_time}\n"
-            f"   纬度 {lat}  经度 {lon}  |  深度 {depth}km\n"
-        )
+
+def _format_earthquake_text(exact_records: List[Dict], nearby_records: List[Dict],
+                            mag_desc: str = "", data_time_range: str = "",
+                            has_location: bool = False) -> str:
+    """将地震数据格式化为群聊消息，精确匹配和附近搜索分区域展示"""
+    total = len(exact_records) + len(nearby_records)
+    if total == 0:
+        return ""  # 无结果由 handler 处理
+
+    header = f"最近 {total} 条地震信息（来源：中国地震台网）"
+    if mag_desc:
+        header += f" ｜ {mag_desc}"
+    if data_time_range:
+        header += f"\n数据时间范围：{data_time_range}"
+    lines = [header]
+
+    # 有地点筛选时始终显示分区头
+    show_sections = has_location
+
+    if exact_records:
+        if show_sections:
+            lines.append("\n[精确匹配]")
+        for i, eq in enumerate(exact_records, 1):
+            lines.append(_format_single_eq(i, eq))
+
+    if nearby_records:
+        if show_sections:
+            lines.append(f"\n[附近搜索 {int(NEARBY_RADIUS)}km]")
+            start = 1
+        else:
+            start = len(exact_records) + 1
+        for i, eq in enumerate(nearby_records, start):
+            lines.append(_format_single_eq(i, eq))
 
     return "\n".join(lines)
 
@@ -360,7 +363,7 @@ if scheduler:
             depth = eq.get("depth", "?")
 
             alert_msg = (
-                f"⚠️ 大地震速报 ⚠️\n"
+                f"[大地震速报]\n"
                 f"发震位置：{location}\n"
                 f"震级：{mag}  深度：{depth}km\n"
                 f"发震时间：{o_time}\n"
@@ -383,10 +386,10 @@ async def handle_earthquake(args: Message = CommandArg()):
       !地震          -> 最近 5 条地震
       !地震 5        -> 震级 >= 5.0 的最近 5 条
       !地震 3.5      -> 震级 >= 3.5 的最近 5 条
-      !地震 四川     -> 四川省内最近 5 条（省份字符串匹配）
-      !地震 成都     -> 成都附近 500km 内最近 5 条（城市 Haversine）
+      !地震 四川     -> 四川省内最近 5 条（精确匹配）
+      !地震 成都     -> 成都市内 + 成都附近 500km（精确匹配 + 附近搜索）
       !地震 四川 4   -> 四川省内震级 >= 4.0 的最近 5 条
-      !地震 秘鲁     -> 含"秘鲁"的最近 5 条（关键词匹配）
+      !地震 秘鲁     -> 含"秘鲁"的最近 5 条（精确匹配）
 
     数据来源：CENC 官网，覆盖当年全量地震（约600+条），实时更新
     """
@@ -398,31 +401,38 @@ async def handle_earthquake(args: Message = CommandArg()):
     if records is None:
         await earthquake_cmd.finish("获取地震信息失败，请稍后重试。")
 
-    # 地点筛选
+    # 原始全量数据的时间范围
+    data_time_range = _get_time_range(records)
+
+    # 地点筛选：精确匹配 + 附近搜索
     if location_filter:
-        matched, mode_desc = _resolve_location(records, location_filter)
+        exact, nearby, exact_desc, nearby_desc = _resolve_location(records, location_filter)
     else:
-        matched = records
-        mode_desc = ""
+        exact, nearby, exact_desc, nearby_desc = records, [], "", ""
 
-    # 震级筛选
+    # 震级筛选（分别应用于两组结果）
     if min_mag > 0:
-        matched = _filter_by_magnitude(matched, min_mag)
-        mag_desc = f"震级≥{min_mag}"
-        mode_desc = f"{mode_desc} ｜ {mag_desc}" if mode_desc else mag_desc
+        exact = _filter_by_magnitude(exact, min_mag)
+        nearby = _filter_by_magnitude(nearby, min_mag)
 
-    # 截取最多 max_results 条
-    result = matched[:MAX_RESULTS]
+    # 各取最多 MAX_RESULTS 条
+    exact_result = exact[:MAX_RESULTS]
+    nearby_result = nearby[:MAX_RESULTS]
 
-    if not result:
-        time_range = _get_time_range(records)
-        if mode_desc:
-            msg = f"近期未找到{mode_desc}的地震记录。"
+    # 无结果
+    if not exact_result and not nearby_result:
+        if location_filter:
+            msg = f"近期未找到{location_filter}相关的地震记录。"
+        elif min_mag > 0:
+            msg = f"近期未找到震级≥{min_mag}的地震记录。"
         else:
             msg = "近期无地震记录。"
-        if time_range:
-            msg += f"\n当前数据范围：{time_range}（共{len(records)}条）"
+        if data_time_range:
+            msg += f"\n数据时间范围：{data_time_range}"
         await earthquake_cmd.finish(msg)
 
-    msg = _format_earthquake_text(result, mode_desc)
+    # header 仅保留震级筛选，地点由分区头体现
+    mag_desc = f"震级≥{min_mag}" if min_mag > 0 else ""
+    msg = _format_earthquake_text(exact_result, nearby_result, mag_desc,
+                                  data_time_range, has_location=bool(location_filter))
     await earthquake_cmd.finish(msg)
