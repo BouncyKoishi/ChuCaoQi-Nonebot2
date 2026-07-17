@@ -49,6 +49,12 @@ sendNews:
   group:
     - 0
 
+earthquake:
+  alert_groups: []      # 大地震预警推送群号列表，空列表表示不推送
+  big_threshold: 5.0      # 大地震预警阈值（震级 >= 此值触发推送）
+  max_results: 5          # 每次查询最多返回条数
+  nearby_radius: 500      # 城市附近查询半径（km）
+
 web:
   proxy: "" # 代理地址，如 "http://127.0.0.1:7897"
   userAgent: "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Mobile Safari/537.36"
