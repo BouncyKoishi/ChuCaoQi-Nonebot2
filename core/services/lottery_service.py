@@ -197,7 +197,7 @@ class LotteryService:
         if not item:
             return {'success': False, 'error': 'ITEM_NOT_FOUND', 'message': '物品不存在'}
         
-        if str(item.author) != str(userId):
+        if str(item.authorId) != str(userId):
             return {'success': False, 'error': 'NOT_AUTHOR', 'message': '你不是该物品的作者'}
         
         text_to_moderate = item_name + '\n' + detail

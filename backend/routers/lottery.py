@@ -255,7 +255,7 @@ async def delete_lottery_item(item_name: str, request: Request):
     if not item:
         return {"success": False, "error": "ITEM_NOT_FOUND"}
     
-    if item.author != str(userId):
+    if str(item.authorId) != str(userId):
         return {"success": False, "error": "NOT_AUTHOR"}
     
     await drawItemDB.deleteItem(item)
