@@ -1,5 +1,29 @@
 <template>
-  <div class="pic-review">
+  <div class="pic-manage">
+    <!-- 图库概要 -->
+    <el-card class="section-card" shadow="never">
+      <template #header>
+        <div class="section-header">
+          <span class="section-title">图库概要</span>
+          <el-button size="small" @click="fetchGallerySummary" :loading="summaryLoading">刷新列表</el-button>
+        </div>
+      </template>
+
+      <div v-loading="summaryLoading">
+        <el-table :data="gallerySummary" stripe size="default">
+          <el-table-column prop="name" label="图库名称" min-width="120" />
+          <el-table-column prop="count" label="图片数量" width="110" />
+          <el-table-column prop="sizeStr" label="存储空间" width="120" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" plain @click="openStats(row)">统计</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-card>
+
+    <!-- 图片审核 -->
     <el-card class="section-card" shadow="never">
       <template #header>
         <div class="section-header">
@@ -11,7 +35,7 @@
             <el-tag v-else-if="!loading" size="small" type="success">无待审核图片</el-tag>
           </div>
           <div class="header-right">
-            <el-button size="small" @click="refresh" :loading="loading">刷新列表</el-button>
+            <el-button size="small" @click="fetchPending" :loading="loading">刷新列表</el-button>
           </div>
         </div>
       </template>
@@ -100,6 +124,20 @@
         </div>
       </div>
     </el-card>
+
+    <!-- 图库上传人员统计弹窗 -->
+    <el-dialog v-model="statsVisible" :title="`${statsTitle} · 上传人员统计`" width="480px">
+      <div v-loading="statsLoading">
+        <el-table :data="statsList" stripe size="default" max-height="420">
+          <el-table-column prop="qq" label="人员QQ号" min-width="140">
+            <template #default="{ row }">
+              <span :class="{ 'unknown-source': row.qq === '未知来源' }">{{ row.qq }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="count" label="上传数量" width="120" />
+        </el-table>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -109,6 +147,54 @@ import { ArrowLeft, ArrowRight, Loading, Picture } from '@element-plus/icons-vue
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
+// ==================== 图库概要 ====================
+interface GallerySummaryItem {
+  key: string
+  name: string
+  count: number
+  size: number
+  sizeStr: string
+}
+
+interface StatsItem {
+  qq: string
+  count: number
+}
+
+const summaryLoading = ref(false)
+const gallerySummary = ref<GallerySummaryItem[]>([])
+
+const statsVisible = ref(false)
+const statsLoading = ref(false)
+const statsTitle = ref('')
+const statsList = ref<StatsItem[]>([])
+
+const fetchGallerySummary = async () => {
+  summaryLoading.value = true
+  try {
+    gallerySummary.value = await adminApi.getGallerySummary()
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取图库概要失败')
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+const openStats = async (row: GallerySummaryItem) => {
+  statsTitle.value = row.name
+  statsVisible.value = true
+  statsLoading.value = true
+  statsList.value = []
+  try {
+    statsList.value = await adminApi.getGalleryStats(row.key)
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取统计失败')
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+// ==================== 图片审核 ====================
 interface PicItem {
   filename: string
   size: number
@@ -164,7 +250,7 @@ const fetchCategories = async () => {
   }
 }
 
-const refresh = async () => {
+const fetchPending = async () => {
   loading.value = true
   try {
     const data = await adminApi.getPendingPics()
@@ -177,6 +263,10 @@ const refresh = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const refresh = async () => {
+  await Promise.all([fetchGallerySummary(), fetchPending()])
 }
 
 defineExpose({ refresh })
@@ -206,6 +296,8 @@ const doClassify = async (categoryKey: string) => {
     if (res.success !== false) {
       ElMessage.success(res.message || '已分类')
       removeCurrentAndAdvance()
+      // 分类后图库数量变化，刷新概要
+      fetchGallerySummary()
     } else {
       ElMessage.error(res.error || '分类失败')
     }
@@ -288,7 +380,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.pic-review {
+.pic-manage {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -316,6 +408,10 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+}
+
+.unknown-source {
+  color: #909399;
 }
 
 .review-view {

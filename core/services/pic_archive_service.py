@@ -77,6 +77,21 @@ def parse_pic_filename(filename: str) -> Dict[str, Any]:
     return {'uploaderQQ': None}
 
 
+# 上传者 QQ 前缀：文件名以 5 位及以上数字加连字符开头才识别为 QQ
+_QQ_PREFIX_RE = re.compile(r'(\d{5,})-')
+
+
+def parse_uploader_qq(filename: str) -> Optional[str]:
+    """从文件名解析上传者 QQ 号
+
+    文件命名规则: {user_id}-{timestamp}-{pic_{i}}{ext}
+    仅当文件名以多位数（>=5 位）数字加连字符开头时才识别为 QQ，
+    否则（如历史遗留 MD5 命名等）返回 None，由调用方归入"未知来源"
+    """
+    m = _QQ_PREFIX_RE.match(filename)
+    return m.group(1) if m else None
+
+
 # ==================== 待审核图片查询 ====================
 
 def get_pending_pics() -> List[Dict[str, Any]]:
@@ -105,6 +120,58 @@ def _format_size(size: int) -> str:
     if size < 1024 * 1024:
         return f'{size / 1024:.1f} KB'
     return f'{size / 1024 / 1024:.2f} MB'
+
+
+# ==================== 图库概要统计 ====================
+
+def get_gallery_summary() -> List[Dict[str, Any]]:
+    """获取各图库概要（图库名称、图片数量、占用空间）"""
+    result = []
+    for key, info in ARCHIVE_INFO.items():
+        dir_path = info['onlinePath']
+        count = 0
+        total_size = 0
+        if os.path.isdir(dir_path):
+            for file_path in glob.glob(os.path.join(dir_path, '*')):
+                if os.path.isfile(file_path):
+                    count += 1
+                    total_size += os.path.getsize(file_path)
+        result.append({
+            'key': key,
+            'name': info['displayName'],
+            'count': count,
+            'size': total_size,
+            'sizeStr': _format_size(total_size),
+        })
+    return result
+
+
+def get_gallery_uploader_stats(category_key: str) -> Dict[str, Any]:
+    """统计指定图库下各上传人员（QQ 号）的图片数量
+
+    通过图片文件名前缀获取 QQ 号，无多位数前缀的计入"未知来源"
+    """
+    if category_key not in ARCHIVE_INFO:
+        return {'success': False, 'error': '无效的图库'}
+
+    dir_path = ARCHIVE_INFO[category_key]['onlinePath']
+    stats: Dict[str, int] = {}
+    if os.path.isdir(dir_path):
+        for file_path in glob.glob(os.path.join(dir_path, '*')):
+            if not os.path.isfile(file_path):
+                continue
+            qq = parse_uploader_qq(os.path.basename(file_path))
+            label = qq if qq else '未知来源'
+            stats[label] = stats.get(label, 0) + 1
+
+    sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+    return {
+        'success': True,
+        'data': [
+            {'qq': qq, 'count': count}
+            for qq, count in sorted_stats
+        ],
+    }
 
 
 def _safe_examine_path(filename: str) -> Optional[str]:

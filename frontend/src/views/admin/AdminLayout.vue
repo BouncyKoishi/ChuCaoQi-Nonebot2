@@ -20,8 +20,8 @@
         <el-tab-pane label="数据看板" name="dashboard">
           <Dashboard v-if="activeTab === 'dashboard'" ref="dashboardRef" />
         </el-tab-pane>
-        <el-tab-pane label="图片审核" name="pic-review">
-          <PicReview v-if="activeTab === 'pic-review'" ref="picReviewRef" />
+        <el-tab-pane label="图库管理" name="pic-review">
+          <PicManage v-if="activeTab === 'pic-review'" ref="picManageRef" />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -32,19 +32,19 @@
 import { Refresh, Setting } from '@element-plus/icons-vue'
 import { ref } from 'vue'
 import Dashboard from './Dashboard.vue'
-import PicReview from './PicReview.vue'
+import PicManage from './PicManage.vue'
 import UserManage from './UserManage.vue'
 
 const activeTab = ref<'users' | 'dashboard' | 'pic-review'>('users')
 const userManageRef = ref()
 const dashboardRef = ref()
-const picReviewRef = ref()
+const picManageRef = ref()
 
 const handleRefresh = () => {
   const refMap: Record<string, typeof userManageRef> = {
     users: userManageRef,
     dashboard: dashboardRef,
-    'pic-review': picReviewRef,
+    'pic-review': picManageRef,
   }
   const currentRef = refMap[activeTab.value]
   if (currentRef.value?.refresh) {

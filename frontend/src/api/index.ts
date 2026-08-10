@@ -221,6 +221,8 @@ export const adminApi = {
   // 图片审核
   getPicCategories: () => api.get<{ key: string; name: string }[]>('/admin/pic-review/categories'),
   getPendingPics: () => api.get<{ filename: string; size: number; sizeStr: string; uploaderQQ: string | null }[]>('/admin/pic-review/pending'),
+  getGallerySummary: () => api.get<{ key: string; name: string; count: number; size: number; sizeStr: string }[]>('/admin/pic-review/gallery-summary'),
+  getGalleryStats: (key: string) => api.get<{ qq: string; count: number }[]>('/admin/pic-review/gallery-stats/' + encodeURIComponent(key)),
   fetchPicImage: (filename: string) =>
     api.get<Blob>(`/admin/pic-review/image/${encodeURIComponent(filename)}`, { responseType: 'blob' }),
   classifyPic: (filename: string, category: string) =>

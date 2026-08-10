@@ -345,6 +345,24 @@ async def get_pending_pics(request: Request):
     return {"success": True, "data": pic_service.get_pending_pics()}
 
 
+@router.get("/pic-review/gallery-summary")
+async def get_gallery_summary(request: Request):
+    """获取图库概要（图库名称、图片数量、占用空间）"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+    return {"success": True, "data": pic_service.get_gallery_summary()}
+
+
+@router.get("/pic-review/gallery-stats/{key}")
+async def get_gallery_stats(key: str, request: Request):
+    """获取指定图库的上传人员统计"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+    return pic_service.get_gallery_uploader_stats(key)
+
+
 @router.get("/pic-review/image/{filename}")
 async def get_pic_image(filename: str, request: Request):
     """获取待审核图片文件（<img> 通过 query token 访问）"""
