@@ -21,7 +21,7 @@ import os
 import re
 import time
 import traceback
-from typing import Optional
+from typing import Optional, Dict
 from collections import deque
 from nonebot import on_command, on_message, on_notice, get_bot
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PokeNotifyEvent, Bot
@@ -82,6 +82,10 @@ class GroupChatBuffer:
         self.messages.append({'name': name, 'content': content, 'time': timestamp})
         self.msg_count_since_reply += 1
 
+    def add_bot_reply(self, name, content, timestamp):
+        """记录bot自己的怪话回复到群聊上下文，但不计入触发自动回复的消息数"""
+        self.messages.append({'name': name, 'content': content, 'time': timestamp})
+
     def on_replied(self):
         self.last_reply_time = time.time()
         self.msg_count_since_reply = 0
@@ -92,7 +96,28 @@ class GroupChatBuffer:
 
 
 group_buffers = {}
-recent_used = deque(maxlen=20)
+recent_used_by_group: Dict[int, deque] = {}
+
+
+def get_recent_used(group_id: int) -> deque:
+    """按群维护最近用过的怪话，避免跨群污染"""
+    if group_id not in recent_used_by_group:
+        recent_used_by_group[group_id] = deque(maxlen=20)
+    return recent_used_by_group[group_id]
+
+
+_bot_nickname_cache: Dict[int, str] = {}
+
+
+async def get_bot_nickname(bot: Bot, group_num: int) -> str:
+    """获取bot在群里的昵称，按群缓存，避免重复API调用"""
+    if group_num not in _bot_nickname_cache:
+        try:
+            _bot_nickname_cache[group_num] = await get_group_member_nickname(bot, group_num, int(bot.self_id))
+        except Exception:
+            _bot_nickname_cache[group_num] = 'Bot'
+    return _bot_nickname_cache[group_num]
+
 
 
 def update_poke_cache(group_num: int, text: str, timestamp: int):
@@ -241,7 +266,7 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
     if not buf or not buf.messages or not model_list:
         return None
 
-    available = [s for s in model_list if s not in recent_used]
+    available = [s for s in model_list if s not in get_recent_used(group_id)]
     if len(available) < 10:
         available = model_list
 
@@ -286,12 +311,13 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
 
 async def send_auto_reply(bot: Bot, group_num: int, reply: str, poke_time: int = 0):
     """发送自动怪话回复并更新所有状态"""
-    recent_used.append(reply)
+    get_recent_used(group_num).append(reply)
     poke_last_reply[group_num] = reply
     update_poke_cache(group_num, reply, poke_time or int(time.time()))
     buf = group_buffers.get(group_num)
     if buf:
         buf.on_replied()
+        buf.add_bot_reply(await get_bot_nickname(bot, group_num), reply, poke_time or int(time.time()))
     await bot.send_group_msg(group_id=group_num, message=reply)
 
 
@@ -432,14 +458,14 @@ async def record_message(event: MessageEvent):
         print(f'[怪话] 缓存更新，群{group_num}: {msg[:30]}... (t={timestamp})')
 
     # 自动怪话触发
-    if valid and group_num in auto_reply_groups and user_id != bot_self_id:
+    if valid and user_id != bot_self_id and (group_num in auto_reply_groups or group_num in poke_trigger_groups):
         if group_num not in group_buffers:
             group_buffers[group_num] = GroupChatBuffer()
         bot = get_bot()
         nickname = await get_group_member_nickname(bot, group_num, user_id)
         group_buffers[group_num].add(nickname, msg, timestamp)
 
-        if should_auto_reply(group_num):
+        if group_num in auto_reply_groups and should_auto_reply(group_num):
             try:
                 reply = await pick_strange_word_by_context(group_num)
                 if reply:
