@@ -50,7 +50,7 @@
                 <el-tooltip v-if="kusaField.kusaTechLevel > 0" :content="`产量×${kusaField.kusaTechEffect}`" placement="top">
                   <el-tag type="success">生草数量Lv{{ kusaField.kusaTechLevel }}</el-tag>
                 </el-tooltip>
-                <el-tooltip v-if="kusaField.soilCapacity <= 10" :content="`承载力过低，产量×${kusaField.soilEffect.toFixed(1)}`" placement="top">
+                <el-tooltip v-if="kusaField.soilCapacity < 10" :content="`承载力过低，产量×${kusaField.soilEffect.toFixed(1)}`" placement="top">
                   <el-tag type="warning">土壤状态</el-tag>
                 </el-tooltip>
                 <el-tooltip v-if="kusaField.mirrorPluginAvailable" content="50%概率触发镜映，产量×2，草之精华×2，消耗1后备承载力" placement="top">
@@ -121,6 +121,7 @@
                 @click="handleOverloadPlant" 
                 style="margin-left: 12px"
                 :loading="planting"
+                :disabled="selectedKusaType === '神灵草'"
               >
                 过载生草
               </el-button>
@@ -337,8 +338,11 @@ const handlePlant = async () => {
   try {
     const result = await farmApi.plantKusa(selectedKusaType.value, false)
     
-    // 检查是否因灵性自动分配装置而改变了草种
-    if (result.autoAssigned && result.kusaType === '不灵草') {
+    // 祈愿成功：data 里带有 prayRolls（祈愿次数）
+    if (result.prayRolls) {
+      ElMessage.success(`祈愿了${result.prayRolls}次，种出了神灵草！预计${result.growTime}分钟后成熟`)
+    } else if (result.autoAssigned && result.kusaType === '不灵草') {
+      // 检查是否因灵性自动分配装置而改变了草种
       ElMessage.success(`因灵性自动分配装置，自动选择了不灵草！预计${result.growTime}分钟后成熟`)
     } else {
       ElMessage.success(`开始生${result.kusaType}！预计${result.growTime}分钟后成熟`)
@@ -348,7 +352,11 @@ const handlePlant = async () => {
     localStorage.setItem('lastKusaType', selectedKusaType.value)
     await refreshField()
   } catch (error: any) {
-    ElMessage.error(error.message || '生草失败')
+    // 优先展示后端的中文错误信息（如祈愿失败"祈愿了N次，未能种出神灵草，已停止祈愿"）
+    const msg = error?.response?.data?.errorMsg || error.message || '生草失败'
+    ElMessage.error(msg)
+    // 祈愿可能已消耗承载力（如失败停止时扣到阈值），刷新百草园同步最新状态
+    await refreshField()
   } finally {
     planting.value = false
   }

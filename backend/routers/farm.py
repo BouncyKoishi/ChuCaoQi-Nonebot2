@@ -45,15 +45,20 @@ async def plant_kusa(request: Request):
     kusa_type = body.get('kusaType')
     overload = body.get('overload', False)
     
-    spiritual_machine = await itemDB.getItemStorageInfo(userId, '灵性自动分配装置')
-    auto_assigned = False
-    if spiritual_machine and spiritual_machine.allowUse:
-        spiritual_sign = await itemDB.getItemAmount(userId, '灵性标记')
-        if not spiritual_sign:
-            kusa_type = '不灵草'
-            auto_assigned = True
-    
-    result = await FarmService.start_planting(userId=userId, kusa_type=kusa_type, overload=overload)
+    if kusa_type == '神灵草':
+        # 神灵祈愿：走祈愿分支（不经过灵性自动分配装置）
+        result = await FarmService.pray_for_divine(userId=userId)
+        auto_assigned = False
+    else:
+        spiritual_machine = await itemDB.getItemStorageInfo(userId, '灵性自动分配装置')
+        auto_assigned = False
+        if spiritual_machine and spiritual_machine.allowUse:
+            spiritual_sign = await itemDB.getItemAmount(userId, '灵性标记')
+            if not spiritual_sign:
+                kusa_type = '不灵草'
+                auto_assigned = True
+        
+        result = await FarmService.start_planting(userId=userId, kusa_type=kusa_type, overload=overload)
     
     if result.get("success") and auto_assigned:
         result['data']['autoAssigned'] = True

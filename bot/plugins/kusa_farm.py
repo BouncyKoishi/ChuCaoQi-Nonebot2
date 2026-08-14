@@ -161,6 +161,17 @@ async def handle_plant_kusa(
     user_id = await get_user_id(event, auto_create=True)
     kusa_type = args.extract_plain_text().strip() or None
     
+    if kusa_type == '神灵草':
+        pray_result = await FarmService.pray_for_divine(user_id)
+        if not pray_result['success']:
+            await send_finish(plant_kusa_cmd, pray_result.get('errorMsg', '祈愿失败'))
+            return
+        output_str = f"祈愿{pray_result['rolls']}次，种出了神灵草！\n"
+        output_str += format_plant_result(pray_result['data'], "开始")
+        await send_finish(plant_kusa_cmd, output_str)
+        await notify_web_status_update(user_id)
+        return
+    
     result = await FarmService.start_planting(
         userId=user_id, kusa_type=kusa_type
     )

@@ -166,13 +166,15 @@ class FarmService:
         return result
     
     @staticmethod
-    async def start_planting(userId: int, kusa_type: Optional[str] = None, overload: bool = False) -> Dict[str, Any]:
-        """开始生草
+    def _is_capacity_blocked(cap: int, soil_saver_on: bool) -> bool:
+        """判断当前承载力是否已不允许生草（跟随土壤保护装置配置）"""
+        return (soil_saver_on and cap <= 10) or (not soil_saver_on and cap <= 0)
+    
+    @staticmethod
+    async def _validate_plant_conditions(userId: int, overload: bool = False):
+        """生草前置校验：获取/创建田地，并检查生长中、过载、承载力。
         
-        Args:
-            userId: 用户ID
-            kusa_type: 生草类型
-            overload: 是否过载
+        返回 (field, soil_saver_on, error)。error 为 None 表示可生草。
         """
         field = await fieldDB.getKusaField(userId)
         
@@ -190,7 +192,7 @@ class FarmService:
             rest_time = predict_time - datetime.now()
             
             if rest_time.total_seconds() > 60:
-                return {
+                return None, False, {
                     'success': False,
                     'error': 'ALREADY_GROWING',
                     'errorMsg': f'你的{field.kusaType}还在生。剩余时间：{int(rest_time.total_seconds() // 60)}min',
@@ -200,7 +202,7 @@ class FarmService:
                     }
                 }
             else:
-                return {
+                return None, False, {
                     'success': False,
                     'error': 'ALMOST_DONE',
                     'errorMsg': f'你的{field.kusaType}将在一分钟内长成！'
@@ -209,7 +211,7 @@ class FarmService:
         current_overload = await itemDB.getItemStorageInfo(userId, '过载标记')
         if current_overload:
             overload_end_time = datetime.fromtimestamp(current_overload.timeLimitTs).strftime('%H:%M')
-            return {
+            return None, False, {
                 'success': False,
                 'error': 'OVERLOADED',
                 'errorMsg': f'土地过载中，无法生草！过载结束时间：{overload_end_time}'
@@ -218,26 +220,42 @@ class FarmService:
         if overload:
             overload_magic = await itemDB.getItemAmount(userId, '奈奈的过载魔法')
             if not overload_magic:
-                return {
+                return None, False, {
                     'success': False,
                     'error': 'NO_OVERLOAD_MAGIC',
                     'errorMsg': '你未学会过载魔法，无法进行过载生草'
                 }
         
         soil_saver = await itemDB.getItemStorageInfo(userId, '土壤保护装置')
-        if soil_saver and soil_saver.allowUse and field.soilCapacity <= 10:
-            return {
-                'success': False,
-                'error': 'SOIL_PROTECTED',
-                'errorMsg': f'当前承载力为{field.soilCapacity}，强制土壤保护启用中，不允许生草'
-            }
-        
-        if field.soilCapacity <= 0:
-            return {
+        soil_saver_on = bool(soil_saver and soil_saver.allowUse)
+        if FarmService._is_capacity_blocked(field.soilCapacity, soil_saver_on):
+            if soil_saver_on:
+                return None, soil_saver_on, {
+                    'success': False,
+                    'error': 'SOIL_PROTECTED',
+                    'errorMsg': f'当前承载力为{field.soilCapacity}，强制土壤保护启用中，不允许生草'
+                }
+            return None, soil_saver_on, {
                 'success': False,
                 'error': 'NO_SOIL_CAPACITY',
                 'errorMsg': f'当前承载力为{field.soilCapacity}，不允许生草'
             }
+        
+        return field, soil_saver_on, None
+    
+    @staticmethod
+    async def start_planting(userId: int, kusa_type: Optional[str] = None, overload: bool = False, force: bool = False) -> Dict[str, Any]:
+        """开始生草
+        
+        Args:
+            userId: 用户ID
+            kusa_type: 生草类型
+            overload: 是否过载
+            force: 强制指定草种（用于神灵祈愿，跳过草种校验与神灵草二次判定）
+        """
+        field, _, plant_err = await FarmService._validate_plant_conditions(userId, overload)
+        if plant_err:
+            return plant_err
         
         actual_type = kusa_type if kusa_type else field.defaultKusaType
         actual_type = "草" if not actual_type else actual_type
@@ -250,7 +268,7 @@ class FarmService:
                 actual_type = '不灵草'
                 auto_assigned = True
         
-        if actual_type != '草':
+        if actual_type != '草' and not force:
             validation = await FarmService._validate_kusa_type(userId, actual_type)
             if not validation['valid']:
                 return {
@@ -260,7 +278,7 @@ class FarmService:
                 }
         
         divine_plugin = await itemDB.getItemStorageInfo(userId, '神灵草基因模块')
-        if divine_plugin and divine_plugin.allowUse and actual_type != '不灵草':
+        if divine_plugin and divine_plugin.allowUse and actual_type != '不灵草' and not force:
             spiritless_divine_plugin = await itemDB.getItemStorageInfo(userId, '不灵草灵生模块')
             spiritual_sign = await itemDB.getItemAmount(userId, '灵性标记')
             divine_percent = 0.1 if spiritless_divine_plugin and spiritual_sign else 0.05
@@ -385,6 +403,138 @@ class FarmService:
                 'spiritlessImmediate': spiritless_immediate
             }
         }
+    
+    @staticmethod
+    async def pray_for_divine(userId: int) -> Dict[str, Any]:
+        """神灵祈愿：模拟反复"生草+除草"，直到种出神灵草或无法再消耗承载力为止
+
+        只在内存里做草种判定的随机模拟，并累计失败轮次会消耗的资源；
+        不逐次真实生草/除草，避免过重开销与对正常生草流、其它道具的干扰。
+        成功时只真正种下一次神灵草（走 start_planting 的 force 钩子）。
+        """
+        MAX_ROLLS = 100
+
+        # 前置校验（祈愿专属）
+        pray_item = await itemDB.getItemStorageInfo(userId, '神灵祈愿')
+        if not pray_item or not pray_item.allowUse:
+            return {'success': False, 'error': 'NO_PRAY_ITEM', 'errorMsg': '你未拥有或未启用"神灵祈愿"'}
+
+        divine_plugin = await itemDB.getItemStorageInfo(userId, '神灵草基因模块')
+        if not divine_plugin or not divine_plugin.allowUse:
+            return {'success': False, 'error': 'NO_DIVINE_PLUGIN', 'errorMsg': '你未拥有或未启用"神灵草基因模块"，无法祈愿出神灵草'}
+
+        # 复用正常生草的前置校验（自动建田、生长中、过载、承载力）
+        field, soil_saver_on, plant_err = await FarmService._validate_plant_conditions(userId)
+        if plant_err:
+            return plant_err
+
+        # 快照各状态（模拟只在副本上运算，不写库）
+        cap = field.soilCapacity
+        spirit_sign = await itemDB.getItemAmount(userId, '灵性标记')
+        spiritless_module = await itemDB.getItemStorageInfo(userId, '不灵草灵生模块')
+        has_spiritless_module = bool(spiritless_module and spiritless_module.allowUse)
+        fallow_sign = await itemDB.getItemAmount(userId, '休耕标记')
+        field_amount = await itemDB.getItemAmount(userId, '草地')
+        kela_storage = await itemDB.getItemStorageInfo(userId, '金坷垃')
+        kela_on = bool(kela_storage and kela_storage.allowUse)
+        kela_amount = kela_storage.amount if kela_storage else 0
+        biogas_storage = await itemDB.getItemStorageInfo(userId, '沼气池')
+        black_tea = await itemDB.getItemStorageInfo(userId, '红茶')
+        tea_on = bool(biogas_storage and biogas_storage.allowUse and black_tea and black_tea.allowUse)
+        mirror_plugin = await itemDB.getItemStorageInfo(userId, '镜中草基因模块')
+        mirror_on = bool(mirror_plugin and mirror_plugin.allowUse)
+        spare_cap = await itemDB.getItemAmount(userId, '后备承载力')
+        # 除草侧的承载力成本：与 start_planting 的 weed_costing 口径一致
+        # （只有初级生草预知时除草扣2，持有高级生草预知则除草不扣）
+        junior_prescient = await itemDB.getItemStorageInfo(userId, '初级生草预知')
+        senior_prescient = await itemDB.getItemStorageInfo(userId, '生草预知')
+        weed_costing = 2 if (junior_prescient and junior_prescient.allowUse and
+                             not (senior_prescient and senior_prescient.allowUse)) else 0
+
+        # 模拟消耗累计（仅统计失败轮次）
+        cap_used = 0
+        fallow_used = 0
+        kela_used = 0
+        tea_used = 0
+        spare_used = 0
+        sign_removed = False
+
+        rolls = 0
+        spirit_sign_present = spirit_sign > 0
+        success = False
+
+        while rolls < MAX_ROLLS:
+            # 停止条件：模拟"真实生草"此时是否还能种（跟随土壤保护装置配置）
+            if FarmService._is_capacity_blocked(cap, soil_saver_on):
+                break
+
+            rolls += 1
+
+            # 草种判定：与 start_planting 一致。基础固定"草"（跳过灵性自动分配装置强制不灵草），
+            # 持有灵性标记且有不灵草灵生模块时概率翻倍；失败轮会随"除草"移除灵性标记
+            divine_percent = 0.1 if (spirit_sign_present and has_spiritless_module) else 0.05
+            if random.random() < divine_percent:
+                success = True
+                break
+
+            # 失败轮：累计与真实"生草+除草"一致的开销（生草1点 + 除草weed_costing点）
+            cap -= (1 + weed_costing)
+            cap_used += (1 + weed_costing)
+            if kela_on and kela_amount >= field_amount:
+                kela_amount -= field_amount
+                kela_used += field_amount
+            if tea_on:
+                tea_used += 1
+            if mirror_on and spare_cap > 0 and random.random() < 0.5:
+                spare_cap -= 1
+                spare_used += 1
+            if spirit_sign_present:
+                spirit_sign_present = False
+                sign_removed = True
+            if fallow_used < fallow_sign:
+                fallow_used += 1
+
+        # 一次性落地失败轮次的模拟扣减
+        if sign_removed:
+            await itemDB.removeTimeLimitedItem(userId, '灵性标记')
+        if fallow_used > 0:
+            await itemDB.changeItemAmount(userId, '休耕标记', -fallow_used)
+        if kela_used > 0:
+            await itemDB.changeItemAmount(userId, '金坷垃', -kela_used)
+        if tea_used > 0:
+            await itemDB.changeItemAmount(userId, '红茶', -tea_used)
+        if spare_used > 0:
+            await itemDB.changeItemAmount(userId, '后备承载力', -spare_used)
+        if cap_used > 0:
+            await fieldDB.kusaSoilRecover(userId, -cap_used)
+
+        if success:
+            plant_result = await FarmService.start_planting(userId, kusa_type='神灵草', force=True)
+            if not plant_result['success']:
+                return {
+                    'success': False,
+                    'error': plant_result.get('error', 'PLANT_FAILED'),
+                    'errorMsg': plant_result.get('errorMsg', '祈愿成功但种植失败'),
+                    'rolls': rolls
+                }
+            # 祈愿次数一并放入 data（前端拦截器会解包 data，顶层 rolls 会被丢弃）
+            plant_data = plant_result['data']
+            plant_data['prayRolls'] = rolls
+            return {'success': True, 'rolls': rolls, 'data': plant_data}
+        else:
+            if rolls >= MAX_ROLLS:
+                return {
+                    'success': False,
+                    'error': 'PRAY_LIMIT',
+                    'errorMsg': f'祈愿了{rolls}次仍未种出神灵草，已达到祈愿次数上限',
+                    'rolls': rolls
+                }
+            return {
+                'success': False,
+                'error': 'PRAY_FAILED',
+                'errorMsg': f'祈愿了{rolls}次，未能种出神灵草，已停止祈愿',
+                'rolls': rolls
+            }
     
     @staticmethod
     async def weed(userId: int) -> Dict[str, Any]:
@@ -594,6 +744,13 @@ class FarmService:
                 if item:
                     info = await itemDB.getItemStorageInfo(userId, gene_name)
                     available.append({'name': gtype, 'displayName': gtype, 'available': info is not None})
+        
+        # 神灵祈愿：拥有并启用时，提供"神灵草（祈愿）"选项
+        pray_item_def = await itemDB.getItem('神灵祈愿')
+        if pray_item_def:
+            pray_item = await itemDB.getItemStorageInfo(userId, '神灵祈愿')
+            if pray_item and pray_item.allowUse:
+                available.append({'name': '神灵草', 'displayName': '神灵草（祈愿）', 'available': True, 'isPray': True})
         
         return available
     
