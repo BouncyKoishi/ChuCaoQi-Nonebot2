@@ -362,16 +362,35 @@ async def handle_flag_set(
         await send_finish(flag_set_cmd, help_str)
         return
 
-    try:
-        flag_name, flag_type = stripped_arg.split()
-        if flag_type.lower() not in ['on', 'off']:
-            await send_finish(flag_set_cmd, '参数错误，请使用 on 或 off')
-            return
-        flag_value = 1 if flag_type.lower() == 'on' else 0
-        await base_db.setFlag(user_id, flag_name, flag_value)
-        await send_finish(flag_set_cmd, '设置成功！')
-    except ValueError:
+    # 解析与校验参数（不抛会干扰后续的异常，全部在 try 外处理）
+    parts = stripped_arg.split()
+    if len(parts) != 2:
         await send_finish(flag_set_cmd, '参数格式错误，请使用：!配置 [配置名] [on/off]')
+        return
+    flag_name, flag_type = parts
+    if flag_type.lower() not in ['on', 'off']:
+        await send_finish(flag_set_cmd, '参数错误，请使用 on 或 off')
+        return
+    flag_value = 1 if flag_type.lower() == 'on' else 0
+
+    # 仅 setFlag 放入 try：send_finish 抛的 FinishedException 不会被意外捕获
+    try:
+        await base_db.setFlag(user_id, flag_name, flag_value)
+    except Exception as e:
+        if 'Config Error' in str(e) or '无此公共参数' in str(e):
+            # 未找到配置项：直接展示当前全部配置项及状态，无需用户再查一次
+            flag_list = await base_db.getFlagList()
+            output = '没有找到该配置项。\n当前用户的配置如下：\n'
+            for flag in flag_list:
+                flag_value = await base_db.getFlagValue(user_id, flag.name)
+                flag_type = 'on' if flag_value else 'off'
+                output += f'{flag.name}: {flag_type}\n'
+            await send_finish(flag_set_cmd, output.rstrip('\n'))
+        else:
+            await send_finish(flag_set_cmd, f'设置失败：{e}')
+        return
+
+    await send_finish(flag_set_cmd, '设置成功！')
 
 
 kusa_ban_cmd = on_command("口球", priority=5, block=True)
