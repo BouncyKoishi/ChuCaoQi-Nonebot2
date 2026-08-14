@@ -38,7 +38,7 @@
                 <el-tooltip v-if="kusaField.spiritualSign" content="产量×2，草之精华×2（不灵草无效）" placement="top">
                   <el-tag type="success">灵性</el-tag>
                 </el-tooltip>
-                <el-tooltip v-if="kusaField.biogasAvailable" :content="`产量×${kusaField.hasBlackTea ? '1.2~2.0' : '0.5~2.0'}${kusaField.hasBlackTea ? '（红茶加成）' : ''}`" placement="top">
+                <el-tooltip v-if="kusaField.biogasPoolAvailable && selectedKusaType !== '不灵草'" :content="`产量×${kusaField.hasBlackTea ? '1.2~2.0' : '0.5~2.0'}${kusaField.hasBlackTea ? '（红茶加成）' : ''}`" placement="top">
                   <el-tag type="success">沼气</el-tag>
                 </el-tooltip>
                 <el-tooltip v-if="kusaField.fallowSign > 0" :content="`产量×${kusaField.fallowSign === 1 ? 2 : 3}，草之精华×${kusaField.fallowSign === 1 ? 2 : 3}`" placement="top">
@@ -53,10 +53,10 @@
                 <el-tooltip v-if="kusaField.soilCapacity < 10" :content="`承载力过低，产量×${kusaField.soilEffect.toFixed(1)}`" placement="top">
                   <el-tag type="warning">土壤状态</el-tag>
                 </el-tooltip>
-                <el-tooltip v-if="kusaField.mirrorPluginAvailable" content="50%概率触发镜映，产量×2，草之精华×2，消耗1后备承载力" placement="top">
+                <el-tooltip v-if="kusaField.mirrorPluginAvailable && selectedKusaType !== '不灵草'" content="50%概率触发镜映，产量×2，草之精华×2，消耗1后备承载力" placement="top">
                   <el-tag type="success">镜映</el-tag>
                 </el-tooltip>
-                <el-tooltip v-if="kusaField.divinePluginAvailable" :content="`${kusaField.spiritlessDivinePluginAvailable ? '10%' : '5%'}概率触发神灵草`" placement="top">
+                <el-tooltip v-if="kusaField.divinePluginAvailable && selectedKusaType !== '不灵草'" :content="`${kusaField.spiritlessDivinePluginAvailable ? '10%' : '5%'}概率触发神灵草`" placement="top">
                   <el-tag type="success">神灵草</el-tag>
                 </el-tooltip>
                 <el-tooltip v-if="kusaField.mustGrow" content="保证至少获得1个草之精华" placement="top">
@@ -78,7 +78,7 @@
                 <el-tag v-if="kusaField.vipLevel > 0" type="success">信息员+{{ kusaField.vipBonus }}</el-tag>
                 <el-tag v-if="kusaField.isUsingKela" type="success">金坷垃×2</el-tag>
                 <el-tag v-if="kusaField.doubleMagic" type="success">双生×2</el-tag>
-                <el-tag v-if="kusaField.growInfo?.spiritualSignEffective" type="success">灵性×2</el-tag>
+                <el-tag v-if="kusaField.spiritualSignEffective" type="success">灵性×2</el-tag>
                 <el-tag v-if="kusaField.kusaTypeEffect !== 1" type="success">{{ kusaField.kusaType }}×{{ kusaField.kusaTypeEffect }}</el-tag>
                 <el-tooltip v-if="kusaField.biogasEffect !== 1" :content="`本次沼气倍率`" placement="top">
                   <el-tag type="success">沼气×{{ kusaField.biogasEffect }}</el-tag>

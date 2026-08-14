@@ -72,6 +72,7 @@ export interface KusaField {
   spareCapacity: number
   kelaAvailable: boolean
   biogasAvailable: boolean
+  biogasPoolAvailable: boolean
   hasPrescient: boolean
   kusaQualityLevel: number
   kusaQualityEffect: number
