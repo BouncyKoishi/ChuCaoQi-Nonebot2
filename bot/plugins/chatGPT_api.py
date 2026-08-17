@@ -536,14 +536,15 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
 async def getChatReply(model, history):
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
-    reply, tokenUsage, response_dict = await ChatService.get_chat_reply(model, history)
+    result = await ChatService.get_chat_reply(model, history)
+    reply, tokenUsage = result.reply, result.token_usage
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
     print(f"Response: {reply}")
     history.append({"role": "assistant", "content": reply})
-    if "deepseek" in model and 'reasoning_content' in response_dict['choices'][0]['message']:
-        print(f"Reasoning Content:{response_dict['choices'][0]['message']['reasoning_content']}")
-    finishReason = response_dict['choices'][0]['finish_reason']
+    if "deepseek" in model and result.reasoning_text:
+        print(f"Reasoning Content:{result.reasoning_text}")
+    finishReason = result.finish_reason
     if finishReason != "stop":
         print(f"Finish Reason: {finishReason}")
     return reply, tokenUsage

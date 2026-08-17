@@ -7,6 +7,7 @@
 import sys
 import os
 import asyncio
+from dataclasses import dataclass
 from typing import Dict, Any, Optional
 from openai import OpenAI
 
@@ -14,6 +15,19 @@ from openai import OpenAI
 import core.db.kusa_system as baseDB
 import core.db.chat as chatDB
 from core.config import plugin_config
+
+
+@dataclass
+class ChatReply:
+    """大模型回复的统一结果对象
+
+    Chat Completions 与 Responses 两条调用路径共同产出此结构，
+    外部消费方只需读取类型化字段，无需关心底层是哪种 API。
+    """
+    reply: str
+    token_usage: int
+    reasoning_text: str = ''
+    finish_reason: str = ''
 
 
 class ChatService:
@@ -73,7 +87,77 @@ class ChatService:
             return ChatService._openai_client, model
     
     @staticmethod
-    async def get_chat_reply(model: str, messages: list) -> tuple[str, int, dict]:
+    def _use_responses_api(model: str) -> bool:
+        """判断模型是否走 Responses API 路由
+
+        deepseek / gpt 系列走 Responses API（支持联网搜索、思维链档位控制），
+        gemini / lzusa 无 OpenAI 兼容的 /responses 端点，继续 Chat Completions。
+        """
+        return 'deepseek' in model or 'gpt' in model
+
+    @staticmethod
+    def _messages_to_responses_input(messages: list) -> list:
+        """把内部 messages 列表转换为 Responses API 的 input items
+
+        兼容生产代码中的两种 content 形式：纯字符串，或 [{type:text},{type:image_url}]。
+        """
+        items = []
+        for msg in messages:
+            role = msg.get('role')
+            content = msg.get('content')
+            parts = []
+            if isinstance(content, str):
+                parts.append({"type": "input_text", "text": content})
+            else:
+                for part in content or []:
+                    ptype = part.get('type')
+                    if ptype == 'text':
+                        parts.append({"type": "input_text", "text": part.get('text', '')})
+                    elif ptype == 'image_url':
+                        url = part.get('image_url', {}).get('url', '')
+                        if url:
+                            parts.append({"type": "input_image", "image_url": url})
+            if parts:
+                items.append({"type": "message", "role": role, "content": parts})
+        return items
+
+    @staticmethod
+    def _normalize_responses(response_dict: dict) -> ChatReply:
+        """把 Responses API 响应解析为 ChatReply"""
+        reply_text = ''
+        reasoning_text = ''
+        for item in response_dict.get('output', []):
+            if item.get('type') == 'reasoning':
+                for s in item.get('summary') or []:
+                    if s.get('type') == 'summary_text':
+                        reasoning_text += s.get('text') or ''
+            elif item.get('type') == 'message':
+                for content in item.get('content') or []:
+                    if content.get('type') == 'output_text':
+                        reply_text += content.get('text') or ''
+        status = response_dict.get('status')
+        finish_reason = 'stop' if status == 'completed' else (status or '')
+        return ChatReply(
+            reply=reply_text,
+            token_usage=(response_dict.get('usage') or {}).get('total_tokens', 0),
+            reasoning_text=reasoning_text,
+            finish_reason=finish_reason,
+        )
+
+    @staticmethod
+    def _normalize_chat_completions(response_dict: dict) -> ChatReply:
+        """把 Chat Completions 响应解析为 ChatReply"""
+        choice = (response_dict.get('choices') or [{}])[0]
+        message = choice.get('message') or {}
+        return ChatReply(
+            reply=message.get('content'),
+            token_usage=(response_dict.get('usage') or {}).get('total_tokens', 0),
+            reasoning_text=message.get('reasoning_content', ''),
+            finish_reason=choice.get('finish_reason', ''),
+        )
+
+    @staticmethod
+    async def get_chat_reply(model: str, messages: list) -> ChatReply:
         """获取大模型回复
         
         Args:
@@ -81,31 +165,39 @@ class ChatService:
             messages: 消息历史列表
             
         Returns:
-            (回复内容, token使用量, 完整响应字典)
+            ChatReply: 回复内容 / token使用量 / 思维链文本 / 结束原因
         """
         client, actual_model = ChatService._get_client(model)
         
         loop = asyncio.get_event_loop()
         
         def _get_response():
-            kwargs = dict(messages=messages, timeout=120)
-            if actual_model:
-                kwargs['model'] = actual_model
-            if 'deepseek' in model:
-                return client.chat.completions.create(**kwargs)
-            elif 'gemini' in model:
-                return client.chat.completions.create(**kwargs)
-            elif 'gpt-5' in model:
+            # deepseek / gpt 走 Responses API，失败自动回退 Chat Completions
+            if ChatService._use_responses_api(model):
+                kwargs = dict(
+                    model=actual_model,
+                    input=ChatService._messages_to_responses_input(messages),
+                    reasoning={"effort": "low"},
+                    timeout=120,
+                )
+                try:
+                    return client.responses.create(**kwargs), True
+                except Exception as e:
+                    print(f"[ChatService] {model} Responses API 调用失败，回退 Chat Completions: {e}")
+                    return client.chat.completions.create(
+                        messages=messages, model=actual_model, timeout=120
+                    ), False
+            
+            kwargs = dict(messages=messages, model=actual_model, timeout=120)
+            if 'gpt-5' in model:
                 kwargs['reasoning_effort'] = "low"
-                return client.chat.completions.create(**kwargs)
-            return client.chat.completions.create(**kwargs)
+            return client.chat.completions.create(**kwargs), False
         
-        response = await loop.run_in_executor(None, _get_response)
+        response, used_responses = await loop.run_in_executor(None, _get_response)
         response_dict = response.to_dict()
-        reply = response_dict['choices'][0]['message']['content']
-        token_usage = response_dict['usage']['total_tokens']
-        
-        return reply, token_usage, response_dict
+        if used_responses:
+            return ChatService._normalize_responses(response_dict)
+        return ChatService._normalize_chat_completions(response_dict)
     
     @staticmethod
     async def moderate_content(text: str) -> Dict[str, Any]:
@@ -143,7 +235,7 @@ class ChatService:
         ]
         
         try:
-            reply, _, _ = await ChatService.get_chat_reply("deepseek-v4-flash", messages)
+            reply = (await ChatService.get_chat_reply("deepseek-v4-flash", messages)).reply
             
             import json
             result = json.loads(reply)
