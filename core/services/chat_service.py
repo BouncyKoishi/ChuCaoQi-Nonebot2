@@ -8,13 +8,87 @@ import sys
 import os
 import asyncio
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from openai import OpenAI
 
 
 import core.db.kusa_system as baseDB
 import core.db.chat as chatDB
 from core.config import plugin_config
+
+
+@dataclass
+class TextPart:
+    """文本内容块（对应持久化 JSON 的 {"type":"text","text":...}）"""
+    text: str
+
+    def to_dict(self) -> dict:
+        return {"type": "text", "text": self.text}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TextPart":
+        return cls(text=data.get("text", ""))
+
+
+@dataclass
+class ImagePart:
+    """图片内容块（对应持久化 JSON 的 {"type":"image_url","image_url":{"url":...}}）"""
+    url: str
+
+    def to_dict(self) -> dict:
+        return {"type": "image_url", "image_url": {"url": self.url}}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ImagePart":
+        return cls(url=data.get("image_url", {}).get("url", ""))
+
+
+@dataclass
+class ChatMessage:
+    """对话历史中的一条消息
+
+    与持久化 JSON 严格保形：content 为纯字符串（assistant 回复）或
+    TextPart/ImagePart 列表（system/user 含多模态内容），并保留可选 botRoleName。
+    """
+    role: str
+    content: Union[str, list]
+    botRoleName: str = ''
+
+    def to_dict(self) -> dict:
+        """序列化为与旧版持久化格式完全一致的 dict"""
+        d = {"role": self.role}
+        if self.botRoleName:
+            d["botRoleName"] = self.botRoleName
+        if isinstance(self.content, str):
+            d["content"] = self.content
+        else:
+            d["content"] = [
+                part.to_dict() if isinstance(part, (TextPart, ImagePart)) else part
+                for part in self.content
+            ]
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ChatMessage":
+        """从持久化 dict 还原，兼容旧存档中的 str 与 parts 两种 content"""
+        content = data.get("content")
+        if isinstance(content, list):
+            parts = []
+            for part in content:
+                if not isinstance(part, dict):
+                    parts.append(part)
+                elif part.get("type") == "text":
+                    parts.append(TextPart.from_dict(part))
+                elif part.get("type") == "image_url":
+                    parts.append(ImagePart.from_dict(part))
+                else:
+                    parts.append(part)  # 未知类型原样保留，保证向前兼容
+            content = parts
+        return cls(
+            role=data.get("role", ""),
+            content=content,
+            botRoleName=data.get("botRoleName", ""),
+        )
 
 
 @dataclass
@@ -96,29 +170,38 @@ class ChatService:
         return 'deepseek' in model or 'gpt' in model
 
     @staticmethod
-    def _messages_to_responses_input(messages: list) -> list:
-        """把内部 messages 列表转换为 Responses API 的 input items
+    def _coerce_messages(messages: list) -> list[ChatMessage]:
+        """把消息统一转换为 ChatMessage，兼容直接传 dict 的调用方"""
+        return [
+            m if isinstance(m, ChatMessage) else ChatMessage.from_dict(m)
+            for m in messages
+        ]
 
-        兼容生产代码中的两种 content 形式：纯字符串，或 [{type:text},{type:image_url}]。
-        """
+    @staticmethod
+    def _messages_to_responses_input(messages: list[ChatMessage]) -> list:
+        """把 ChatMessage 列表转换为 Responses API 的 input items"""
         items = []
         for msg in messages:
-            role = msg.get('role')
-            content = msg.get('content')
             parts = []
-            if isinstance(content, str):
-                parts.append({"type": "input_text", "text": content})
+            if isinstance(msg.content, str):
+                parts.append({"type": "input_text", "text": msg.content})
             else:
-                for part in content or []:
-                    ptype = part.get('type')
-                    if ptype == 'text':
-                        parts.append({"type": "input_text", "text": part.get('text', '')})
-                    elif ptype == 'image_url':
-                        url = part.get('image_url', {}).get('url', '')
-                        if url:
-                            parts.append({"type": "input_image", "image_url": url})
+                for part in msg.content or []:
+                    if isinstance(part, TextPart):
+                        parts.append({"type": "input_text", "text": part.text})
+                    elif isinstance(part, ImagePart):
+                        if part.url:
+                            parts.append({"type": "input_image", "image_url": part.url})
+                    elif isinstance(part, dict):  # 兼容未知类型的 part
+                        ptype = part.get('type')
+                        if ptype == 'text':
+                            parts.append({"type": "input_text", "text": part.get('text', '')})
+                        elif ptype == 'image_url':
+                            url = part.get('image_url', {}).get('url', '')
+                            if url:
+                                parts.append({"type": "input_image", "image_url": url})
             if parts:
-                items.append({"type": "message", "role": role, "content": parts})
+                items.append({"type": "message", "role": msg.role, "content": parts})
         return items
 
     @staticmethod
@@ -168,7 +251,8 @@ class ChatService:
             ChatReply: 回复内容 / token使用量 / 思维链文本 / 结束原因
         """
         client, actual_model = ChatService._get_client(model)
-        
+        messages = ChatService._coerce_messages(messages)
+
         loop = asyncio.get_event_loop()
         
         def _get_response():
@@ -185,10 +269,12 @@ class ChatService:
                 except Exception as e:
                     print(f"[ChatService] {model} Responses API 调用失败，回退 Chat Completions: {e}")
                     return client.chat.completions.create(
-                        messages=messages, model=actual_model, timeout=120
+                        messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
                     ), False
             
-            kwargs = dict(messages=messages, model=actual_model, timeout=120)
+            kwargs = dict(
+                messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
+            )
             if 'gpt-5' in model:
                 kwargs['reasoning_effort'] = "low"
             return client.chat.completions.create(**kwargs), False

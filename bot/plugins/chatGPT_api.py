@@ -12,7 +12,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from utils import nameDetailSplit, imgUrlTobase64, extractImgUrls
 from core.config import DATA_DIR
-from core.services.chat_service import ChatService
+from core.services.chat_service import ChatService, TextPart, ImagePart, ChatMessage
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
     get_user_id,
@@ -138,7 +138,7 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
     if lastMessage is None:
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
         return
-    inputContent = content if args.extract_plain_text() else lastMessage['content']
+    inputContent = content if args.extract_plain_text() else lastMessage.content
     await send_reply(chatr_cmd, "已撤回最后一轮对话，重新生成回复中……")
     reply = await chat(user_id, inputContent, isNewConversation=False)
     await send_finish(chatr_cmd, reply)
@@ -158,7 +158,7 @@ async def handle_chatr5(bot: Bot, event: Event, args: Message = CommandArg()):
     if lastMessage is None:
         await send_finish(chatr5_cmd, "没有可撤回的对话，无法重新生成。")
         return
-    inputContent = content if args.extract_plain_text() else lastMessage['content']
+    inputContent = content if args.extract_plain_text() else lastMessage.content
     await send_reply(chatr5_cmd, "已撤回最后一轮对话，重新生成回复中……")
     reply = await chat(user_id, inputContent, isNewConversation=False, useGPT5=True)
     await send_finish(chatr5_cmd, reply)
@@ -368,8 +368,8 @@ async def handle_chat_save(bot: Bot, event: Event, args: Message = CommandArg())
     fileName = re.sub(r'[\\/:*?"<>|]', '', strippedArg)
     if fileName == "":
         timeStr = time.strftime('%Y%m%d%H%M', time.localtime())
-        systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
-        roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ''
+        systemPrompt = history[0] if history and len(history) > 0 and history[0].role == 'system' else None
+        roleName = systemPrompt.botRoleName if systemPrompt else ''
         fileName = f"{roleName}_{timeStr}" if roleName else timeStr
     saveConversation(user_id, fileName, history)
     await send_finish(chat_save_cmd, f"已保存当前对话记录，记录名称为 {fileName} ")
@@ -408,21 +408,13 @@ async def handle_chat_load(bot: Bot, event: Event, args: Message = CommandArg())
                 
                 preview = f"已加载对话记录：{fileName}\n\n"
                 
-                conversation_messages = [msg for msg in history if msg['role'] != 'system']
+                conversation_messages = [msg for msg in history if msg.role != 'system']
                 
                 if len(conversation_messages) >= 2:
                     preview += "上一轮对话内容：\n"
                     for msg in conversation_messages[-2:]:
-                        role_display = "你" if msg['role'] == 'user' else "AI"
-                        content = msg['content']
-                        
-                        if isinstance(content, list):
-                            content_text = ""
-                            for item in content:
-                                if isinstance(item, dict) and 'text' in item:
-                                    content_text += item['text']
-                        else:
-                            content_text = str(content)
+                        role_display = "你" if msg.role == 'user' else "AI"
+                        content_text = contentToText(msg.content)
                         
                         if len(content_text) > 200:
                             content_text = content_text[:200] + "..."
@@ -430,14 +422,7 @@ async def handle_chat_load(bot: Bot, event: Event, args: Message = CommandArg())
                         preview += f"{role_display}：{content_text}\n"
                 elif len(conversation_messages) == 1:
                     msg = conversation_messages[0]
-                    content = msg['content']
-                    if isinstance(content, list):
-                        content_text = ""
-                        for item in content:
-                            if isinstance(item, dict) and 'text' in item:
-                                content_text += item['text']
-                    else:
-                        content_text = str(content)
+                    content_text = contentToText(msg.content)
                     
                     if len(content_text) > 200:
                         content_text = content_text[:200] + "..."
@@ -490,12 +475,25 @@ async def handle_chat_help(bot: Bot, event: Event):
     await send_finish(chat_help_cmd, output)
 
 
+def contentToText(content) -> str:
+    """把消息 content 提取为纯文本（用于预览展示等场景）"""
+    if isinstance(content, str):
+        return content
+    text = ""
+    for part in content or []:
+        if isinstance(part, TextPart):
+            text += part.text
+        elif isinstance(part, dict) and 'text' in part:
+            text += part['text']
+    return text
+
+
 async def getChatContent(event: Event, args: Message):
     inputText = args.extract_plain_text()
-    userContent = [{"type": "text", "text": inputText}]
+    userContent = [TextPart(text=inputText)]
     imgUrls = extractImgUrls(args)
     for url in imgUrls:
-        userContent.append({"type": "image_url", "image_url": {"url": url}})
+        userContent.append(ImagePart(url=url))
     return userContent
 
 
@@ -505,7 +503,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
     model = "gpt-5" if useGPT5 else chatUser.chosenModel
     roleId = 0 if useDefaultRole else chatUser.chosenRoleId
     history = await getNewConversation(user_id, roleId) if isNewConversation else await readDefaultConversation(user_id)
-    history.append({"role": "user", "content": content})
+    history.append(ChatMessage(role="user", content=content))
 
     try:
         reply, tokenUsage = await getChatReply(model, history)
@@ -517,8 +515,8 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             role = await db.getChatRoleById(roleId)
             roleName = role.name if role and roleId != 0 else ""
         else:
-            systemPrompt = history[0] if history and len(history) > 0 and history[0]['role'] == 'system' else None
-            roleName = systemPrompt.get('botRoleName', '') if systemPrompt else ""
+            systemPrompt = history[0] if history and len(history) > 0 and history[0].role == 'system' else None
+            roleName = systemPrompt.botRoleName if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
         modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if "lzusa" in model else ("(deepseek)" if "deepseek" in model else ""))
         tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
@@ -541,7 +539,7 @@ async def getChatReply(model, history):
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
     print(f"Response: {reply}")
-    history.append({"role": "assistant", "content": reply})
+    history.append(ChatMessage(role="assistant", content=reply))
     if "deepseek" in model and result.reasoning_text:
         print(f"Reasoning Content:{result.reasoning_text}")
     finishReason = result.finish_reason
@@ -570,8 +568,8 @@ async def getNewConversation(user_id, roleId):
     if roleId == 0:
         if not role.detail:
             return []
-        return [{"role": "system", "content": [{"type": "text", "text": role.detail}]}]
-    return [{"role": "system", "botRoleName": role.name, "content": [{"type": "text", "text": role.detail}]}]
+        return [ChatMessage(role="system", content=[TextPart(text=role.detail)])]
+    return [ChatMessage(role="system", botRoleName=role.name, content=[TextPart(text=role.detail)])]
 
 
 async def readDefaultConversation(user_id, forceToGetResult=True):
@@ -592,14 +590,14 @@ def readConversation(user_id, fileName):
     if not os.path.exists(savePath):
         return None
     with open(savePath, encoding="utf-8") as f:
-        return json.load(f)
+        return [ChatMessage.from_dict(msg) for msg in json.load(f)]
 
 
 def saveConversation(user_id, fileName, history):
     fullFileName = f"{user_id}_{fileName}" if fileName else f"{user_id}"
     savePath = HISTORY_PATH + fullFileName + ".json"
     with open(savePath, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=4)
+        json.dump([msg.to_dict() for msg in history], f, ensure_ascii=False, indent=4)
 
 
 async def permissionCheck(event: Event, checker: str):
