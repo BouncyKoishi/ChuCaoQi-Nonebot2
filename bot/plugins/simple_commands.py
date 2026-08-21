@@ -9,7 +9,9 @@ from nonebot import on_command, get_bot
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from kusa_base import plugin_config
+from nonebot.consts import PREFIX_KEY, CMD_ARG_KEY
+from nonebot.typing import T_State
+from kusa_base import plugin_config, is_super_admin, send_group_msg
 from core.config import RESOURCE_DIR
 from urllib import request
 from nonebot_plugin_apscheduler import scheduler
@@ -20,6 +22,7 @@ from multi_platform import (
     is_group_message,
     is_onebot_v11_bot,
     send_finish,
+    get_napcat_bot,
 )
 
 
@@ -214,3 +217,142 @@ async def get60sNewsPic():
         except ImportError:
             # QQ 官方平台暂时不支持图片
             return lst
+
+
+# ============================================================
+# 推送功能（仅超级管理员可用）
+# !推送 <内容>：将指令后的文字/图片等消息内容原样推送至指定群聊
+# 默认目标群为 log 发送群，二次确认时可输入新群号切换并重复确认
+# ============================================================
+
+# 推送会话管理：session_id -> {"job": APScheduler Job, "bot": Bot, "event": Event}
+_push_sessions = {}
+_PUSH_CONFIRM_TIMEOUT = 120  # 二次确认超时秒数
+
+
+def _push_clear_session(session_id: str):
+    """清理推送会话及其超时任务"""
+    info = _push_sessions.pop(session_id, None)
+    if info:
+        job = info.get("job")
+        try:
+            if job and job.next_run_time:
+                job.remove()
+        except Exception:
+            pass
+
+
+def _push_arm_timeout(session_id: str, bot: Bot, event: Event):
+    """（重新）武装二次确认超时任务并登记会话"""
+    _push_clear_session(session_id)
+    job = scheduler.add_job(
+        _push_timeout_cancel, "date",
+        run_date=datetime.datetime.now() + datetime.timedelta(seconds=_PUSH_CONFIRM_TIMEOUT),
+        args=[session_id],
+    )
+    _push_sessions[session_id] = {"job": job, "bot": bot, "event": event}
+
+
+def _push_end_session(session_id: str, state: T_State):
+    """结束推送会话：清理超时任务与会话标记"""
+    _push_clear_session(session_id)
+    state.pop("push_state", None)
+
+
+async def _push_timeout_cancel(session_id: str):
+    """二次确认超时：通知用户并结束本次推送会话"""
+    info = _push_sessions.pop(session_id, None)
+    if not info:
+        return
+    try:
+        await info["bot"].send(
+            info["event"], '推送超时，已取消本次推送，如需推送请重新发起 !推送'
+        )
+    except Exception as e:
+        print(f'推送超时通知失败: {e}')
+
+
+推送_cmd = on_command('推送', priority=5, block=True)
+
+
+@推送_cmd.handle()
+async def handle_推送(bot: Bot, event: Event, state: T_State):
+    # 首次发起推送
+    if "push_state" not in state:
+        user_id = await get_user_id(event)
+        if not user_id or not await is_super_admin(user_id):
+            return  # 非超级管理员静默忽略
+
+        # 从 state 读取命令参数（首轮由 TrieRule 解析写入）
+        args = state.get(PREFIX_KEY, {}).get(CMD_ARG_KEY) or Message()
+        plain_text = args.extract_plain_text().strip()
+        has_image = any(getattr(seg, 'type', '') == 'image' for seg in args)
+        if not plain_text and not has_image:
+            await send_finish(推送_cmd, '请输入要推送的内容')
+            return
+
+        log_group = plugin_config.get('group', {}).get('log', 0)
+        if not log_group:
+            await send_finish(推送_cmd, '未配置 log 发送群，无法推送')
+            return
+
+        # 存储推送内容与默认目标群（log 发送群）
+        state["push_state"] = True
+        state["push_content"] = args
+        state["push_target"] = str(log_group)
+
+        # 获取 bot 所在的群集合，用于切换群号时校验（获取失败则跳过校验）
+        valid_groups = None
+        napcat_bot = get_napcat_bot()
+        if napcat_bot:
+            try:
+                group_list = await napcat_bot.get_group_list()
+                valid_groups = {str(g['group_id']) for g in group_list}
+            except Exception:
+                valid_groups = None
+        state["push_valid_groups"] = valid_groups
+
+        # 登记会话并启动超时
+        _push_arm_timeout(event.get_session_id(), bot, event)
+
+        await 推送_cmd.reject(f'你的消息将被推送至群聊{log_group}，确认？[y/n/切换群号]')
+        return
+
+    # 二次确认阶段（reject 回环重入本函数）
+    session_id = event.get_session_id()
+
+    # 超时或已结束的会话不再处理
+    if session_id not in _push_sessions:
+        _push_end_session(session_id, state)
+        await send_finish(推送_cmd, '本次推送已超时或已取消，如需推送请重新发起 !推送')
+        return
+
+    # 重新武装超时（每次确认提示获得一轮新的等待窗口）
+    _push_arm_timeout(session_id, bot, event)
+
+    content = state.get("push_content")
+    target_group = state.get("push_target")
+    valid_groups = state.get("push_valid_groups")
+
+    reply_text = event.get_plaintext().strip().lower()
+    if reply_text in ('y', 'yes', '是'):
+        _push_end_session(session_id, state)
+        ok = await send_group_msg(target_group, content)
+        if not ok:
+            await send_finish(推送_cmd, f'推送失败：无法将消息发送至群聊{target_group}')
+        await 推送_cmd.finish()  # 推送成功，静默
+    elif reply_text in ('n', 'no', '否'):
+        _push_end_session(session_id, state)
+        await send_finish(推送_cmd, '已取消推送')
+    elif reply_text.isdigit():
+        if valid_groups is None or reply_text in valid_groups:
+            state["push_target"] = reply_text
+            await 推送_cmd.reject(f'你的消息将被推送至群聊{reply_text}，确认？[y/n/切换群号]')
+        else:
+            await 推送_cmd.reject(
+                f'bot 不在群聊{reply_text}中，无法推送。当前目标群仍为{target_group}，确认？[y/n/切换群号]'
+            )
+    else:
+        await 推送_cmd.reject(
+            f'无法识别的输入，你的消息仍将推送至群聊{target_group}，确认？[y/n/切换群号]'
+        )
