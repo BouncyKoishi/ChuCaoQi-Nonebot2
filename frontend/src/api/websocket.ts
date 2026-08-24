@@ -39,6 +39,12 @@ class FarmWebSocket {
       return
     }
 
+    const sessionToken = localStorage.getItem('sessionToken')
+    if (!sessionToken) {
+      console.error('WebSocket connect failed: no sessionToken')
+      return
+    }
+
     if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
       this.disconnect()
     }
@@ -50,7 +56,7 @@ class FarmWebSocket {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.PROD ? window.location.host : 'localhost:8000'
     const basePath = import.meta.env.PROD ? '/kusa' : ''
-    const wsUrl = `${protocol}//${host}${basePath}/ws/farm/${userId}`
+    const wsUrl = `${protocol}//${host}${basePath}/ws/farm/${userId}?token=${encodeURIComponent(sessionToken)}`
 
     try {
       this.ws = new WebSocket(wsUrl)
@@ -87,10 +93,24 @@ class FarmWebSocket {
         }
       }
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket连接关闭')
         this.stopPing()
         this.onDisconnectHandlers.forEach(handler => handler())
+        // 4401: sessionToken无效/过期，重连无意义，提示重新登录
+        if (event.code === 4401) {
+          this.shouldReconnect = false
+          console.warn('WebSocket鉴权失败(sessionToken无效)，停止重连')
+          import('element-plus').then(({ ElNotification }) => {
+            ElNotification.warning({
+              title: '实时连接已断开',
+              message: '登录状态已失效，请重新登录',
+              duration: 6000,
+              showClose: true
+            })
+          })
+          return
+        }
         if (this.shouldReconnect) {
           this.attemptReconnect()
         }

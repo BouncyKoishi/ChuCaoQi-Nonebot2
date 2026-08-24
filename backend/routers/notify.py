@@ -2,7 +2,7 @@
 通知/WebSocket相关路由
 """
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Query
 import sys
 import os
 import json
@@ -12,14 +12,22 @@ from core.services import FarmService
 
 from websocket_manager import manager
 from common import INTERNAL_API_TOKEN
+from routers.auth import verify_session_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.websocket("/ws/farm/{userId}")
-async def websocket_farm(websocket: WebSocket, userId: str):
-    """生草地状态WebSocket端点"""
+async def websocket_farm(websocket: WebSocket, userId: str, token: str = Query(default="")):
+    """生草地状态WebSocket端点（需携带本人有效sessionToken）"""
+    # 鉴权：token必须有效，且归属用户与URL中的userId一致（防止连接他人频道）
+    unified_user = await verify_session_token(token)
+    if not unified_user or str(unified_user.id) != userId:
+        # 先accept再close(4401)，让前端能拿到明确的close code停止重连
+        await websocket.accept()
+        await websocket.close(code=4401, reason="unauthorized")
+        return
     await manager.connect(websocket, userId)
     try:
         while True:
