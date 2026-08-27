@@ -331,6 +331,8 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
                 newModel = "gemini-2.5-pro"
             else:
                 newModel = "gemini-2.5-flash"
+        elif "vision" in strippedText:
+            newModel = "deepseek-v4-flash-vision-exp"
         elif "deepseek-pro" in strippedText:
             newModel = "deepseek-v4-pro"
         elif "deepseek" in strippedText:

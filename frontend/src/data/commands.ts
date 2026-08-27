@@ -1496,7 +1496,7 @@ export const commands: Command[] = [
     params: '[模型名称]',
     description: '切换对话使用的语言模型。不提供参数时默认切换到 deepseek-v4-flash。',
     details: [
-      '支持的预设模型：deepseek-v4-flash、deepseek-v4-pro、gpt-5-mini、gpt-5（需进阶模型权限）、lzusa（需进阶模型权限）、gemini-2.5-flash、gemini-2.5-pro（需管理员权限）',
+      '支持的预设模型：deepseek-v4-flash、deepseek-v4-pro、deepseek-vision（识图模型）、gpt-5-mini、gpt-5（需进阶模型权限）、lzusa（需进阶模型权限）、gemini-2.5-flash、gemini-2.5-pro（需管理员权限）',
       '也可以输入自定义模型名称，但会提示可能报错'
     ],
     category: 'ChatBot',
