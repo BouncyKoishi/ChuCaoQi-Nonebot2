@@ -1,0 +1,11 @@
+# Scheduler 进程配置文件模板
+# 复制此文件为 scheduler.yaml 并填入实际值
+
+env: 'dev'  # 环境标识: dev / prod
+
+# 进程间通知地址（阶段 3 notifier 启用）
+backendUrl: 'http://127.0.0.1:8000'  # backend 地址（推 Web 前端通知）
+botUrl: 'http://127.0.0.1:8082'      # bot FastAPI 服务地址（推 QQ 消息）
+
+# 内部 API 令牌，须与 config/backend.yaml 的 internalApiToken 一致
+internalApiToken: ''

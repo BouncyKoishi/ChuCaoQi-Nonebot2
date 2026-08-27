@@ -48,6 +48,9 @@ echo 依赖安装完成！
 echo.
 
 echo [3/3] 启动服务...
+echo 正在启动调度器服务 (定时任务进程)...
+start "生草系统调度器" cmd /k "cd /d %~dp0 && call %~dp0venv\Scripts\activate && python -m scheduler.main"
+
 echo 正在启动后端服务 (端口 8000)...
 start "生草系统后端" cmd /k "cd /d %~dp0backend && call %~dp0venv\Scripts\activate && npm run dev"
 

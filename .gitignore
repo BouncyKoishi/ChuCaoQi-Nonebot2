@@ -23,6 +23,7 @@ chuchu_backup.sqlite
 config/plugin_config.yaml
 config/sensitive_words.txt
 config/backend.yaml
+config/scheduler.yaml
 
 # 临时文件
 __pycache__/
