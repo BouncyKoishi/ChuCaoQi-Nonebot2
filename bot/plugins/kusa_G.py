@@ -13,19 +13,15 @@ from datetime import datetime
 from collections import Counter
 
 from reloader import kusa_command as on_command
-from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-from kusa_base import plugin_config, send_group_msg
 from core.config import RESOURCE_DIR
 from utils import imgBytesToBase64
-import core.db.kusa_system as base_db
 import core.db.g_value as g_value_db
 from core.services import GMarketService
 from .pagination_helper import register_pagination_handler, set_pagination_state
-from . import scheduler
 from multi_platform import (
     get_user_id,
     send_finish,
@@ -36,6 +32,8 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 
 systemRandom = random.SystemRandom()
+
+# 本周期G线图缓存（G值由 scheduler 进程更新，按 (cycle, turn) 版本号失效）
 g_pic_cache: Dict[str, Optional[bytes]] = {
     '东': None,
     '南': None,
@@ -44,6 +42,7 @@ g_pic_cache: Dict[str, Optional[bytes]] = {
     '深': None,
     'all': None,
 }
+g_pic_cache_version: Optional[tuple] = None
 
 
 # ==================== G市查询命令 ====================
@@ -366,15 +365,13 @@ g_pic_cmd = on_command("G线图", priority=5, block=True)
 
 @g_pic_cmd.handle()
 async def handle_g_pic(event: OneBotV11MessageEvent, args: Message = CommandArg()):
-    """处理G线图命令"""
+    """处理G线图命令（G值由 scheduler 进程更新，图按需现算保证最新）"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)
     school = school[0] if school and school[0] in '东南北珠深' else 'all'
-    
-    if g_pic_cache[school] is None:
-        await create_g_pic()
-    
-    pic = imgBytesToBase64(g_pic_cache[school])
+
+    pic_data = await create_g_pic(school)
+    pic = imgBytesToBase64(pic_data)
     await send_finish(g_pic_cmd, pic)
 
 
@@ -390,20 +387,24 @@ def get_g_values_col_map(g_values_list):
     return g_values_col_map
 
 
-async def create_g_pic():
-    """创建G线图"""
-    global g_pic_cache
-    start_ts = datetime.now().timestamp()
-    g_values_list = await g_value_db.getThisCycleGValues()
-    g_values_col_map = get_g_values_col_map(g_values_list)
-    
-    for school in '东南北珠深':
-        g_type = area_translate_value(school)
-        g_pic_cache[school] = create_g_pic_single(g_values_col_map[g_type])
-    
-    g_pic_cache['all'] = create_g_pic_all(g_values_col_map)
-    end_ts = datetime.now().timestamp()
-    print(f'G线图生成时间：{end_ts - start_ts}')
+async def create_g_pic(school: str = 'all') -> bytes:
+    """创建G线图（带版本号缓存：G值(cycle, turn)未变则直接命中缓存）"""
+    global g_pic_cache, g_pic_cache_version
+
+    latest = await g_value_db.getLatestGValues()
+    version = (latest.cycle, latest.turn)
+
+    if version != g_pic_cache_version:
+        # G值已更新（scheduler 进程每 30 分钟写一次），重建全部校区图
+        g_values_list = await g_value_db.getThisCycleGValues()
+        g_values_col_map = get_g_values_col_map(g_values_list)
+
+        for s in '东南北珠深':
+            g_pic_cache[s] = create_g_pic_single(g_values_col_map[area_translate_value(s)])
+        g_pic_cache['all'] = create_g_pic_all(g_values_col_map)
+        g_pic_cache_version = version
+
+    return g_pic_cache[school]
 
 
 def create_g_pic_single(g_values_col):
@@ -433,102 +434,8 @@ def create_g_pic_all(g_values_col_map):
 
 
 # ==================== 定时任务 ====================
-
-if scheduler:
-    @scheduler.scheduled_job('cron', minute='*/30', misfire_grace_time=None)
-    async def g_change_runner():
-        """G值变化定时器"""
-        g_values = await g_value_db.getLatestGValues()
-        
-        # 使用服务层生成新G值
-        new_values = GMarketService.get_new_g_values({
-            'east': g_values.eastValue,
-            'south': g_values.southValue,
-            'north': g_values.northValue,
-            'zhuhai': g_values.zhuhaiValue,
-            'shenzhen': g_values.shenzhenValue
-        })
-        
-        await g_value_db.addNewGValue(
-            g_values.cycle, g_values.turn + 1,
-            new_values['east'], new_values['south'], new_values['north'],
-            new_values['zhuhai'], new_values['shenzhen']
-        )
-        
-        now_time = datetime.now().strftime('%H:%M')
-        print(f"{now_time}: G值已更新，新的值为：东{new_values['east']} 南{new_values['south']} 北{new_values['north']} 珠{new_values['zhuhai']} 深{new_values['shenzhen']}")
-        await create_g_pic()
-    
-    @scheduler.scheduled_job('cron', hour='23', minute='45', misfire_grace_time=None)
-    async def g_reset_runner():
-        """G周期重置定时器"""
-        if not GMarketService.reset_date_check():
-            return
-        
-        all_users = await base_db.getAllKusaUser()
-        g_values = await g_value_db.getLatestGValues()
-        bot = get_bot()
-        main_group = plugin_config.get('group', {}).get('main')
-        
-        for user in all_users:
-            all_kusa_from_g = await GMarketService.sell_all_g(user.user_id, g_values)
-            if all_kusa_from_g > 0:
-                print(f'用户{user.user_id}的G已经兑换为{all_kusa_from_g}草')
-            
-            creator_result = await GMarketService.process_g_creator_v2(user.user_id)
-            if creator_result['success']:
-                print(f"用户{user.user_id}的扭秤装置已运作，创造了{creator_result['amount']}个{creator_result['area']}G")
-        
-        # 使用服务层获取新周期初始值
-        new_cycle_values = GMarketService.get_new_cycle_values()
-        await g_value_db.addNewGValue(
-            g_values.cycle + 1, 1,
-            new_cycle_values['east'], new_cycle_values['south'], new_cycle_values['north'],
-            new_cycle_values['zhuhai'], new_cycle_values['shenzhen']
-        )
-        
-        await bot.send_group_msg(group_id=main_group, message='新的G周期开始了！上个周期的G已经自动兑换为草。')
-    
-    @scheduler.scheduled_job('cron', hour='23', minute='50', misfire_grace_time=None)
-    async def g_reset_summary_runner():
-        """G周期重置总结定时器"""
-        if not GMarketService.reset_date_check():
-            return
-        
-        main_group = plugin_config.get('group', {}).get('main')
-        
-        # 使用服务层获取上周期总结
-        summary_result = await GMarketService.get_cycle_summary()
-        
-        if summary_result['has_records']:
-            output_str = (f"上周期的G神为 {summary_result['max_display_name']} 和 {summary_result['min_display_name']}：\n"
-                         f"{summary_result['max_display_name']}在G市盈利{summary_result['max_profit']:,}草\n"
-                         f"{summary_result['min_display_name']}在G市盈利{summary_result['min_profit']:,}草\n")
-            
-            output_str += '\n上周期各G的收盘价为：\n'
-            area_value_key_map = {
-                '东': 'east_value',
-                '南': 'south_value', 
-                '北': 'north_value',
-                '珠': 'zhuhai_value',
-                '深': 'shenzhen_value'
-            }
-            for area in ['东', '南', '北', '珠', '深']:
-                end_value = summary_result['end_values'][area_value_key_map[area]]
-                start_value = GMarketService.START_VALUE_MAP[area]
-                campus_name = GMarketService.AREA_MAP[area][0].replace('G(', '').replace(')', '')
-                output_str += GMarketService.format_g_value(end_value, start_value, area.replace('珠', '珠海').replace('深', '深圳'))
-            
-            # 生成上周期的G线图
-            last_cycle_g_value = await g_value_db.getLastCycleGValues()
-            pic_data = create_g_pic_all(get_g_values_col_map(last_cycle_g_value))
-            
-            pic = imgBytesToBase64(pic_data)
-            await send_group_msg(main_group, output_str)
-            await send_group_msg(main_group, pic)
-        else:
-            output_str = "上周期暂无G市交易记录"
-            await send_group_msg(main_group, output_str)
+# A5 G值波动已下沉至 scheduler/jobs/gmarket.py（阶段 2）
+# A6 G周期重置(23:45)/重置总结(23:50)已下沉至 scheduler/jobs/gmarket.py（阶段 4）
 
 
 def area_translate_value(area_name):

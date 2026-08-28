@@ -21,7 +21,6 @@ from kusa_base import send_private_msg
 import core.db.kusa_system as base_db
 import core.db.kusa_item as item_db
 from core.services import ItemService
-from . import scheduler
 from multi_platform import (
     get_user_id,
     get_real_qq_by_event,
@@ -617,9 +616,4 @@ def get_item_price(item, item_amount):
 
 
 # ==================== 定时任务 ====================
-
-if scheduler:
-    @scheduler.scheduled_job('interval', seconds=50, max_instances=10, misfire_grace_time=500)
-    async def clean_time_limited_item_runner():
-        """清理限时物品"""
-        await item_db.cleanTimeLimitedItems()
+# A4 限时物品清理已下沉至 scheduler/jobs/item.py（阶段 2）

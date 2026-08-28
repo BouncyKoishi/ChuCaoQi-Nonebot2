@@ -596,12 +596,14 @@ async def activate_robbing(field):
 
 
 if scheduler:
+    # A2 承载力基础恢复 / A3 非活跃承载力恢复已下沉至 scheduler/jobs/farm.py（阶段 2）
+
     @scheduler.scheduled_job('interval', seconds=15, max_instances=10, misfire_grace_time=60)
     async def kusa_harvest_runner():
         """生草结算定时器"""
         finished_fields = await field_db.getAllKusaField(onlyFinished=True)
         time_capsule_user_ids = await item_db.getUserIdListByItem('时光胶囊标记')
-        
+
         for field in finished_fields[:2]:
             if field.user_id in time_capsule_user_ids:
                 await send_private_msg(
@@ -613,53 +615,6 @@ if scheduler:
                 await field_db.kusaSoilRecover(field.user_id)
             else:
                 await kusa_harvest(field)
-    
-    @scheduler.scheduled_job('interval', minutes=90, misfire_grace_time=None)
-    async def soil_capacity_increase_base():
-        """承载力基础恢复"""
-        all_fields = await field_db.getAllKusaField()
-        bad_soil_fields = [field for field in all_fields if field.soilCapacity < 25]
-        
-        for field in bad_soil_fields:
-            await field_db.kusaSoilRecover(field.user_id)
-        
-        full_soil_fields = [field for field in all_fields if field.soilCapacity >= 25]
-        overfill_tech_users = await item_db.getUserIdListByItem('肥力贮存技术I')
-        
-        for field in full_soil_fields:
-            if field.user_id not in overfill_tech_users:
-                continue
-            
-            spare_cap_limit = await item_db.getItemAmount(field.user_id, '肥力贮存仓')
-            now_spare_cap = await item_db.getItemAmount(field.user_id, '后备承载力')
-            
-            if now_spare_cap >= spare_cap_limit:
-                continue
-            
-            now_spare_cap_unit = await item_db.getItemAmount(field.user_id, '后备承载力单元')
-            overfill_tech_level = await item_db.getTechLevel(field.user_id, '肥力贮存技术')
-            spare_cap_unit_update_amount = 5 - overfill_tech_level
-            
-            if spare_cap_unit_update_amount <= now_spare_cap_unit + 1:
-                await item_db.changeItemAmount(field.user_id, '后备承载力', 1)
-                await item_db.changeItemAmount(field.user_id, '后备承载力单元', 1 - spare_cap_unit_update_amount)
-            else:
-                await item_db.changeItemAmount(field.user_id, '后备承载力单元', 1)
-    
-    @scheduler.scheduled_job('cron', minute=33, second=33, misfire_grace_time=None)
-    async def soil_capacity_increase_for_inactive():
-        """非活跃用户承载力恢复"""
-        bad_soil_fields = await field_db.getAllKusaField(onlySoilNotBest=True)
-        
-        for field in bad_soil_fields:
-            if field.kusaFinishTs:
-                continue
-            
-            overload = await item_db.getItemAmount(field.user_id, '过载标记')
-            if overload:
-                continue
-            
-            await field_db.kusaSoilRecover(field.user_id)
 
 
 async def kusa_harvest(field):
