@@ -64,6 +64,10 @@ ChuCaoQi-Web/
 │   ├── common.py               # 共享配置
 │   ├── main.py                 # FastAPI 入口
 │   └── websocket_manager.py    # WebSocket 管理
+├── scheduler/                  # 定时任务进程（生草系统结算/承载力/G值/工业等）
+│   ├── jobs/                   # 定时任务（按业务域分文件）
+│   ├── notifier.py             # 进程间通知客户端（HTTP POST → backend/bot）
+│   └── main.py                 # Scheduler 入口
 ├── frontend/                   # Web 前端 (Vue 3 + TypeScript + Vite)
 │   ├── src/                    # 前端源码
 │   │   ├── api/                # API 接口封装
@@ -79,6 +83,7 @@ ChuCaoQi-Web/
 ├── config/                     # 统一配置目录
 │   ├── plugin_config.yaml      # 主配置
 │   ├── backend.yaml            # Backend 配置
+│   ├── scheduler.yaml          # Scheduler 配置（通知地址、internalApiToken）
 │   ├── sensitive_words.txt     # 敏感词库
 │   └── initialize.sql          # 数据库初始化 SQL
 ├── data/                       # 持久化数据
@@ -125,7 +130,18 @@ ChuCaoQi-Web/
    - `internalApiToken`：内部 API 令牌，用于 Bot 调用后端接口
    - `allowLegacyLogin`：是否允许未设置 webToken 的用户免 Token 登录（测试时设为 `true`，生产环境应为 `false`）
 
-3. **数据库初始化**
+3. **Scheduler 配置文件**
+
+   复制示例配置并修改：
+   ```bash
+   cp config/scheduler.example.yaml config/scheduler.yaml
+   ```
+   编辑 `config/scheduler.yaml`，填入必要的配置：
+   - `backendUrl`：Web 后端地址（用于生草完成等 web 通知推送）
+   - `botUrl`：Bot 地址（用于 QQ 消息推送，指向 Bot 的 HTTP 端口）
+   - `internalApiToken`：内部 API 令牌，须与 `backend.yaml` 中一致
+
+4. **数据库初始化**
 
    在 `data/database/` 目录下创建 SQLite 数据库：
    ```bash
@@ -138,7 +154,7 @@ ChuCaoQi-Web/
 
 ### 安装依赖
 
-**Python 依赖（Bot + Web 后端共用）：**
+**Python 依赖（Bot + Web 后端 + Scheduler 共用）：**
 
 ```bash
 pip install -r requirements.txt
@@ -165,6 +181,12 @@ cd bot
 ```bash
 cd backend
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+**启动 Scheduler（定时任务进程）：**
+
+```bash
+python -m scheduler.main
 ```
 
 **启动 Web 前端：**
@@ -196,11 +218,12 @@ Web 端使用 Token 认证，获取方式：
 
 ## 注意事项
 
-1. **数据库共享**：Web 端与 Bot 端共享同一个数据库，所有操作会实时同步
+1. **数据库共享**：Bot、Web 后端、Scheduler 三个进程共享同一个数据库，所有操作会实时同步
 2. **端口占用**：确保以下端口未被占用
    - 3000（前端开发服务器）
    - 8000（后端 API）
-   - 8082（NoneBot2 开发端口）
+   - 8082（NoneBot2 开发端口，同时承载 Scheduler 推送 QQ 消息的 /internal/notify 端点）
+3. **进程依赖**：Scheduler 定时结算不依赖 Bot/Web 在线（结算写库与通知解耦）；但 Bot 在线才能收到喜报/围殴激活等 QQ 推送，Web 后端在线才能收到生草完成的 web 通知
 
 ## 声明
 
