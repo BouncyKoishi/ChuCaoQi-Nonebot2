@@ -1,16 +1,33 @@
 """
-A2 承载力基础恢复 / A3 非活跃承载力恢复
+A1 生草结算 / A2 承载力基础恢复 / A3 非活跃承载力恢复
 
-从 bot/plugins/kusa_farm.py 原样迁移（阶段 2），纯 DB 逻辑，无 QQ 依赖。
-A1 生草结算在阶段 5 下沉。
+A2/A3 从 bot/plugins/kusa_farm.py 原样迁移（阶段 2），纯 DB 逻辑，无 QQ 依赖。
+A1 结算逻辑在 core.services.FarmService.settle_due_fields（阶段 5 下沉），
+本 job 只做：调服务结算 → web 通知（backend）→ QQ 事件推送（bot）。
 """
 
 import logging
 
 import core.db.kusa_field as field_db
 import core.db.kusa_item as item_db
+from core.services import FarmService
+from scheduler import notifier
 
 logger = logging.getLogger("scheduler.jobs.farm")
+
+
+async def kusa_harvest_runner():
+    """生草结算轮询（每 15 秒，每轮最多 2 块）"""
+    results = await FarmService.settle_due_fields()
+
+    for result in results:
+        # web 通知：调用方由 bot 切换至 scheduler（原 bot 侧 notify_web_kusa_harvested）
+        await notifier.notify_web('/api/notify/kusa-harvested', result['web'])
+        # QQ 事件：喜报/围殴/私聊提示由 bot 执行（结算与玩法分离）
+        await notifier.notify_qq('kusa_harvested_event', {'actions': result['actions']})
+
+    if results:
+        logger.info(f"生草结算完成：{len(results)} 块田地")
 
 
 async def soil_capacity_increase_base():
@@ -65,7 +82,12 @@ async def soil_capacity_increase_for_inactive():
 
 
 def register(scheduler):
-    """注册承载力恢复任务（参数与原 bot 侧一致）"""
+    """注册生草结算与承载力恢复任务（参数与原 bot 侧一致）"""
+    scheduler.add_job(
+        kusa_harvest_runner, 'interval',
+        seconds=15, max_instances=10, misfire_grace_time=60,
+        id='farm_kusa_harvest', name='A1 生草结算',
+    )
     scheduler.add_job(
         soil_capacity_increase_base, 'interval',
         minutes=90, misfire_grace_time=None,

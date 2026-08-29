@@ -70,13 +70,27 @@ async def _handle_send_private(data: dict) -> bool:
     return True
 
 
-# 阶段 5 接入：生草完成事件 → 喜报/围殴激活/私聊提示
-# TODO(阶段5): _handle_kusa_harvested_event
+async def _handle_kusa_harvested_event(data: dict) -> bool:
+    """生草结算事件：{actions: [...]}（阶段 5，结算在 scheduler，玩法在 bot）
+
+    结算动作列表由 core.services.FarmService.settle_field 生成：
+      private  → 私聊消息（生草完毕提示/时光胶囊/过载提示）
+      group    → 主群喜报/悲报
+      robbing  → 围殴激活（bot 内存态，事件丢失可接受的降级设计）
+    """
+    actions = data.get('actions')
+    if not isinstance(actions, list):
+        return False
+
+    from plugins.kusa_farm import execute_harvest_actions
+    await execute_harvest_actions(actions)
+    return True
 
 
 ACTION_HANDLERS = {
     'send_group': _handle_send_group,
     'send_private': _handle_send_private,
+    'kusa_harvested_event': _handle_kusa_harvested_event,
 }
 
 

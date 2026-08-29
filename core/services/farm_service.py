@@ -6,6 +6,7 @@
 
 import sys
 import os
+import re
 import random
 import math
 from typing import Dict, Any, List, Optional
@@ -16,6 +17,21 @@ import core.db.kusa_system as baseDB
 import core.db.kusa_field as fieldDB
 import core.db.kusa_item as itemDB
 import core.db.user as user_db
+
+from core.utils import intToRomanNum
+
+
+def _get_chain_length_str(chain_str: str):
+    """获取连号长度字符串"""
+    chain_length = len(chain_str)
+    return "零一二三四五六七八九十"[chain_length] + "连" if chain_length <= 10 else f"{chain_length}连"
+
+
+def _get_chain_bonus_amount(chain_str: str):
+    """获取连号奖励数量"""
+    chain_number = int(chain_str[0])
+    chain_length = len(chain_str)
+    return int(((chain_number + 1) // 3 + 1) * (3 ** (chain_length - 2)))
 
 
 ADV_KUSA_PROBABILITY_DICT = {0: 0, 1: 0.125, 2: 0.5, 3: 0.5, 4: 0.625}
@@ -870,3 +886,199 @@ class FarmService:
         """检查是否有过载魔法"""
         overload_magic = await itemDB.getItemAmount(userId, '奈奈的过载魔法')
         return {'hasOverloadMagic': overload_magic > 0}
+
+    # ==================== 生草结算（A1，阶段 5 下沉） ====================
+
+    @staticmethod
+    async def settle_due_fields(limit: int = 2) -> List[Dict[str, Any]]:
+        """生草结算轮询入口（scheduler 每 15 秒调用）
+
+        扫描到期田地批量结算，每轮最多处理 limit 块（与原 bot 侧
+        finished_fields[:2] 一致）。返回结算事件列表，由调用方分发通知。
+        """
+        finished_fields = await fieldDB.getAllKusaField(onlyFinished=True)
+        time_capsule_user_ids = await itemDB.getUserIdListByItem('时光胶囊标记')
+
+        results = []
+        for field in finished_fields[:limit]:
+            result = await FarmService.settle_field(
+                field, time_capsule=field.user_id in time_capsule_user_ids
+            )
+            if result:
+                results.append(result)
+        return results
+
+    @staticmethod
+    async def settle_field(field, time_capsule: bool = False) -> Optional[Dict[str, Any]]:
+        """单块田生草结算：完成全部 DB 写入，返回事件描述
+
+        结算顺序与原 bot 侧 kusa_harvest 严格一致；本方法不做任何网络发送，
+        QQ 消息与围殴激活以 actions 列表返回，由调用方（scheduler 经通知通道
+        推送 / bot 本地命令直接调用）执行，保证结算逻辑只有一份。
+
+        返回 {'web': <web通知payload>, 'actions': [...]}，action 类型：
+          {'action': 'private', 'userId': int, 'message': str}   私聊消息
+          {'action': 'group', 'message': str}                    主群消息（群号由 bot 决定）
+          {'action': 'robbing', 'targetId': int, 'robLimit': int, 'extraKusaAdv': bool}  围殴激活
+        """
+        if not field.kusaFinishTs:
+            return None
+
+        actions = []
+
+        if time_capsule:
+            actions.append({
+                'action': 'private', 'userId': field.user_id,
+                'message': '时光胶囊启动！奈奈发动了时光魔法，使本次生草立即完成且不消耗承载力喵(⑅˘̤ ᵕ˘̤)*♡*'
+            })
+            await itemDB.removeTimeLimitedItem(field.user_id, '时光胶囊标记')
+
+        await baseDB.changeKusaAndAdvKusa(field.user_id, field.kusaResult, field.advKusaResult)
+
+        output_msg = f'你的{field.kusaType}生了出来！获得了{field.kusaResult}草。'
+        if field.advKusaResult:
+            output_msg += f'额外获得{field.advKusaResult}草之精华！'
+
+        if field.advKusaResult > 0:
+            await FarmService._good_news_report(field, actions)
+
+        if await itemDB.getItemAmount(field.user_id, '纯酱的生草魔法'):
+            await FarmService._get_chain_bonus(field, actions)
+
+        if field.overloadOnHarvest:
+            await FarmService._get_overload_bonus(field, actions)
+
+        if field.kusaType == "不灵草":
+            await itemDB.updateTimeLimitedItem(field.user_id, '灵性标记', 24 * 3600)
+        else:
+            await itemDB.removeTimeLimitedItem(field.user_id, '灵性标记')
+
+        fallow_sign = await itemDB.getItemAmount(field.user_id, '休耕标记')
+        if fallow_sign:
+            await itemDB.changeItemAmount(field.user_id, '休耕标记', -1)
+
+        await fieldDB.kusaHistoryAdd(field)
+
+        web_payload = {
+            'userId': field.user_id,
+            'kusaType': field.kusaType,
+            'kusaResult': field.kusaResult,
+            'advKusaResult': field.advKusaResult,
+            'soilCapacity': field.soilCapacity
+        }
+
+        await fieldDB.kusaStopGrowing(field, False)
+
+        if await baseDB.getFlagValue(field.user_id, '生草完毕私聊提示'):
+            actions.append({'action': 'private', 'userId': field.user_id, 'message': output_msg})
+
+        if time_capsule:
+            await fieldDB.kusaSoilRecover(field.user_id)
+
+        return {'web': web_payload, 'actions': actions}
+
+    @staticmethod
+    async def _good_news_report(field, actions):
+        """喜报判定（阈值条件与原 bot 侧一致；报告文本在此生成，发送由 bot 完成）"""
+        quality_level = await itemDB.getTechLevel(field.user_id, '生草质量')
+
+        if quality_level >= 2:
+            history = await fieldDB.getRecentKusaHistory(field.user_id, 40)
+            no_kusa_adv_count = next((i for i, h in enumerate(history) if h.advKusaResult > 0), len(history))
+            count_thresholds = math.log(1 / 200, 1 - ADV_KUSA_PROBABILITY_DICT[quality_level])
+
+            if no_kusa_adv_count > count_thresholds:
+                await FarmService._send_report(field, '悲报', actions, sad_news_count=no_kusa_adv_count)
+
+        if quality_level >= 3:
+            adv_kusa_effect = ADV_KUSA_TYPE_EFFECT_MAP.get(field.kusaType, 1)
+            mirroring_effect = 2 if field.isMirroring else 1
+            spiritual_sign = await itemDB.getItemAmount(field.user_id, '灵性标记')
+            spiritual_effect = 2 if spiritual_sign else 1
+            fallow_sign = await itemDB.getItemAmount(field.user_id, '休耕标记')
+            fallow_effect = [1, 2, 3][fallow_sign] if 0 < fallow_sign < 3 else 1
+
+            base_adv_kusa = field.advKusaResult / adv_kusa_effect / spiritual_effect / fallow_effect / mirroring_effect
+            adv_kusa_thresholds = math.log(1 / 200, ADV_KUSA_PROBABILITY_DICT[quality_level])
+
+            if base_adv_kusa >= adv_kusa_thresholds:
+                await FarmService._send_report(field, '质量喜报', actions)
+                return
+
+        if field.advKusaResult > 120:
+            await FarmService._send_report(field, '草精喜报', actions)
+
+    @staticmethod
+    async def _get_chain_bonus(field, actions):
+        """连号奖励"""
+        chains = re.findall(r'0{3,}|1{3,}|2{3,}|3{3,}|4{3,}|5{3,}|6{3,}|7{3,}|8{3,}|9{3,}', str(field.kusaResult))
+        chain_bonus_total = 0
+
+        for chain_str in chains:
+            chain_bonus = _get_chain_bonus_amount(chain_str)
+            chain_bonus_total += chain_bonus
+            if len(chain_str) >= 4 and chain_bonus > 18:
+                await FarmService._send_report(field, '连号喜报', actions, chain_str=chain_str)
+
+        await baseDB.changeAdvKusa(field.user_id, chain_bonus_total)
+        field.advKusaResult += chain_bonus_total
+
+    @staticmethod
+    async def _get_overload_bonus(field, actions):
+        """过载奖励（基础3n小时，有称号优化为2n；n为草数去重位数）"""
+        distinct_digits_count = len(set(str(field.kusaResult)))
+        adv_kusa_num = distinct_digits_count * 2
+
+        nana_title = await itemDB.getItemAmount(field.user_id, '祝福之色赠予结缘之人')
+        overload_hour = distinct_digits_count * 2 if nana_title else distinct_digits_count * 3
+        overload_seconds = int(overload_hour * 3600)
+
+        await baseDB.changeAdvKusa(field.user_id, adv_kusa_num)
+        await itemDB.updateTimeLimitedItem(field.user_id, '过载标记', overload_seconds)
+
+        actions.append({
+            'action': 'private', 'userId': field.user_id,
+            'message': f'注意：你的草地进入了{overload_hour}小时的过载。你通过过载生草额外获得了{adv_kusa_num}个草之精华！'
+        })
+
+    @staticmethod
+    async def _send_report(field, report_type, actions, sad_news_count=0, chain_str=""):
+        """生成报告文本与共享魔法加成（DB 部分），发送/围殴激活由 bot 按 actions 执行"""
+        user = await baseDB.getKusaUser(field.user_id)
+        user_qq = await user_db.getRealQQByUserId(field.user_id)
+        user_name = user.name if user and user.name else (user_qq or str(field.user_id))
+        user_title = user.title if user and user.title else ""
+        display_name = f"「{user_title}」{user_name}" if user_title else user_name
+        report_str = ""
+
+        if report_type == '悲报':
+            quality_level = await itemDB.getTechLevel(field.user_id, '生草质量')
+            item_name = "生草质量" + intToRomanNum(quality_level)
+            report_str = f"喜报\n玩家 {display_name} 使用 {item_name} 在连续{sad_news_count}次生草中未获得草之精华！"
+
+        if report_type in ['质量喜报', '草精喜报']:
+            kusa_type = field.kusaType if field.kusaType else "普通草"
+            report_str = f"喜报\n玩家 {display_name} 使用 {kusa_type} 获得了{field.advKusaResult}个草之精华！大家快来围殴他吧！"
+
+        if report_type == '连号喜报':
+            chain_bonus = _get_chain_bonus_amount(chain_str)
+            report_str = f"喜报\n魔法少女纯酱为生{field.kusaType}达成{_get_chain_length_str(chain_str)}的玩家 {display_name} 召唤了额外的{chain_bonus}草之精华喵(*^▽^)/★*☆"
+
+        if not report_str:
+            return
+
+        actions.append({'action': 'group', 'message': report_str})
+
+        if '喜报' in report_type:
+            # 围殴激活（bot 内存态）与共享魔法持有者加成（DB）
+            share_magic = await itemDB.getItemAmount(field.user_id, '除草器的共享魔法')
+            actions.append({
+                'action': 'robbing', 'targetId': field.user_id,
+                'robLimit': field.kusaResult, 'extraKusaAdv': bool(share_magic)
+            })
+            share_user_id_list = await itemDB.getUserIdListByItem('除草器的共享魔法')
+            for share_user_id in share_user_id_list:
+                if report_type in ['质量喜报', '草精喜报']:
+                    await baseDB.changeAdvKusa(share_user_id, 1)
+                if report_type == '连号喜报':
+                    await baseDB.changeKusa(share_user_id, int(chain_str))
