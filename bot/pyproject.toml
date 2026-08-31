@@ -26,6 +26,12 @@ adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
     { name = "QQ", module_name = "nonebot.adapters.qq" }
 ]
-plugins = []
-plugin_dirs = ["plugins"]
+# 启用的插件（显式列出；禁用模块 = 注释对应行 + 重启 bot）
+# 基础设施：internal_notify 为 scheduler 进程 QQ 通知入口，勿禁用
+plugins = [
+    "plugins.internal_notify",
+    # ---- 业务插件 ----
+    "plugins.reply_commands",
+    "plugins.strange_word",
+]
 builtin_plugins = ["echo"]

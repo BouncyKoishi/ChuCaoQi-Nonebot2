@@ -82,7 +82,12 @@ async def _handle_kusa_harvested_event(data: dict) -> bool:
     if not isinstance(actions, list):
         return False
 
-    from plugins.kusa_farm import execute_harvest_actions
+    try:
+        from plugins.kusa_farm import execute_harvest_actions
+    except ImportError:
+        # kusa_farm 插件被禁用时的预期降级：结算已在 scheduler 完成，仅跳过 QQ 玩法消息
+        logger.info('[internal_notify] kusa_farm 未启用，跳过生草结算事件')
+        return True
     await execute_harvest_actions(actions)
     return True
 
