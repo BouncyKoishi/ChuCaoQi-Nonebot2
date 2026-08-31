@@ -82,12 +82,15 @@ async def _handle_kusa_harvested_event(data: dict) -> bool:
     if not isinstance(actions, list):
         return False
 
-    try:
-        from plugins.kusa_farm import execute_harvest_actions
-    except ImportError:
+    # 必须按 NoneBot 插件启用状态判断，不能依赖 ImportError：
+    # 禁用插件只是不从 pyproject.toml 加载，模块文件仍在磁盘上，
+    # import 会成功并执行顶层代码，把已禁用的命令 matcher 全部注册回来
+    loaded = {p.name for p in nonebot.get_loaded_plugins()}
+    if 'kusa_farm' not in loaded:
         # kusa_farm 插件被禁用时的预期降级：结算已在 scheduler 完成，仅跳过 QQ 玩法消息
         logger.info('[internal_notify] kusa_farm 未启用，跳过生草结算事件')
         return True
+    from plugins.kusa_farm import execute_harvest_actions
     await execute_harvest_actions(actions)
     return True
 
