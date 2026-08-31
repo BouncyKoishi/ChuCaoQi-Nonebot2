@@ -28,6 +28,10 @@ adapters = [
 ]
 # 启用的插件（显式列出；禁用模块 = 注释对应行 + 重启 bot）
 # 基础设施：internal_notify 为 scheduler 进程 QQ 通知入口，勿禁用
+# 插件依赖（启用左侧插件须同时启用右侧插件，否则会静默复活后者）：
+#   strange_word / pic_search / pic_classifier → reply_commands
+#   draw_item / kusa_G → pagination_helper
+#   kusa_main → kusa_statistics
 plugins = [
     "plugins.internal_notify",
     # ---- 业务插件 ----
