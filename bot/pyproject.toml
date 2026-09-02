@@ -37,5 +37,7 @@ plugins = [
     # ---- 业务插件 ----
     "plugins.reply_commands",
     "plugins.strange_word",
+    "plugins.chatGPT_api",
+    "plugins.pic_archive",
 ]
 builtin_plugins = ["echo"]
