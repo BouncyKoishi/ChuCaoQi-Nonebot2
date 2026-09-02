@@ -17,6 +17,7 @@ from nonebot_plugin_apscheduler import scheduler
 from multi_platform import (
     get_user_id,
     is_group_message,
+    build_reply_message,
     send_reply,
     send_finish,
 )
@@ -36,9 +37,8 @@ async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     
     content = await getChatContent(event, args)
-    await send_reply(chat_cmd, "已开启新对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=True)
-    await send_finish(chat_cmd, reply)
+    await send_finish(chat_cmd, await build_reply_message(event, reply))
 
 
 chat5_cmd = on_command('chat5', aliases={'chat4'}, priority=5, block=True)
@@ -51,9 +51,8 @@ async def handle_chat5(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    await send_reply(chat5_cmd, "已开启新对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=True, useGPT5=True)
-    await send_finish(chat5_cmd, reply)
+    await send_finish(chat5_cmd, await build_reply_message(event, reply))
 
 
 chatn_cmd = on_command('chatn', priority=5, block=True)
@@ -64,9 +63,8 @@ async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    await send_reply(chatn_cmd, "已开启新对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True)
-    await send_finish(chatn_cmd, reply)
+    await send_finish(chatn_cmd, await build_reply_message(event, reply))
 
 
 chatn5_cmd = on_command('chatn5', aliases={'chatn4'}, priority=5, block=True)
@@ -79,9 +77,8 @@ async def handle_chatn5(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    await send_reply(chatn5_cmd, "已开启新对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True, useGPT5=True)
-    await send_finish(chatn5_cmd, reply)
+    await send_finish(chatn5_cmd, await build_reply_message(event, reply))
 
 
 chatc_cmd = on_command('chatc', priority=5, block=True)
@@ -92,9 +89,8 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    await send_reply(chatc_cmd, "继续进行对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=False)
-    await send_finish(chatc_cmd, reply)
+    await send_finish(chatc_cmd, await build_reply_message(event, reply))
 
 
 chatc5_cmd = on_command('chatc5', aliases={'chatc4'}, priority=5, block=True)
@@ -107,9 +103,8 @@ async def handle_chatc5(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    await send_reply(chatc5_cmd, "继续进行对话，等待回复……")
     reply = await chat(user_id, content, isNewConversation=False, useGPT5=True)
-    await send_finish(chatc5_cmd, reply)
+    await send_finish(chatc5_cmd, await build_reply_message(event, reply))
 
 
 chatb_cmd = on_command('chatb', priority=5, block=True)
@@ -139,9 +134,8 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
         return
     inputContent = content if args.extract_plain_text() else lastMessage.content
-    await send_reply(chatr_cmd, "已撤回最后一轮对话，重新生成回复中……")
     reply = await chat(user_id, inputContent, isNewConversation=False)
-    await send_finish(chatr_cmd, reply)
+    await send_finish(chatr_cmd, await build_reply_message(event, reply))
 
 
 chatr5_cmd = on_command('chatr5', aliases={'chatr4'}, priority=5, block=True)
@@ -159,9 +153,8 @@ async def handle_chatr5(bot: Bot, event: Event, args: Message = CommandArg()):
         await send_finish(chatr5_cmd, "没有可撤回的对话，无法重新生成。")
         return
     inputContent = content if args.extract_plain_text() else lastMessage.content
-    await send_reply(chatr5_cmd, "已撤回最后一轮对话，重新生成回复中……")
     reply = await chat(user_id, inputContent, isNewConversation=False, useGPT5=True)
-    await send_finish(chatr5_cmd, reply)
+    await send_finish(chatr5_cmd, await build_reply_message(event, reply))
 
 
 chat_user_cmd = on_command('chat_user', priority=5, block=True)

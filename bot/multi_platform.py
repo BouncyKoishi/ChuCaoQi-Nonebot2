@@ -229,6 +229,26 @@ def build_message(event: Event, *segments) -> Union[Message, str]:
         return ''.join(parts)
 
 
+async def build_reply_message(event: Event, message: Union[str, Message]) -> Union[Message, str]:
+    """
+    构建"回复/引用"消息：群聊时引用原消息，私聊时返回原样
+    """
+    if not is_group_message(event):
+        return message
+    mid = get_message_id(event)
+    if not mid:
+        return message
+    if is_onebot_v11_event(event):
+        from nonebot.adapters.onebot.v11 import Message as OBReplyMessage
+        from nonebot.adapters.onebot.v11 import MessageSegment as OBReplyMS
+        return OBReplyMessage([OBReplyMS.reply(int(mid)), message])
+    if is_qq_event(event):
+        from nonebot.adapters.qq import Message as QQReplyMessage
+        from nonebot.adapters.qq import MessageSegment as QQReplyMS
+        return QQReplyMessage([QQReplyMS.reference(mid), message])
+    return message
+
+
 async def build_at_message(event: Event, user_id: int, text: str) -> Union[Message, str]:
     """
     构建包含艾特的消息，兼容双平台
