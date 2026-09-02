@@ -1,19 +1,16 @@
 import os
 import glob
 import random
-import pytz
-from datetime import datetime
 
-from nonebot import on_command, get_bot, logger
+from nonebot import on_command, logger
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters import Message
-from nonebot_plugin_apscheduler import scheduler
 from nonebot.adapters.onebot.v11 import MessageSegment as ms
 from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.typing import T_State
 
-from kusa_base import plugin_config, is_super_admin
+from kusa_base import is_super_admin
 from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
 from utils import extractImgUrls, imgLocalPathToBase64
 from core.services import pic_archive_service as pic_service
@@ -68,26 +65,6 @@ def getExamineFiles():
     if os.path.exists(EXAMINE_PATH):
         return glob.glob(os.path.join(EXAMINE_PATH, '*'))
     return []
-
-
-if scheduler:
-    @scheduler.scheduled_job('cron', day='*', misfire_grace_time=500)
-    async def dailyJunRunner():
-        bot = get_bot()
-        now = datetime.now(pytz.timezone('Asia/Shanghai'))
-        paths = archiveInfo['jun']['onlineFilePaths']
-        if not paths:
-            return
-        picPath = random.choice(paths)
-        st = f'新的一天！今天是{now.year}年{now.month}月{now.day}日！今天的精选罗俊是——'
-
-        sysu_group = plugin_config.get('group', {}).get('sysu')
-        if sysu_group:
-            from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
-            from typing import cast
-            onebot_bot = cast(OneBotV11Bot, bot)
-            await onebot_bot.send_group_msg(group_id=int(sysu_group), message=st)
-            await onebot_bot.send_group_msg(group_id=int(sysu_group), message=imgLocalPathToBase64(picPath))
 
 
 async def rollPic(event: Event, imageArchiveName: str):
