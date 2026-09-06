@@ -1,72 +1,82 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
-echo    生草系统 Web 项目启动脚本
+echo    Kusa System Web Startup Script
 echo ========================================
 echo.
 
-echo [1/3] 检查环境...
-where python >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 错误: 未找到 Python，请先安装 Python 3.8+
+echo [1/3] Checking environment...
+if not exist "%~dp0venv\Scripts\python.exe" (
+    echo ERROR: venv not found. Run install_deps.bat first.
     pause
     exit /b 1
 )
 
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo 错误: 未找到 Node.js，请先安装 Node.js 16+
+    echo ERROR: Node.js not found. Please install Node.js 16+.
     pause
     exit /b 1
 )
 
-echo 环境检查通过！
+echo Environment OK!
 echo.
 
-echo [2/3] 安装依赖...
-echo 正在安装后端依赖...
-pip install -r requirements.txt
+echo [2/3] Installing dependencies...
+echo Installing Python dependencies (venv)...
+"%~dp0venv\Scripts\python.exe" -m pip install -r "%~dp0requirements.txt"
 if %errorlevel% neq 0 (
-    echo 错误: 后端依赖安装失败
+    echo ERROR: Python dependency install failed.
     pause
     exit /b 1
 )
 
-echo 正在安装前端依赖...
-if not exist "frontend\node_modules" (
-    cd /d %~dp0frontend && call npm install
+echo Installing backend Node dependencies...
+if not exist "%~dp0backend\node_modules" (
+    cd /d %~dp0backend && call npm install
     if %errorlevel% neq 0 (
-        echo 错误: 前端依赖安装失败
+        echo ERROR: backend Node dependency install failed.
         pause
         exit /b 1
     )
 ) else (
-    echo 前端依赖已存在，跳过安装
+    echo backend Node dependencies already exist, skipping.
 )
 
-echo 依赖安装完成！
+echo Installing frontend Node dependencies...
+if not exist "%~dp0frontend\node_modules" (
+    cd /d %~dp0frontend && call npm install
+    if %errorlevel% neq 0 (
+        echo ERROR: frontend dependency install failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo frontend dependencies already exist, skipping.
+)
+
+echo Dependencies installed!
 echo.
 
-echo [3/3] 启动服务...
-echo 正在启动调度器服务 (定时任务进程)...
-start "生草系统调度器" cmd /k "cd /d %~dp0 && call %~dp0venv\Scripts\activate && python -m scheduler.main"
+echo [3/3] Starting services...
+echo Starting scheduler service (cron jobs)...
+start "kusa-scheduler" cmd /k "cd /d %~dp0 && call %~dp0venv\Scripts\activate && python -m scheduler.main"
 
-echo 正在启动后端服务 (端口 8000)...
-start "生草系统后端" cmd /k "cd /d %~dp0backend && call %~dp0venv\Scripts\activate && npm run dev"
+echo Starting backend service (port 8000)...
+start "kusa-backend" cmd /k "cd /d %~dp0backend && call %~dp0venv\Scripts\activate && npm run dev"
 
 timeout /t 3 /nobreak >nul
 
-echo 正在启动前端服务 (端口 3000)...
-start "生草系统前端" cmd /k "cd /d %~dp0frontend && npm run dev"
+echo Starting frontend service (port 3000)...
+start "kusa-frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
 
 echo.
 echo ========================================
-echo    启动完成！
+echo    All services started!
 echo ========================================
 echo.
-echo 后端服务: http://localhost:8000
-echo 前端服务: http://localhost:3000
-echo API文档: http://localhost:8000/docs
+echo Backend API: http://localhost:8000
+echo Frontend:    http://localhost:3000
+echo API docs:    http://localhost:8000/docs
 echo.
-echo 按任意键关闭此窗口（服务将继续运行）...
+echo Press any key to close this window (services keep running)...
 pause >nul
