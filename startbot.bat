@@ -1,5 +1,5 @@
 @echo off
 title kusa-bot
 echo Starting bot...
-venv\Scripts\python bot\bot.py
+"%~dp0venv\Scripts\python.exe" "%~dp0bot\bot.py"
 pause

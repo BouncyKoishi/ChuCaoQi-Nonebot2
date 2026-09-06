@@ -1,10 +1,6 @@
 @echo off
-echo Activating virtual environment...
-call "%~dp0venv\Scripts\activate.bat"
-
-echo.
 echo Installing Python dependencies (this may take a few minutes)...
-pip install -r "%~dp0requirements.txt"
+"%~dp0venv\Scripts\python.exe" -m pip install -r "%~dp0requirements.txt"
 if %errorlevel% neq 0 (
     echo ERROR: Python dependency install failed.
     pause

@@ -59,10 +59,10 @@ echo.
 
 echo [3/3] Starting services...
 echo Starting scheduler service (cron jobs)...
-start "kusa-scheduler" cmd /k "cd /d %~dp0 && call %~dp0venv\Scripts\activate && python -m scheduler.main"
+start "kusa-scheduler" cmd /k "cd /d %~dp0 && %~dp0venv\Scripts\python.exe -m scheduler.main"
 
 echo Starting backend service (port 8000)...
-start "kusa-backend" cmd /k "cd /d %~dp0backend && call %~dp0venv\Scripts\activate && npm run dev"
+start "kusa-backend" cmd /k "cd /d %~dp0backend && set PATH=%~dp0venv\Scripts;%PATH% && npm run dev"
 
 timeout /t 3 /nobreak >nul
 
