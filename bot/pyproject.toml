@@ -39,5 +39,6 @@ plugins = [
     "plugins.strange_word",
     "plugins.chatGPT_api",
     "plugins.pic_archive",
+    "plugins.pic_classifier",
 ]
 builtin_plugins = ["echo"]
