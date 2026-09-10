@@ -55,9 +55,8 @@ async def handle_公告(bot: Bot, event: Event):
 @晚安_cmd.handle()
 async def handle_晚安(bot: Bot, event: Event):
     if not is_group_message(event):
-        await send_finish(晚安_cmd, '该指令只能在群聊中使用^ ^')
         return
-    msg = f'晚安！你获得的睡眠时间：'
+    msg = f'晚安，'
     await sleep(晚安_cmd, bot, event, msg, 400, 50, 1)
 
 
@@ -66,9 +65,8 @@ async def handle_晚安(bot: Bot, event: Event):
 @午睡_cmd.handle()
 async def handle_午睡(bot: Bot, event: Event):
     if not is_group_message(event):
-        await send_finish(午睡_cmd, '该指令只能在群聊中使用^ ^')
         return
-    msg = f'午安！你获得的睡眠时间：'
+    msg = f'午安，'
     await sleep(午睡_cmd, bot, event, msg, 60, 10, 1)
 
 
@@ -77,9 +75,8 @@ async def handle_午睡(bot: Bot, event: Event):
 @醒了_cmd.handle()
 async def handle_醒了(bot: Bot, event: Event):
     if not is_group_message(event):
-        await send_finish(醒了_cmd, '该指令只能在群聊中使用^ ^')
         return
-    msg = f'你可以睡个回笼觉。你获得的睡眠时间：'
+    msg = f'你可以睡个回笼觉，'
     await sleep(醒了_cmd, bot, event, msg, 60, 10, 1)
 
 
@@ -94,7 +91,8 @@ async def sleep(matcher, bot: Bot, event: Event, msg, base, summa, size):
     group_id_int = int(group_id)
     if is_onebot_v11_bot(bot) and group_id_int in allow_list:
         durTime = sleepTimeCalculation(base, summa, size)
-        msg += f'{durTime}sec！'
+        wake_time = (datetime.datetime.now() + datetime.timedelta(seconds=durTime)).strftime('%H:%M')
+        msg += f'{wake_time}后见'
         from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
         onebot_bot = cast(OneBotV11Bot, bot)
         try:

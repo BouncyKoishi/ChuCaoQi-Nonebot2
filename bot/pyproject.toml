@@ -40,5 +40,7 @@ plugins = [
     "plugins.chatGPT_api",
     "plugins.pic_archive",
     "plugins.pic_classifier",
+    "plugins.simple_commands",
+    "plugins.kusa_statistics",
 ]
 builtin_plugins = ["echo"]

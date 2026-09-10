@@ -54,13 +54,13 @@ async def handle_admin_help(event: Union[OneBotV11MessageEvent, QQMessageEvent])
     await send_finish(admin_help_cmd, outputStr)
 
 
-total_kusa_cmd = on_command('TOTAL_KUSA', priority=5, block=True)
-
-@total_kusa_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=1)
+# ===== 已禁用注册（仅保留函数体，不注册为指令） =====
+# total_kusa_cmd = on_command('TOTAL_KUSA', priority=5, block=True)
+# @total_kusa_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_total_kusa(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     result = await StatisticService.get_total_stats()
-    
+
     await send_finish(total_kusa_cmd,
         f'系统总草数: {result["totalKusa"]}\n'
         f'可用总草数: {result["availableKusa"]}\n'
@@ -69,25 +69,23 @@ async def handle_total_kusa(event: Union[OneBotV11MessageEvent, QQMessageEvent])
     )
 
 
-kusa_rank_cmd = on_command('KUSA_RANK', priority=5, block=True)
-
-@kusa_rank_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=1)
+# kusa_rank_cmd = on_command('KUSA_RANK', priority=5, block=True)
+# @kusa_rank_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_kusa_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     rank_list = await StatisticService.get_kusa_rank(limit=25)
-    
+
     output = "草排行榜：\n"
     for item in rank_list:
         display = item['name'] if item['name'] else (item['qq'] or str(item['userId']))
         output += f"{item['rank']}. {display}: {item['kusa']:,}\n"
-    
+
     await send_finish(kusa_rank_cmd, output[:-1])
 
 
-factory_rank_cmd = on_command('FACTORY_RANK', priority=5, block=True)
-
-@factory_rank_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=1)
+# factory_rank_cmd = on_command('FACTORY_RANK', priority=5, block=True)
+# @factory_rank_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_factory_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     rank_list = await itemDB.getItemsByType("工厂")
     output = "工厂数排行榜：\n"
@@ -96,18 +94,17 @@ async def handle_factory_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent
         user_qq = await userDB.getRealQQByUserId(info.user_id)
         user_display = user.name if user.name else (user_qq or str(user.user_id))
         output += f'{i + 1}. {user_display}: {info.amount}\n'
-    
+
     await send_finish(factory_rank_cmd, output[:-1])
 
 
-kusa_adv_cmd = on_command('KUSA_ADV', priority=5, block=True)
-
-@kusa_adv_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=1)
+# kusa_adv_cmd = on_command('KUSA_ADV', priority=5, block=True)
+# @kusa_adv_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId_str = args.extract_plain_text().strip()
     self_userId = await get_user_id(event, auto_create=True)
-    
+
     if not userId_str:
         userId = self_userId
     else:
@@ -116,13 +113,13 @@ async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
         if not userId:
             await send_finish(kusa_adv_cmd, "用户不存在")
             return
-    
+
     result = await StatisticService.get_user_stats(userId=userId)
-    
+
     if 'error' in result:
         await send_finish(kusa_adv_cmd, "用户不存在")
         return
-    
+
     await send_finish(kusa_adv_cmd,
         f"{result['userId']}草精情况：\n"
         f"现有 {result['nowAdvKusa']}\n"
@@ -132,20 +129,18 @@ async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     )
 
 
-草精排行榜_cmd = on_command('草精排行榜', priority=5, block=True)
-
-@草精排行榜_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=10)
+# 草精排行榜_cmd = on_command('草精排行榜', priority=5, block=True)
+# @草精排行榜_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=10)
 async def handle_草精排行榜(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     userId = await get_user_id(event, auto_create=True)
     outputStr = '总草精排行榜：' + await getKusaAdvRank(userId=userId)
     await send_finish(草精排行榜_cmd, outputStr)
 
 
-草精新星榜_cmd = on_command('草精新星榜', priority=5, block=True)
-
-@草精新星榜_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=10)
+# 草精新星榜_cmd = on_command('草精新星榜', priority=5, block=True)
+# @草精新星榜_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=10)
 async def handle_草精新星榜(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
     userId = await get_user_id(event, auto_create=True)
     outputStr = '草精新星排行榜：' + await getKusaAdvRank(userId=userId, levelMax=6)
@@ -166,7 +161,7 @@ async def handle_kusa_adv_rank(event: Union[OneBotV11MessageEvent, QQMessageEven
         try:
             levelMax = int(strippedArg.split('--l')[1].strip().split()[0])
         except (IndexError, ValueError):
-            await send_finish(kusa_adv_rank_cmd, "Invalid levelMax value. Please provide a valid integer after --l.")
+            await send_finish(kusa_adv_rank_cmd, "--l 参数需为整数，请正确指定等级上限")
             return
     outputStr = '草精排行榜（自定义）：' + await getKusaAdvRank(userId, levelMax, showInactiveUsers, showSubAccount)
     await send_finish(kusa_adv_rank_cmd, outputStr)
@@ -227,10 +222,9 @@ async def getKusaAdv(user):
     return nowKusaAdv + titleKusaAdv + itemKusaAdv, nowKusaAdv, titleKusaAdv, itemKusaAdv
 
 
-生草打分榜_cmd = on_command('生草打分榜', priority=5, block=True)
-
-@生草打分榜_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=5)
+# 生草打分榜_cmd = on_command('生草打分榜', priority=5, block=True)
+# @生草打分榜_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=5)
 async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId = await get_user_id(event, auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
@@ -257,10 +251,9 @@ async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
     await send_finish(生草打分榜_cmd, output[:-1])
 
 
-草精打分榜_cmd = on_command('草精打分榜', priority=5, block=True)
-
-@草精打分榜_cmd.handle()
-@permissionCheck(onlyAdmin=False, costCredentials=5)
+# 草精打分榜_cmd = on_command('草精打分榜', priority=5, block=True)
+# @草精打分榜_cmd.handle()
+# @permissionCheck(onlyAdmin=False, costCredentials=5)
 async def handle_草精打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId = await get_user_id(event, auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
