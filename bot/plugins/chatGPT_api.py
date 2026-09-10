@@ -324,12 +324,9 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
                 newModel = "gemini-2.5-pro"
             else:
                 newModel = "gemini-2.5-flash"
-        elif "vision" in strippedText:
-            newModel = "deepseek-v4-flash-vision-exp"
-        elif "deepseek-pro" in strippedText:
-            newModel = "deepseek-v4-pro"
         elif "deepseek" in strippedText:
-            newModel = "deepseek-v4-flash"
+            # 所有 deepseek 系（含 deepseek/deepseek-pro/vision 等）统一路由到 deepseek-flash
+            newModel = "deepseek-flash"
         elif strippedText == "lzusa" or strippedText.startswith("lzusa ") or strippedText.startswith("lzusa:"):
             if not await permissionCheck(event, "model"):
                 await send_finish(model_change_cmd, "需要高级模型权限！")
@@ -344,7 +341,7 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
             newModel = strippedText
             await send_reply(model_change_cmd, "注意，你定义的模型名称不在预设列表，chat可能报错！")
     else:
-        newModel = "deepseek-v4-flash"
+        newModel = "deepseek-flash"
     
     await db.updateUsingModel(user_id, newModel)
     output = f"已切换到{newModel}模型"
@@ -466,7 +463,7 @@ async def handle_chat_help(bot: Bot, event: Event):
         output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5-mini）"
     if await is_super_admin(user_id):
         output += "\nchat_user_update: 更改指定人员chat权限(-p私聊 -r角色 -m进阶模型 -v更高上限 -u无限使用)"
-    output += "\n\n当前默认使用的模型：deepseek-v4-flash\n对话使用的是收费api，请勿滥用！"
+    output += "\n\n当前默认使用的模型：deepseek-flash\n对话使用的是收费api，请勿滥用！"
     await send_finish(chat_help_cmd, output)
 
 
@@ -529,7 +526,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
 async def getChatReply(model, history):
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
-    result = await ChatService.get_chat_reply(model, history)
+    result = await ChatService.get_chat_reply(model, history, reasoning_effort="none", source="chat")
     reply, tokenUsage = result.reply, result.token_usage
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")

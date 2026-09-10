@@ -7,6 +7,7 @@
 import sys
 import os
 import asyncio
+import datetime
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, Union
 from openai import OpenAI
@@ -102,6 +103,10 @@ class ChatReply:
     token_usage: int
     reasoning_text: str = ''
     finish_reason: str = ''
+    prompt_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
 
 
 class ChatService:
@@ -220,11 +225,18 @@ class ChatService:
                         reply_text += content.get('text') or ''
         status = response_dict.get('status')
         finish_reason = 'stop' if status == 'completed' else (status or '')
+        usage = response_dict.get('usage') or {}
+        details = usage.get('output_tokens_details') or {}
+        in_details = usage.get('input_tokens_details') or {}
         return ChatReply(
             reply=reply_text,
-            token_usage=(response_dict.get('usage') or {}).get('total_tokens', 0),
+            token_usage=usage.get('total_tokens', 0),
             reasoning_text=reasoning_text,
             finish_reason=finish_reason,
+            prompt_tokens=usage.get('input_tokens', 0),
+            output_tokens=usage.get('output_tokens', 0),
+            reasoning_tokens=details.get('reasoning_tokens', 0),
+            cached_tokens=in_details.get('cached_tokens', 0),
         )
 
     @staticmethod
@@ -232,21 +244,34 @@ class ChatService:
         """把 Chat Completions 响应解析为 ChatReply"""
         choice = (response_dict.get('choices') or [{}])[0]
         message = choice.get('message') or {}
+        usage = response_dict.get('usage') or {}
+        details = usage.get('completion_tokens_details') or {}
+        prompt_details = usage.get('prompt_tokens_details') or {}
         return ChatReply(
             reply=message.get('content'),
-            token_usage=(response_dict.get('usage') or {}).get('total_tokens', 0),
+            token_usage=usage.get('total_tokens', 0),
             reasoning_text=message.get('reasoning_content', ''),
             finish_reason=choice.get('finish_reason', ''),
+            prompt_tokens=usage.get('prompt_tokens', 0),
+            output_tokens=usage.get('completion_tokens', 0),
+            reasoning_tokens=details.get('reasoning_tokens', 0),
+            cached_tokens=prompt_details.get('cached_tokens', 0),
         )
 
     @staticmethod
-    async def get_chat_reply(model: str, messages: list) -> ChatReply:
+    async def get_chat_reply(model: str, messages: list,
+                             reasoning_effort: Optional[str] = "none",
+                             source: str = "general") -> ChatReply:
         """获取大模型回复
-        
+
         Args:
             model: 模型名称
             messages: 消息历史列表
-            
+            reasoning_effort: 推理档位。deepseek-flash 为推理型模型，默认 none 关闭推理以免
+                每注都烧几百上千 token；``chat`` 等需要思考的场景显式传 ``low``。
+                可选: none/minimal/low/medium/high/xhigh/max（注意没有 disabled）。
+            source: 请求来源标识（chat/strange_word/trigrams/moderate_content 等），用于日志。
+
         Returns:
             ChatReply: 回复内容 / token使用量 / 思维链文本 / 结束原因
         """
@@ -254,14 +279,14 @@ class ChatService:
         messages = ChatService._coerce_messages(messages)
 
         loop = asyncio.get_event_loop()
-        
+
         def _get_response():
             # deepseek / gpt 走 Responses API，失败自动回退 Chat Completions
             if ChatService._use_responses_api(model):
                 kwargs = dict(
                     model=actual_model,
                     input=ChatService._messages_to_responses_input(messages),
-                    reasoning={"effort": "low"},
+                    reasoning={"effort": reasoning_effort},
                     timeout=120,
                 )
                 try:
@@ -271,19 +296,27 @@ class ChatService:
                     return client.chat.completions.create(
                         messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
                     ), False
-            
+
             kwargs = dict(
                 messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
             )
             if 'gpt-5' in model:
-                kwargs['reasoning_effort'] = "low"
+                kwargs['reasoning_effort'] = reasoning_effort
             return client.chat.completions.create(**kwargs), False
-        
+
         response, used_responses = await loop.run_in_executor(None, _get_response)
         response_dict = response.to_dict()
         if used_responses:
-            return ChatService._normalize_responses(response_dict)
-        return ChatService._normalize_chat_completions(response_dict)
+            result = ChatService._normalize_responses(response_dict)
+        else:
+            result = ChatService._normalize_chat_completions(response_dict)
+
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print(f"[LLM] {now} src={source} model={model} "
+              f"input={result.prompt_tokens} output={result.output_tokens} "
+              f"reasoning={result.reasoning_tokens} cached={result.cached_tokens} "
+              f"total={result.token_usage} finish={result.finish_reason}")
+        return result
     
     @staticmethod
     async def moderate_content(text: str) -> Dict[str, Any]:
@@ -321,7 +354,8 @@ class ChatService:
         ]
         
         try:
-            reply = (await ChatService.get_chat_reply("deepseek-v4-flash", messages)).reply
+            reply = (await ChatService.get_chat_reply(
+                "deepseek-flash", messages, source="moderate_content")).reply
             
             import json
             result = json.loads(reply)

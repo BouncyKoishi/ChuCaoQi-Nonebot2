@@ -38,7 +38,7 @@ async def updateChatUser(userId, userMode: str):
     await ChatUser.update_or_create(user=unifiedUser, defaults={
         'allowPrivate': allowPrivate, 'allowRole': allowRole,
         'allowAdvancedModel': allowAdvancedModel, 'dailyTokenLimit': dailyTokenLimit
-    })
+    }, create_defaults={'chosenModel': 'deepseek-flash'})
 
 
 async def updateUsingModel(userId, newModel):
