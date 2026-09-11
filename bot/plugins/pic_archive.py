@@ -96,7 +96,7 @@ _ROLL_COMMANDS = [
     ('rollpurejdm',  ['rollpurezdm', 'rollpuremd'], 'zundamon2'),
     ('rollmmc',      ['rolllg'],    'pusheen'),
     ('rollgm',       [],            'cat'),
-    ('roll251',      [],            '251'),
+    ('roll251',      ['roll👊'],    '251'),
     ('rollxb',       [],            'xiba'),
     ('rollnczw',     ['rollhorou'], 'nczw'),
     ('rollfumo',     [],            'fumo'),
