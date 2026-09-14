@@ -327,8 +327,6 @@ async def handle_radar(args: Message = CommandArg()):
         pic = MessageSegment.image(image_bytes)
         await radar_cmd.finish(pic)
     else:
-        await radar_cmd.send("正在获取雷达回波GIF，请稍候...")
-
         gif_data, message = await _generate_radar_gif(region, radar_url)
 
         if not gif_data:
@@ -611,9 +609,6 @@ async def handle_precipitation(event, args: Message = CommandArg()):
 
         all_cached = False
         need_fetch_keys.append((loc_name, lat, lon, cache_key))
-
-    if not all_cached:
-        await precip_cmd.send("正在获取降雨预报...")
 
     for loc_name, lat, lon, cache_key in need_fetch_keys:
         data = await _get_precipitation_forecast(lat, lon)

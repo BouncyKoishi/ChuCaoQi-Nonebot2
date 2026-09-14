@@ -42,5 +42,7 @@ plugins = [
     "plugins.pic_classifier",
     "plugins.simple_commands",
     "plugins.kusa_statistics",
+    "plugins.weather",
+    "plugins.earthquake",
 ]
 builtin_plugins = ["echo"]
