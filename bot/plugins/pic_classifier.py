@@ -10,7 +10,10 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 from kusa_base import plugin_config
 from utils import checkBanAvailable
-from .reply_commands import reply_command, set_duel_confirmations
+from .reply_commands import (
+    reply_command, set_duel_confirmations,
+    get_duel_confirmations, del_duel_confirmations,
+)
 
 nailongModel = None
 modelPath = './model_best.pth'
@@ -200,8 +203,6 @@ confirm_duel = on_message(priority=10, block=False)
 
 @confirm_duel.handle()
 async def handle_confirm_duel(bot: Bot, event: GroupMessageEvent):
-    from .reply_commands import get_duel_confirmations, del_duel_confirmations
-
     user_qq = event.user_id
     confirmations = get_duel_confirmations()
     if user_qq not in confirmations:
