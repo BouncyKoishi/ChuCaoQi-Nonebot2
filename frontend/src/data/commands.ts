@@ -987,6 +987,14 @@ export const commands: Command[] = [
     subcategory: '图库'
   },
   {
+    name: 'rollds',
+    params: '',
+    description: '从deepseek图库中随机获取一张图片。',
+    tags: [{ text: '群聊', type: 'warning' }],
+    category: '群聊互动',
+    subcategory: '图库'
+  },
+  {
     name: 'commitpic',
     params: '[图片]',
     description: '向图库上传图片，图片将进入待分类目录等待管理员分类。',

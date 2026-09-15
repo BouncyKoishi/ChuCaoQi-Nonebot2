@@ -55,6 +55,7 @@ ARCHIVE_INFO: Dict[str, Dict[str, str]] = {
     "xiba": {"onlinePath": os.path.join(get_base_pic_path(), '西八兔子图库'), "displayName": "西八兔"},
     "nczw": {"onlinePath": os.path.join(get_base_pic_path(), '鸟澄珠乌'), "displayName": "鸟澄珠乌"},
     "fumo": {"onlinePath": os.path.join(get_base_pic_path(), 'Fumo Emoji'), "displayName": "Fumo Emoji"},
+    "ds": {"onlinePath": os.path.join(get_base_pic_path(), 'deepseek'), "displayName": "deepseek"},
 }
 
 

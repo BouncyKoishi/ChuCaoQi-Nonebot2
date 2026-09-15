@@ -113,6 +113,7 @@ _ROLL_COMMANDS = [
     ('rollxb',       [],            'xiba'),
     ('rollnczw',     ['rollhorou'], 'nczw'),
     ('rollfumo',     [],            'fumo'),
+    ('rollds',       [],            'ds'),
 ]
 
 _roll_matchers = {}
