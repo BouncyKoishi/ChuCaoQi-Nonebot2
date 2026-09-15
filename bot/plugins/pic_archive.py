@@ -13,6 +13,7 @@ from nonebot.typing import T_State
 from kusa_base import is_super_admin
 from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
 from utils import extractImgUrls, imgLocalPathToBase64
+from .reply_commands import reply_command
 from core.services import pic_archive_service as pic_service
 from core.services.pic_archive_service import ARCHIVE_INFO as archiveInfo
 
@@ -152,6 +153,21 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
         logger.error(f'handle_commitpic_got error: {e}')
         import traceback
         traceback.print_exc()
+
+
+# #指令版：回复一张图片消息，快速上传回复中的第一张图到待分类目录
+# 非图片/多图场景由 reply_commands 公共机制处理（非图片静默、多图取第一张）
+@reply_command('commitpic')
+async def commitpic_reply(event, img_url, bot):
+    try:
+        success_count, duplicate_count = _download_and_check_dup([img_url], event.user_id)
+        msg = f'上传完成：{success_count} 张成功'
+        if duplicate_count > 0:
+            msg += f'，{duplicate_count} 张重复已拦截'
+        return msg
+    except Exception as e:
+        logger.error(f'#commitpic error: {e}')
+        return None
 
 
 examinepic_cmd = on_command("examinepic", priority=5, block=True)

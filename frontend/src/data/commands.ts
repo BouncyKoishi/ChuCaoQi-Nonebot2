@@ -999,6 +999,20 @@ export const commands: Command[] = [
     category: '群聊互动',
     subcategory: '图库'
   },
+  {
+    name: '#commitpic',
+    params: '',
+    description: '回复一张图片消息，快速将该图片上传到待分类目录。',
+    details: [
+      '回复一张图片消息，回复内容输入 #commitpic',
+      '与 commitpic 指令功能一致，图片进入待分类目录等待管理员分类',
+      '通过MD5校验自动检测并拦截图库中已有的图片',
+      '回复的多张图片中仅上传第一张'
+    ],
+    tags: [{ text: '回复触发', type: 'info' }, { text: '群聊', type: 'warning' }],
+    category: '群聊互动',
+    subcategory: '图库'
+  },
 
   {
     name: 'rollwife',
