@@ -12,12 +12,16 @@ import hashlib
 import re
 from datetime import datetime
 from urllib.parse import urlparse
-from urllib.request import urlretrieve
 from typing import Dict, Any, List, Optional, Tuple, Set
 
 import sys
 
+import httpx
+
 from core.config import plugin_config, DATA_DIR
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 # ==================== 路径与分类定义 ====================
@@ -309,20 +313,43 @@ def _extract_ext_from_url(url: str) -> str:
     return '.jpg'
 
 
-def download_and_check_dup(img_urls: List[str], user_id: int, md5_set: Set[str]) -> Tuple[int, int, Set[str]]:
-    """下载图片到待分类目录并查重（带 MD5 查重）
+def _safe_remove(path: str) -> None:
+    """安全删除文件，忽略不存在与删除失败的异常"""
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
 
-    从 pic_archive.py _download_and_check_dup 提取
-    bot 端 commitpic 指令调用，传入 bot 维护的 md5_set
+
+async def download_and_check_dup(
+    img_urls: List[str], user_id: int, md5_set: Set[str],
+    max_size_bytes: Optional[int] = None,
+) -> Tuple[int, int, int, Set[str]]:
+    """下载图片到待分类目录并查重（带 MD5 查重）并拦截超大图片
+
+    从 pic_archive.py 的 commitpic 上传逻辑提取
+    bot 端 commitpic / #commitpic 指令调用，传入 bot 维护的 md5_set
+
+    大小拦截：发起流式 GET，在读取 body 前利用 Content-Length 头预判大小，
+    超阈值直接拦截，不下载 body；若响应头缺失（分块传输）则边下载边计数，
+    累计达阈值即中断。阈值默认读配置 picArchive.maxUploadMB（单位 MB），缺省 2MB。
 
     Returns:
-        (success_count, duplicate_count, updated_md5_set)
+        (success_count, duplicate_count, oversized_count, updated_md5_set)
     """
+    if max_size_bytes is None:
+        max_size_bytes = int(plugin_config.get('picArchive', {}).get('maxUploadMB', 2.5) * 1024 * 1024)
+
     examine_path = get_examine_path()
     os.makedirs(examine_path, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    # 微秒级时间戳，避免同秒内重复上传覆盖同名文件、误删已保存的正常图片
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
     success_count = 0
     duplicate_count = 0
+    oversized_count = 0
+
+    timeout = httpx.Timeout(15.0, connect=10.0, read=30.0)
 
     for i, url in enumerate(img_urls):
         ext = _extract_ext_from_url(url)
@@ -330,14 +357,34 @@ def download_and_check_dup(img_urls: List[str], user_id: int, md5_set: Set[str])
         new_filename = f'{user_id}-{timestamp}-{safe_filename}'
         file_path = os.path.join(examine_path, new_filename)
         try:
-            urlretrieve(url, file_path)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream('GET', url) as resp:
+                    resp.raise_for_status()
+                    length = resp.headers.get('content-length')
+                    if length is not None and int(length) > max_size_bytes:
+                        oversized_count += 1
+                        continue
+                    downloaded = 0
+                    exceeded = False
+                    with open(file_path, 'wb') as f:
+                        async for chunk in resp.aiter_bytes(8192):
+                            downloaded += len(chunk)
+                            if downloaded > max_size_bytes:
+                                exceeded = True
+                                break
+                            f.write(chunk)
+            if exceeded:
+                _safe_remove(file_path)
+                oversized_count += 1
+                continue
             file_md5 = compute_md5(file_path)
             if file_md5 in md5_set:
-                os.remove(file_path)
+                _safe_remove(file_path)
                 duplicate_count += 1
             else:
                 md5_set.add(file_md5)
                 success_count += 1
-        except Exception:
-            pass
-    return success_count, duplicate_count, md5_set
+        except Exception as e:
+            logger.warning(f'download_and_check_dup 下载失败 {url}: {e}')
+            _safe_remove(file_path)
+    return success_count, duplicate_count, oversized_count, md5_set

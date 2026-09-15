@@ -47,15 +47,27 @@ def _add_to_archive_paths(archive_key: str, file_path: str):
         archiveInfo[archive_key]['onlineFilePaths'].sort()
 
 
-def _download_and_check_dup(imgUrls: list[str], user_id) -> tuple[int, int]:
+async def _download_and_check_dup(imgUrls: list[str], user_id) -> tuple[int, int, int]:
     """下载图片并查重（复用 service 层，传入 bot 维护的 md5_set）"""
     global _pic_md5_set
-    success_count, duplicate_count, _pic_md5_set = pic_service.download_and_check_dup(
+    success_count, duplicate_count, oversized_count, _pic_md5_set = await pic_service.download_and_check_dup(
         imgUrls, user_id, _pic_md5_set
     )
     if duplicate_count > 0:
         logger.info(f'本次上传拦截 {duplicate_count} 张重复图片')
-    return success_count, duplicate_count
+    if oversized_count > 0:
+        logger.info(f'本次上传拦截 {oversized_count} 张超过大小限制的图片')
+    return success_count, duplicate_count, oversized_count
+
+
+def _format_upload_msg(success_count: int, duplicate_count: int, oversized_count: int) -> str:
+    """格式化上传结果文案，供 commitpic / #commitpic 共用"""
+    msg = f'上传完成：{success_count} 张成功'
+    if duplicate_count > 0:
+        msg += f'，{duplicate_count} 张重复已拦截'
+    if oversized_count > 0:
+        msg += f'，{oversized_count} 张超过大小限制已拦截'
+    return msg
 
 
 _build_md5_index()
@@ -127,10 +139,8 @@ async def handle_commitpic(event: Event, args: Message = CommandArg()):
 
     imgUrls = extractImgUrls(args)
     if imgUrls:
-        success_count, duplicate_count = _download_and_check_dup(imgUrls, event.user_id)
-        msg = f'上传完成：{success_count} 张成功'
-        if duplicate_count > 0:
-            msg += f'，{duplicate_count} 张重复已拦截'
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, event.user_id)
+        msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
 
 
@@ -142,10 +152,8 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
             await send_finish(commitpic_cmd, "非图片，取消本次上传")
             return
 
-        success_count, duplicate_count = _download_and_check_dup(imgUrls, event.user_id)
-        msg = f'上传完成：{success_count} 张成功'
-        if duplicate_count > 0:
-            msg += f'，{duplicate_count} 张重复已拦截'
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, event.user_id)
+        msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
     except (FinishedException, PausedException, RejectedException):
         raise
@@ -160,11 +168,8 @@ async def handle_commitpic_got(event: Event, image: Message = Arg()):
 @reply_command('commitpic')
 async def commitpic_reply(event, img_url, bot):
     try:
-        success_count, duplicate_count = _download_and_check_dup([img_url], event.user_id)
-        msg = f'上传完成：{success_count} 张成功'
-        if duplicate_count > 0:
-            msg += f'，{duplicate_count} 张重复已拦截'
-        return msg
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup([img_url], event.user_id)
+        return _format_upload_msg(success_count, duplicate_count, oversized_count)
     except Exception as e:
         logger.error(f'#commitpic error: {e}')
         return None
