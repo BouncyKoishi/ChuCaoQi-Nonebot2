@@ -28,8 +28,6 @@ async def handle_roll(args: Message = CommandArg()):
     if dice_info:
         result, _ = run_dice(dice_info, 'n')
         await roll_cmd.finish(f'Roll点结果为：{result}')
-    else:
-        await roll_cmd.finish('Roll点格式不正确^ ^\n示例：!roll 1d100')
 
 
 @rollx_cmd.handle()
@@ -43,8 +41,6 @@ async def handle_rollx(args: Message = CommandArg()):
             await rollx_cmd.finish(f'Roll点结果为：{num_list_str}={result}')
         else:
             await rollx_cmd.finish(f'Roll点结果为：{result}')
-    else:
-        await rollx_cmd.finish('Rollx格式不正确^ ^\n示例：!rollx 5d100')
 
 
 @rollf_cmd.handle()
@@ -55,8 +51,6 @@ async def handle_rollf(args: Message = CommandArg()):
     if dice_info:
         result, _ = run_dice(dice_info, 'f')
         await rollf_cmd.finish(f'Roll点结果为：{result:.2f}')
-    else:
-        await rollf_cmd.finish('Rollf格式不正确^ ^\n示例：!rollf 2d5.5')
 
 
 def run_dice(dice_info, stage):
@@ -105,7 +99,6 @@ def run_dice(dice_info, stage):
 async def handle_choose(state: T_State, args: Message = CommandArg()):
     arg_list = args.extract_plain_text().strip().split(' ')
     if not arg_list or not arg_list[0]:
-        await choose_cmd.finish('未输入选项^ ^')
         return
     
     user_id = state.get('_user_id') or 'unknown'
@@ -118,7 +111,6 @@ async def handle_choose(state: T_State, args: Message = CommandArg()):
 async def handle_judge(state: T_State, args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip().replace('\n', '')
     if not stripped_arg:
-        await judge_cmd.finish('未输入判断内容^ ^')
         return
     
     answer = ['是', '否']

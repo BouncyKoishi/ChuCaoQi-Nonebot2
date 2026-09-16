@@ -44,5 +44,7 @@ plugins = [
     "plugins.kusa_statistics",
     "plugins.weather",
     "plugins.earthquake",
+    "plugins.roll_commands",
+    "plugins.notice_handler",
 ]
 builtin_plugins = ["echo"]
