@@ -19,7 +19,7 @@ netease_music_cmd = on_command("music", priority=5, block=True)
 async def handle_music(args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     if not stripped_arg:
-        await netease_music_cmd.finish('未输入搜索内容。')
+        return
     
     music_info = await get_music_info_from_netease(stripped_arg, 0)
     await send_music_info(music_info)
@@ -35,9 +35,12 @@ async def get_music_info_from_netease(name: str, offset: int) -> dict:
         'Cookie': web_config.get('neteaseMusic', {}).get('cookie', '')
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.get(api_url, headers=headers, timeout=10)
-        return response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url, headers=headers, timeout=10)
+            return response.json()
+    except Exception:
+        return {'code': 0}
 
 
 async def send_music_info(info: dict):
@@ -45,11 +48,12 @@ async def send_music_info(info: dict):
         await netease_music_cmd.finish('网易云查询服务异常。')
         return
     
-    if 'songs' not in info.get('result', {}):
+    songs = info.get('result', {}).get('songs') or []
+    if not songs:
         await netease_music_cmd.finish('查无结果。')
         return
     
-    song = info['result']['songs'][0]
+    song = songs[0]
     song_id = song['id']
     artist_name = song['artists'][0]['name']
     album_name = song['album']['name']

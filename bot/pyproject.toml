@@ -46,5 +46,7 @@ plugins = [
     "plugins.earthquake",
     "plugins.roll_commands",
     "plugins.notice_handler",
+    "plugins.saizeriya",
+    "plugins.netease_music",
 ]
 builtin_plugins = ["echo"]

@@ -279,13 +279,13 @@ saizeriya_cmd = on_command("点餐", aliases={"saizeriya"}, priority=5, block=Tr
 async def handle_saizeriya(args: Message = CommandArg()):
     strippedText = args.extract_plain_text().strip()
     if not strippedText:
-        await saizeriya_cmd.finish('没有输入预算或预算范围^ ^')
+        return
     try:
         if '-' in strippedText:
             budgetMin, budgetMax = map(int, strippedText.split('-'))
         else:
             budgetMin = budgetMax = int(strippedText)
     except ValueError:
-        await saizeriya_cmd.finish('输入的预算格式不正确^ ^')
+        return
     result = rollMenu(budgetMin, budgetMax)
     await saizeriya_cmd.finish(result)
