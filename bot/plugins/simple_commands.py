@@ -23,6 +23,7 @@ from multi_platform import (
     is_onebot_v11_bot,
     send_finish,
     get_napcat_bot,
+    build_reply_message,
 )
 
 
@@ -91,15 +92,18 @@ async def sleep(matcher, bot: Bot, event: Event, msg, base, summa, size):
     group_id_int = int(group_id)
     if is_onebot_v11_bot(bot) and group_id_int in allow_list:
         durTime = sleepTimeCalculation(base, summa, size)
-        wake_time = (datetime.datetime.now() + datetime.timedelta(seconds=durTime)).strftime('%H:%M')
-        msg += f'{wake_time}后见'
+        now = datetime.datetime.now()
+        wake_dt = now + datetime.timedelta(seconds=durTime)
+        day_tag = '今天' if wake_dt.date() == now.date() else '明天'
+        wake_time = wake_dt.strftime('%H:%M')
+        msg += f'{day_tag}{wake_time}后见！'
         from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
         onebot_bot = cast(OneBotV11Bot, bot)
         try:
             await onebot_bot.set_group_ban(group_id=group_id_int, user_id=int(user_qq), duration=durTime)
         except Exception as e:
             print(f'禁言失败: {e}')
-        await send_finish(matcher, msg)
+        await send_finish(matcher, await build_reply_message(event, msg))
     elif not is_onebot_v11_bot(bot):
         msg += '该功能仅在OneBot平台可用'
         await send_finish(matcher, msg)
