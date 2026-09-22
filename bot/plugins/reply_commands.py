@@ -69,6 +69,25 @@ def extract_reply_images(event) -> list:
     return extractImgUrls(msg)
 
 
+def extract_reply_content(event) -> Tuple[str, list]:
+    """提取所回复消息的纯文本与全部图片 URL，供内容型 #指令（如 #chat）使用
+
+    返回 (text, img_urls)；未回复消息时返回 ('', [])。
+    不感知上层具体类型（如 chat 的 TextPart/ImagePart），保持依赖方向：
+    reply_commands 不依赖具体业务内容结构。
+    """
+    text, urls = '', []
+    msg = _proper_reply_message(event)
+    if msg is None:
+        return text, urls
+    try:
+        text = msg.extract_plain_text().strip()
+    except Exception:
+        text = ''
+    urls = extractImgUrls(msg)
+    return text, urls
+
+
 def extract_reply_image(event) -> Optional[str]:
     """提取所回复消息中的第一张图片 URL"""
     urls = extract_reply_images(event)

@@ -1369,6 +1369,19 @@ export const commands: Command[] = [
     subcategory: '基础对话'
   },
   {
+    name: '#chat',
+    params: '',
+    description: '回复一条消息，用该消息内容开启新对话。',
+    details: [
+      '回复一条消息（文本或图片），回复内容输入 #chat',
+      '与 chat 指令相同，以被回复消息的内容作为新对话输入',
+      '被回复内容为空或权限不足时不响应'
+    ],
+    tags: [{ text: '回复触发', type: 'info' }],
+    category: 'ChatBot',
+    subcategory: '基础对话'
+  },
+  {
     name: 'chatn',
     params: '对话内容',
     description: '开启新对话，无视当前角色设定，使用默认角色进行对话。',
@@ -1376,6 +1389,19 @@ export const commands: Command[] = [
       '与 chat 类似，但忽略用户当前选择的角色，使用默认角色',
       '群聊中无需额外权限即可使用，私聊需要私聊权限'
     ],
+    category: 'ChatBot',
+    subcategory: '基础对话'
+  },
+  {
+    name: '#chatn',
+    params: '',
+    description: '回复一条消息，用该消息内容开启新对话（使用默认角色）。',
+    details: [
+      '回复一条消息（文本或图片），回复内容输入 #chatn',
+      '与 chatn 指令相同，以被回复消息的内容作为输入，使用默认角色',
+      '被回复内容为空或权限不足时不响应'
+    ],
+    tags: [{ text: '回复触发', type: 'info' }],
     category: 'ChatBot',
     subcategory: '基础对话'
   },

@@ -21,6 +21,7 @@ from multi_platform import (
     send_reply,
     send_finish,
 )
+from reply_commands import reply_text_command, extract_reply_content
 
 HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
 
@@ -105,6 +106,33 @@ async def handle_chatc5(bot: Bot, event: Event, args: Message = CommandArg()):
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=False, useGPT5=True)
     await send_finish(chatc5_cmd, await build_reply_message(event, reply))
+
+
+# ---- #指令：chat / chatn（回复触发式，处理所回复消息的内容）----
+
+# 被回复内容为空/无回复/权限不足时统一返回 None → reply_commands 静默处理
+
+
+async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool):
+    if not await permissionCheck(event, 'chat'):
+        return None
+    text, imgUrls = extract_reply_content(event)
+    if not text and not imgUrls:
+        return None
+    user_id = await get_user_id(event, auto_create=True)
+    content = _buildContent(text, imgUrls)
+    reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
+    return await build_reply_message(event, reply)
+
+
+@reply_text_command('chat')
+async def chat_reply_cmd(event, bot):
+    return await _handle_reply_chat(bot, event, useDefaultRole=False)
+
+
+@reply_text_command('chatn')
+async def chatn_reply_cmd(event, bot):
+    return await _handle_reply_chat(bot, event, useDefaultRole=True)
 
 
 chatb_cmd = on_command('chatb', priority=5, block=True)
@@ -487,6 +515,14 @@ async def getChatContent(event: Event, args: Message):
     for url in imgUrls:
         userContent.append(ImagePart(url=url))
     return userContent
+
+
+def _buildContent(text: str, imgUrls: list):
+    """从纯文本与图片 URL 构造 chat content（text 与图均可能为空）"""
+    content = [TextPart(text=text)]
+    for url in imgUrls:
+        content.append(ImagePart(url=url))
+    return content
 
 
 async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, useGPT5=False, retryCount=0):
