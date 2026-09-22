@@ -42,20 +42,6 @@ async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
     await send_finish(chat_cmd, await build_reply_message(event, reply))
 
 
-chat5_cmd = on_command('chat5', aliases={'chat4'}, priority=5, block=True)
-
-@chat5_cmd.handle()
-async def handle_chat5(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
-        return
-    if not await permissionCheck(event, 'model'):
-        return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=True, useGPT5=True)
-    await send_finish(chat5_cmd, await build_reply_message(event, reply))
-
-
 chatn_cmd = on_command('chatn', priority=5, block=True)
 
 @chatn_cmd.handle()
@@ -68,20 +54,6 @@ async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
     await send_finish(chatn_cmd, await build_reply_message(event, reply))
 
 
-chatn5_cmd = on_command('chatn5', aliases={'chatn4'}, priority=5, block=True)
-
-@chatn5_cmd.handle()
-async def handle_chatn5(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
-        return
-    if not await permissionCheck(event, 'model'):
-        return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True, useGPT5=True)
-    await send_finish(chatn5_cmd, await build_reply_message(event, reply))
-
-
 chatc_cmd = on_command('chatc', priority=5, block=True)
 
 @chatc_cmd.handle()
@@ -92,20 +64,6 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=False)
     await send_finish(chatc_cmd, await build_reply_message(event, reply))
-
-
-chatc5_cmd = on_command('chatc5', aliases={'chatc4'}, priority=5, block=True)
-
-@chatc5_cmd.handle()
-async def handle_chatc5(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
-        return
-    if not await permissionCheck(event, 'model'):
-        return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=False, useGPT5=True)
-    await send_finish(chatc5_cmd, await build_reply_message(event, reply))
 
 
 # ---- #指令：chat / chatn（回复触发式，处理所回复消息的内容）----
@@ -164,25 +122,6 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
     inputContent = content if args.extract_plain_text() else lastMessage.content
     reply = await chat(user_id, inputContent, isNewConversation=False)
     await send_finish(chatr_cmd, await build_reply_message(event, reply))
-
-
-chatr5_cmd = on_command('chatr5', aliases={'chatr4'}, priority=5, block=True)
-
-@chatr5_cmd.handle()
-async def handle_chatr5(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
-        return
-    if not await permissionCheck(event, 'model'):
-        return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
-    lastMessage = await undo(user_id)
-    if lastMessage is None:
-        await send_finish(chatr5_cmd, "没有可撤回的对话，无法重新生成。")
-        return
-    inputContent = content if args.extract_plain_text() else lastMessage.content
-    reply = await chat(user_id, inputContent, isNewConversation=False, useGPT5=True)
-    await send_finish(chatr5_cmd, await build_reply_message(event, reply))
 
 
 chat_user_cmd = on_command('chat_user', priority=5, block=True)
@@ -337,15 +276,7 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
     strippedText = args.extract_plain_text().strip()
     
     if strippedText:
-        if "gpt" in strippedText:
-            if strippedText in ["gpt-5", "gpt5"]:
-                if not await permissionCheck(event, "model"):
-                    await send_finish(model_change_cmd, "需要高级模型权限！")
-                    return
-                newModel = "gpt-5"
-            else:
-                newModel = "gpt-5-mini"
-        elif "gemini" in strippedText:
+        if "gemini" in strippedText:
             if not await permissionCheck(event, "admin"):
                 return
             if "pro" in strippedText:
@@ -477,18 +408,20 @@ async def handle_chat_help(bot: Bot, event: Event):
         await send_finish(chat_help_cmd, "你尚未激活大模型对话功能。可使用!chat开启一个对话以激活。")
         return
 
-    output = "chat_user: 查看chat权限等相关信息\nchat: 开始一个新对话"
+    output = "chat_user: 查看chat权限等相关信息\nchat: 开始一个新对话（可附带文本/图片）"
     output += "\nchatc: 继续上一轮对话\nchatb: 撤回上一轮对话\nchatr: 撤回上一轮对话并重新生成"
+    output += "\nchatn: 无视当前角色设定，开始一个新对话"
+    output += "\n#chat: 回复一条消息，以被回复内容开始新对话"
+    output += "\n#chatn: 回复一条消息，以被回复内容开始新对话（使用默认角色）"
     output += "\nchat_save: 手动保存当前对话记录"
     output += "\nchat_load: 加载已保存的对话记录文件"
     if chatUser.allowRole:
-        output += "\nchatn: 无视当前角色设定，开始一个新对话"
         output += ("\nrole_change: 切换当前角色\nrole_detail: 查看角色描述信息\n"
                    "role_update: 新增/更新角色描述信息(-g 设置为全局角色)\nrole_delete: 删除角色")
     if chatUser.allowAdvancedModel:
-        output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5/gpt-5-mini/lzusa）"
+        output += "\nmodel_change: 切换语言模型（deepseek-flash/lzusa/gemini-2.5）"
     else:
-        output += "\nmodel_change: 切换语言模型（deepseek/deepseek-r/gpt-5-mini）"
+        output += "\nmodel_change: 切换语言模型（deepseek-flash/lzusa）"
     if await is_super_admin(user_id):
         output += "\nchat_user_update: 更改指定人员chat权限(-p私聊 -r角色 -m进阶模型 -v更高上限 -u无限使用)"
     output += "\n\n当前默认使用的模型：deepseek-flash\n对话使用的是收费api，请勿滥用！"
@@ -525,10 +458,10 @@ def _buildContent(text: str, imgUrls: list):
     return content
 
 
-async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, useGPT5=False, retryCount=0):
+async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, retryCount=0):
     chatUser = await db.getChatUser(user_id)
     
-    model = "gpt-5" if useGPT5 else chatUser.chosenModel
+    model = chatUser.chosenModel
     roleId = 0 if useDefaultRole else chatUser.chosenRoleId
     history = await getNewConversation(user_id, roleId) if isNewConversation else await readDefaultConversation(user_id)
     history.append(ChatMessage(role="user", content=content))
@@ -536,7 +469,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
     try:
         reply, tokenUsage = await getChatReply(model, history)
         reply = get_sensitive_filter().filter(reply)
-        await db.addTokenUsage(chatUser, model, tokenUsage)
+        await db.addTokenUsage(chatUser, tokenUsage)
         saveDefaultConversation(user_id, history)
 
         if isNewConversation:
@@ -546,7 +479,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             systemPrompt = history[0] if history and len(history) > 0 and history[0].role == 'system' else None
             roleName = systemPrompt.botRoleName if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
-        modelSign = "(GPT-5)" if model == "gpt-5" else ("(Lzusa)" if "lzusa" in model else ("(deepseek)" if "deepseek" in model else ""))
+        modelSign = "(Lzusa)" if "lzusa" in model else ""
         tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
@@ -554,7 +487,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
         await send_log(f"user: {user_id} 的 {model} api调用出现异常，异常原因为：{reason}\nRetry次数：{retryCount}")
         print(f"Catch Time: {datetime.datetime.now().timestamp()}")
         if retryCount < 1:
-            return await chat(user_id, content, isNewConversation, useDefaultRole, useGPT5, retryCount + 1)
+            return await chat(user_id, content, isNewConversation, useDefaultRole, retryCount + 1)
         else:
             return "对话出错了，请稍后再试。"
 

@@ -76,9 +76,7 @@ async def deleteRole(role: ChatRole):
     await role.delete()
 
 
-async def addTokenUsage(chatUser: ChatUser, model: str, tokenUse: int):
-    tokenUse *= 5 if model == "gpt-5" else 1
-    tokenUse = tokenUse // 5 if model == "gpt-5-nano" else tokenUse
+async def addTokenUsage(chatUser: ChatUser, tokenUse: int):
     chatUser.tokenUse += tokenUse
     chatUser.todayTokenUse += tokenUse
     await chatUser.save()

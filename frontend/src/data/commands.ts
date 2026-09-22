@@ -1355,20 +1355,6 @@ export const commands: Command[] = [
     subcategory: '基础对话'
   },
   {
-    name: 'chat5',
-    aliases: ['chat4'],
-    params: '对话内容',
-    description: '开启新对话，强制使用 GPT-5 模型进行对话。',
-    details: [
-      '与 chat 类似，但强制使用 gpt-5 模型',
-      '需要进阶模型权限（allowAdvancedModel）才能使用',
-      'GPT-5 的 token 用量会乘以5计算'
-    ],
-    tags: [{ text: '需进阶模型权限', type: 'warning' }],
-    category: 'ChatBot',
-    subcategory: '基础对话'
-  },
-  {
     name: '#chat',
     params: '',
     description: '回复一条消息，用该消息内容开启新对话。',
@@ -1406,19 +1392,6 @@ export const commands: Command[] = [
     subcategory: '基础对话'
   },
   {
-    name: 'chatn5',
-    aliases: ['chatn4'],
-    params: '对话内容',
-    description: '开启新对话，无视当前角色设定并强制使用 GPT-5 模型进行对话。',
-    details: [
-      '同时具备 chatn（使用默认角色）和 chat5（使用GPT-5模型）的特性',
-      '需要进阶模型权限'
-    ],
-    tags: [{ text: '需进阶模型权限', type: 'warning' }],
-    category: 'ChatBot',
-    subcategory: '基础对话'
-  },
-  {
     name: 'chatc',
     params: '对话内容',
     description: '继续上一轮对话，在当前对话历史中追加消息。',
@@ -1426,19 +1399,6 @@ export const commands: Command[] = [
       '不会创建新对话，而是在已有的对话历史基础上继续对话',
       '保留先前对话历史中的角色设定和上下文'
     ],
-    category: 'ChatBot',
-    subcategory: '基础对话'
-  },
-  {
-    name: 'chatc5',
-    aliases: ['chatc4'],
-    params: '对话内容',
-    description: '继续上一轮对话，强制使用 GPT-5 模型。',
-    details: [
-      '与 chatc 类似，但强制使用 gpt-5 模型',
-      '需要进阶模型权限（allowAdvancedModel）'
-    ],
-    tags: [{ text: '需进阶模型权限', type: 'warning' }],
     category: 'ChatBot',
     subcategory: '基础对话'
   },
@@ -1461,19 +1421,6 @@ export const commands: Command[] = [
       '先撤回最后一轮对话（用户消息+AI回复），然后重新发送消息获取新回复',
       '如果提供了新内容参数，则使用新内容替代原消息重新生成；否则使用原用户消息重新生成'
     ],
-    category: 'ChatBot',
-    subcategory: '基础对话'
-  },
-  {
-    name: 'chatr5',
-    aliases: ['chatr4'],
-    params: '[新内容]',
-    description: '撤回最后一轮对话并使用 GPT-5 模型重新生成回复。',
-    details: [
-      '与 chatr 类似，但强制使用 gpt-5 模型重新生成',
-      '需要进阶模型权限（allowAdvancedModel）'
-    ],
-    tags: [{ text: '需进阶模型权限', type: 'warning' }],
     category: 'ChatBot',
     subcategory: '基础对话'
   },
