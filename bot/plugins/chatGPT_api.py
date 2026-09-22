@@ -21,7 +21,7 @@ from multi_platform import (
     send_reply,
     send_finish,
 )
-from reply_commands import reply_text_command, extract_reply_content
+from .reply_commands import reply_text_command, extract_reply_content
 
 HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
 
