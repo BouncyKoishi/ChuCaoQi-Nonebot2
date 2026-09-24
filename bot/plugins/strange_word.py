@@ -32,10 +32,10 @@ from nonebot_plugin_apscheduler import scheduler
 
 from kusa_base import plugin_config
 from core.config import DATA_DIR
-from .reply_commands import reply_text_command
-from core.services.chat_service import ChatService
+from .reply_commands import reply_text_command, extract_reply_content
+from core.services.chat_service import ChatService, TextPart, ImagePart
 from sensitive_filter import get_sensitive_filter
-from utils import get_group_member_nickname
+from utils import get_group_member_nickname, extractImgUrls
 
 sentence_list_dict = {}
 poke_cache = {}
@@ -145,11 +145,19 @@ def get_random_sentence(group_num: int) -> str:
 def is_valid_for_model(sentence: str) -> bool:
     if len(sentence) <= 2:
         return False
-    if '[CQ:' in sentence:
-        return False
     if re.match(r'^[\s!@#$%^&*()_+\-=\[\]{};:\'",.<>/?\\|`~]*$', sentence):
         return False
     return True
+
+
+def _build_user_content(user_prompt: str, imgUrls: list):
+    """构造 user 消息 content：无图时保持纯文本，有图时为 TextPart + ImagePart 列表
+
+    图片仅来自用户本次主动输入（说点怪话系列/#怪话），候选怪话列表恒为纯文本。
+    """
+    if not imgUrls:
+        return user_prompt
+    return [TextPart(text=user_prompt)] + [ImagePart(url=url) for url in imgUrls]
 
 
 def get_model_sentence_list(group_num: int) -> list:
@@ -178,8 +186,8 @@ def match_strange_word(reply: str, model_list: list) -> Optional[str]:
     return None
 
 
-async def get_sentence_advance(group_num: int, input_str: str, exclude: str = '') -> str:
-    """使用AI从怪话库中选择最合适的回复（基于单条输入）"""
+async def get_sentence_advance(group_num: int, input_str: str, exclude: str = '', imgUrls: list = None) -> str:
+    """使用AI从怪话库中选择最合适的回复（基于单条输入，输入可含图片）"""
     model_sentence_list = get_model_sentence_list(group_num)
     if not model_sentence_list:
         return get_random_sentence(group_num)
@@ -193,7 +201,8 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
     for _ in range(15):
         user_prompt += random.choice(available) + '\n'
 
-    prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+    prompt = [{"role": "system", "content": system_prompt},
+              {"role": "user", "content": _build_user_content(user_prompt, imgUrls)}]
     reply = (await ChatService.get_chat_reply("deepseek-flash", prompt, source="strange_word")).reply
 
     matched = match_strange_word(reply, model_sentence_list)
@@ -208,8 +217,8 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
     return matched
 
 
-async def get_sentence_list_advance(group_num: int, input_str: str) -> list:
-    """使用AI生成多条怪话"""
+async def get_sentence_list_advance(group_num: int, input_str: str, imgUrls: list = None) -> list:
+    """使用AI生成多条怪话（输入可含图片）"""
     model_sentence_list = get_model_sentence_list(group_num)
     if not model_sentence_list:
         return [get_random_sentence(group_num) for _ in range(3)]
@@ -221,7 +230,8 @@ async def get_sentence_list_advance(group_num: int, input_str: str) -> list:
     for _ in range(40):
         user_prompt += random.choice(model_sentence_list) + '\n'
 
-    prompt = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+    prompt = [{"role": "system", "content": system_prompt},
+              {"role": "user", "content": _build_user_content(user_prompt, imgUrls)}]
     reply = (await ChatService.get_chat_reply("deepseek-flash", prompt, source="strange_word")).reply
 
     if reply.startswith('[') and reply.endswith(']'):
@@ -334,12 +344,12 @@ auto_freeze_cmd = on_command("gh_auto_freeze", priority=5, block=True)
 async def 怪话_cmd(event, bot):
     if not hasattr(event, 'reply') or not event.reply:
         return 'Reply获取异常^ ^'
-    text = event.reply.message.extract_plain_text().strip()
-    if not text:
+    text, imgUrls = extract_reply_content(event)
+    if not text and not imgUrls:
         return '暂不支持非文本格式怪话^ ^'
     group_num = getattr(event, 'group_id', default_group_num)
     if allow_model and random.random() < 0.8:
-        reply = await get_sentence_advance(group_num, text)
+        reply = await get_sentence_advance(group_num, text, imgUrls=imgUrls)
     else:
         reply = get_random_sentence(group_num)
     update_poke_cache(group_num, reply, event.time)
@@ -393,8 +403,9 @@ async def handle_auto_freeze(event: MessageEvent):
 async def handle_say(event: MessageEvent, args: Message = CommandArg()):
     group_num = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
-    if stripped_text and allow_model and random.random() < 0.8:
-        reply = await get_sentence_advance(group_num, stripped_text)
+    imgUrls = extractImgUrls(args)
+    if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
+        reply = await get_sentence_advance(group_num, stripped_text, imgUrls=imgUrls)
     else:
         reply = get_random_sentence(group_num)
     update_poke_cache(group_num, reply, event.time)
@@ -404,32 +415,30 @@ async def handle_say(event: MessageEvent, args: Message = CommandArg()):
 @say_reverse_cmd.handle()
 async def handle_say_reverse(event: MessageEvent):
     msg = get_random_sentence(getattr(event, 'group_id', default_group_num))
-    await say_reverse_cmd.send(msg if '[CQ:' in msg else msg[::-1])
+    await say_reverse_cmd.send(msg[::-1])
 
 
 @say_shuffle_cmd.handle()
 async def handle_say_shuffle(event: MessageEvent):
     group_id = getattr(event, 'group_id', default_group_num)
     msg = get_random_sentence(group_id)
-    if '[CQ:' in msg:
-        await say_shuffle_cmd.send(msg)
-    else:
-        msg_list = list(msg)
-        random.shuffle(msg_list)
-        await say_shuffle_cmd.send(''.join(msg_list))
+    msg_list = list(msg)
+    random.shuffle(msg_list)
+    await say_shuffle_cmd.send(''.join(msg_list))
 
 
 @say_many_cmd.handle()
 async def handle_say_many(event: MessageEvent, args: Message = CommandArg()):
     group_id = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
-    if stripped_text and allow_model and random.random() < 0.8:
-        reply_list = await get_sentence_list_advance(group_id, stripped_text)
+    imgUrls = extractImgUrls(args)
+    if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
+        reply_list = await get_sentence_list_advance(group_id, stripped_text, imgUrls=imgUrls)
     else:
         reply_list = []
         while len(reply_list) < 3:
             msg = get_random_sentence(group_id)
-            if '[CQ:' not in msg and msg not in reply_list:
+            if msg not in reply_list:
                 reply_list.append(msg)
     for msg in reply_list:
         await say_many_cmd.send(msg)
@@ -492,6 +501,10 @@ async def record_message(event: MessageEvent):
     if hasattr(event, 'reply') and event.reply:
         return
     if receive_freeze or not msg:
+        return
+    # 字面CQ码防注入：nonebot2 发送侧会把 str 中的 "[CQ:xxx]" 重新解析成真实消息段，
+    # 故含字面CQ码的文本一律不入库（真图片/语音等消息段已被上方的segment黑名单拦截）
+    if '[CQ:' in msg:
         return
     if msg in sentence_list_dict.get(group_num, []):
         return
