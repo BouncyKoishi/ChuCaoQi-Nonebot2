@@ -37,6 +37,9 @@ from core.services.chat_service import ChatService, TextPart, ImagePart
 from sensitive_filter import get_sensitive_filter
 from utils import get_group_member_nickname, extractImgUrls
 
+# 怪话语料目录（与 chuchu.sqlite 同级存放于 data/ 下）
+STRANGE_WORD_DIR = os.path.join(DATA_DIR, 'database', 'strangeWord')
+
 sentence_list_dict = {}
 poke_cache = {}
 poke_last_respond_time = {}
@@ -544,7 +547,7 @@ driver = get_driver()
 @driver.on_startup
 async def load_strange_words():
     global sentence_list_dict
-    folder_path = 'database/strangeWord'
+    folder_path = STRANGE_WORD_DIR
     os.makedirs(folder_path, exist_ok=True)
     sf = get_sensitive_filter()
 
@@ -581,9 +584,9 @@ async def load_strange_words():
 
 
 def save_strange_words():
-    os.makedirs('database/strangeWord', exist_ok=True)
+    os.makedirs(STRANGE_WORD_DIR, exist_ok=True)
     for group_num in sentence_list_dict:
-        with open(f'database/strangeWord/{group_num}.txt', 'w', encoding='utf-8') as f:
+        with open(os.path.join(STRANGE_WORD_DIR, f'{group_num}.txt'), 'w', encoding='utf-8') as f:
             for sentence in sentence_list_dict[group_num]:
                 f.write(sentence + '\n')
     print(f'[怪话] 已保存怪话数据，共 {len(sentence_list_dict)} 个群')
