@@ -366,7 +366,8 @@ async def remove_cmd(event, bot):
     user_id = await get_user_id(event)
     if not user_id or not await is_super_admin(user_id):
         return
-    text = str(event.reply.message).strip()
+    # 取纯文本而非 str(Message)：str() 会做 CQ 转义（&→&amp; 等），与库内原文匹配不上
+    text, _ = extract_reply_content(event)
     if not text:
         return
     global sentence_list_dict
