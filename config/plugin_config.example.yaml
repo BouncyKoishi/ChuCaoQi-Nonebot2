@@ -29,6 +29,8 @@ guaihua:
     - '闪照'
     - '视频'
     - '红包'
+    - 'https://' # 含链接的消息不入库
+    - 'http://'
   notRecordMembers:
     - 0 # 不记录的成员QQ号
   recordGroups:
