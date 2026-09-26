@@ -28,6 +28,15 @@ HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
 from sensitive_filter import get_sensitive_filter
 
 
+# 群聊 #chat 在默认角色（无 role prompt）下的输出长度约束，用于抑制长文刷屏。
+# 由 #chat 入口判定作用域后作为用户内容前缀注入；!chat 类与 #chatn 均不注入。
+GROUP_CHAT_LENGTH_CONSTRAINT = (
+    "【系统要求·必须遵守】当前为QQ群聊，回复必须简短：不超过50字、不超过三句话。"
+    "描述图片时不要罗列细节，只概括主体。"
+    "不要使用列表、小标题、加粗等长文排版。"
+)
+
+
 chat_cmd = on_command('chat', priority=5, block=True)
 
 @chat_cmd.handle()
@@ -71,7 +80,11 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
 # 被回复内容为空/无回复/权限不足时统一返回 None → reply_commands 静默处理
 
 
-async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool):
+async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, lengthConstraint: str = ''):
+    """回复触发式对话（#chat / #chatn）
+
+    lengthConstraint: 附加到用户内容前的约束文本，仅由 #chat 入口按作用域传入。
+    """
     if not await permissionCheck(event, 'chat'):
         return None
     text, imgUrls = extract_reply_content(event)
@@ -79,13 +92,22 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool):
         return None
     user_id = await get_user_id(event, auto_create=True)
     content = _buildContent(text, imgUrls)
+    if lengthConstraint:
+        content.insert(0, TextPart(text=lengthConstraint))
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
     return await build_reply_message(event, reply)
 
 
 @reply_text_command('chat')
 async def chat_reply_cmd(event, bot):
-    return await _handle_reply_chat(bot, event, useDefaultRole=False)
+    # 群聊 + 默认角色（无 role prompt）时附加长度约束：#chat 是群内长文刷屏的主要来源，
+    # 用户已自设角色的对话不注入，避免覆盖其人设。
+    lengthConstraint = ''
+    if is_group_message(event):
+        chatUser = await db.getChatUser(await get_user_id(event, auto_create=True))
+        if chatUser is not None and chatUser.chosenRoleId == 0:
+            lengthConstraint = GROUP_CHAT_LENGTH_CONSTRAINT
+    return await _handle_reply_chat(bot, event, useDefaultRole=False, lengthConstraint=lengthConstraint)
 
 
 @reply_text_command('chatn')
