@@ -35,6 +35,7 @@ adapters = [
 plugins = [
     "plugins.internal_notify",
     # ---- 业务插件 ----
+    "plugins.identity_bind",
     "plugins.reply_commands",
     "plugins.strange_word",
     "plugins.chatGPT_api",
