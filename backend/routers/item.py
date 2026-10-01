@@ -73,3 +73,53 @@ async def compose_ticket(request: Request):
     
     result = await ItemService.compose_ticket(userId=userId, target=target, amount=int(amount))
     return result
+
+
+# ==================== 物品转让接口 ====================
+
+async def _resolve_transfer_target(target_user_id, target_qq):
+    """按用户ID或QQ号解析接收方，返回 (user, error)"""
+    if target_user_id:
+        try:
+            target_user_id = int(target_user_id)
+        except (TypeError, ValueError):
+            return None, '用户ID格式不正确'
+        return await ItemService.get_transfer_target_by_id(target_user_id), None
+    if target_qq:
+        return await ItemService.get_transfer_target_by_qq(str(target_qq).strip()), None
+    return None, '请输入接收方的QQ号或用户ID'
+
+
+@router.post("/transfer")
+@limiter.limit("30/minute")
+async def transfer_item(request: Request):
+    """物品转让：将自己的物品转让给指定用户"""
+    userId = get_user_id(request)
+    if not userId:
+        return {"success": False, "error": "未登录或登录已过期"}
+
+    body = await request.json()
+    item_name = body.get('itemName')
+    if not item_name:
+        return {"success": False, "error": "物品名不能为空"}
+
+    try:
+        amount = int(body.get('amount'))
+    except (TypeError, ValueError):
+        return {"success": False, "error": "转让数量不合法"}
+    if amount <= 0:
+        return {"success": False, "error": "转让数量不合法"}
+
+    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    if error:
+        return {"success": False, "error": error}
+    if not target:
+        return {"success": False, "error": "对方没有生草账户"}
+
+    result = await ItemService.transfer_item(
+        from_user_id=userId,
+        to_user_id=target.id,
+        item_name=item_name,
+        amount=amount
+    )
+    return result

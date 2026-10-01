@@ -33,6 +33,10 @@ class ItemService:
         if not item:
             return {'success': False, 'error': 'ITEM_NOT_FOUND', 'message': '物品不存在'}
 
+        # 不能转让给自己
+        if from_user_id == to_user_id:
+            return {'success': False, 'error': 'SELF_TRANSFER', 'message': '不能转让给自己'}
+
         if not item.isTransferable:
             return {'success': False, 'error': 'NOT_TRANSFERABLE', 'message': '此物品不能转让'}
 

@@ -51,7 +51,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': '财产',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -67,7 +68,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': 'G',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -83,7 +85,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': '称号',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -99,7 +102,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': '图纸',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -115,7 +119,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': '能力',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -131,7 +136,8 @@ class WarehouseService:
                         'name': item.name,
                         'type': '道具',
                         'detail': item.detail,
-                        'isControllable': item.isControllable
+                        'isControllable': item.isControllable,
+                        'isTransferable': item.isTransferable
                     },
                     'amount': amount,
                     'allowUse': storage.allowUse if storage else True
@@ -212,12 +218,28 @@ class WarehouseService:
         target_user = await user_db.getUnifiedUser(target_userId)
         if not target_user:
             return {'success': False, 'error': 'TARGET_NOT_FOUND', 'message': '目标用户不存在'}
-        
-        # 检查转让者草是否足够
-        if not await baseDB.deductKusa(userId, amount):
-            return {'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': '草不足'}
-        
-        await baseDB.changeKusa(target_userId, amount)
+
+        # 不能转让给自己
+        if userId == target_userId:
+            return {'success': False, 'error': 'SELF_TRANSFER', 'message': '不能转让给自己'}
+
+        # 检查转让者草是否足够，扣减与入账在同一事务内完成
+        # 注意：事务块内不能直接 return（会走 commit 而非回滚），失败须抛异常触发回滚
+        class _Rollback(Exception):
+            def __init__(self, result):
+                self.result = result
+
+        from tortoise.transactions import in_transaction
+        try:
+            async with in_transaction():
+                if not await baseDB.deductKusa(userId, amount):
+                    raise _Rollback({'success': False, 'error': 'INSUFFICIENT_KUSA', 'message': '草不足'})
+
+                if not await baseDB.changeKusa(target_userId, amount):
+                    # 目标用户没有生草账户（KusaBase 行不存在），扣减须回滚
+                    raise _Rollback({'success': False, 'error': 'TARGET_NOT_FOUND', 'message': '对方没有生草账户'})
+        except _Rollback as e:
+            return e.result
         
         # 记录交易
         await baseDB.setTradeRecord(

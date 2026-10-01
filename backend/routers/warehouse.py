@@ -12,6 +12,7 @@ from core.services import WarehouseService
 from core.services import StatisticService
 from core.services import IndustrialService
 from core.services import GMarketService
+import core.db.kusa_system as baseDB
 
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
@@ -248,6 +249,72 @@ async def compress_kusa(request: Request):
     amount = body.get('amount', 1)
     
     result = await WarehouseService.compress_kusa(userId=userId, adv_amount=int(amount))
+    return result
+
+
+# ==================== 转让接口 ====================
+
+async def _resolve_transfer_target(target_user_id, target_qq):
+    """按用户ID或QQ号解析接收方，返回 (user, error)"""
+    if target_user_id:
+        try:
+            target_user_id = int(target_user_id)
+        except (TypeError, ValueError):
+            return None, '用户ID格式不正确'
+        return await WarehouseService.get_transfer_target_by_id(target_user_id), None
+    if target_qq:
+        return await WarehouseService.get_transfer_target_by_qq(str(target_qq).strip()), None
+    return None, '请输入接收方的QQ号或用户ID'
+
+
+@router.post("/transfer-target")
+@limiter.limit("60/minute")
+async def resolve_transfer_target(request: Request):
+    """查询转让接收方信息（供前端确认，避免转错人）"""
+    userId = get_user_id(request)
+    if not userId:
+        return {"success": False, "error": "未登录或登录已过期"}
+
+    body = await request.json()
+    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    if error:
+        return {"success": False, "error": error}
+    if not target:
+        return {"success": False, "error": "对方没有生草账户"}
+    if target.id == userId:
+        return {"success": False, "error": "不能转让给自己"}
+
+    kusa_user = await baseDB.getKusaUser(target.id)
+    return {"success": True, "data": {
+        "userId": target.id,
+        "qq": target.realQQ,
+        "name": kusa_user.name if kusa_user else None
+    }}
+
+
+@router.post("/transfer-kusa")
+@limiter.limit("30/minute")
+async def transfer_kusa(request: Request):
+    """草转让：将自己的草转让给指定用户"""
+    userId = get_user_id(request)
+    if not userId:
+        return {"success": False, "error": "未登录或登录已过期"}
+
+    body = await request.json()
+    try:
+        amount = int(body.get('amount'))
+    except (TypeError, ValueError):
+        return {"success": False, "error": "转让数量不合法"}
+    if amount <= 0:
+        return {"success": False, "error": "转让数量不合法"}
+
+    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    if error:
+        return {"success": False, "error": error}
+    if not target:
+        return {"success": False, "error": "对方没有生草账户"}
+
+    result = await WarehouseService.transfer_kusa(userId=userId, target_userId=target.id, amount=amount)
     return result
 
 

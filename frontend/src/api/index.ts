@@ -85,13 +85,16 @@ export const warehouseApi = {
   getGrassStatsTotal: (period: string) => api.get<any>('/warehouse/stats/grass/total', { params: { period } }),
   getGMarketStats: () => api.get<any>('/warehouse/stats/gmarket'),
   getGMarketRecords: (page: number, pageSize: number) => api.get<any>('/warehouse/stats/gmarket/records', { params: { page, pageSize } }),
-  compressKusa: (amount: number) => api.post<{ success: boolean; message: string; advKusaGained?: number; kusaUsed?: number }>('/warehouse/compress-kusa', { amount })
+  compressKusa: (amount: number) => api.post<{ success: boolean; message: string; advKusaGained?: number; kusaUsed?: number }>('/warehouse/compress-kusa', { amount }),
+  resolveTransferTarget: (payload: { targetQq?: string; targetUserId?: number }) => api.post<{ userId: number; qq: string | null; name: string | null }>('/warehouse/transfer-target', payload),
+  transferKusa: (payload: { targetQq?: string; targetUserId?: number; amount: number }) => api.post<{ success: boolean; message: string }>('/warehouse/transfer-kusa', payload)
 }
 
 export const itemApi = {
   toggleItem: (itemName: string, allowUse: boolean) => api.post('/item/toggle', { itemName, allowUse }),
   getItemAmount: (itemName: string) => api.get('/item/amount', { params: { item_name: itemName } }),
-  composeTicket: (target: string, amount: number) => api.post<{ success: boolean; message: string }>('/item/compose-ticket', { target, amount })
+  composeTicket: (target: string, amount: number) => api.post<{ success: boolean; message: string }>('/item/compose-ticket', { target, amount }),
+  transferItem: (payload: { targetQq?: string; targetUserId?: number; itemName: string; amount: number }) => api.post<{ success: boolean; message: string }>('/item/transfer', payload)
 }
 
 export const farmApi = {

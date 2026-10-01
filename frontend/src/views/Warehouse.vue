@@ -39,9 +39,19 @@
             {{ getVipTitle(warehouseInfo.user.vipLevel) }} Lv{{ warehouseInfo.user.vipLevel }}
           </el-descriptions-item>
           <el-descriptions-item label="草数量" :span="2">
-            {{ formatNumber(warehouseInfo.user.kusa) }}
+            <div class="kusa-display-row">
+              <span>{{ formatNumber(warehouseInfo.user.kusa) }}</span>
+              <el-button
+                v-if="warehouseInfo.user.kusa > 0"
+                type="primary"
+                size="small"
+                @click="showTransferKusaDialog"
+              >
+                转让
+              </el-button>
+            </div>
           </el-descriptions-item>
-          <el-descriptions-item v-if="warehouseInfo.user.advKusa > 0" label="草之精华" :span="2">
+          <el-descriptions-item v-if="warehouseInfo.user.advKusa > 0" label="草之精华">
             {{ formatNumber(warehouseInfo.user.advKusa) }}
           </el-descriptions-item>
         </el-descriptions>
@@ -56,6 +66,15 @@
             <div class="item-name">{{ item.item.name }}</div>
             <div class="item-amount">× {{ item.amount }}</div>
             <div v-if="item.item.detail" class="item-detail">{{ item.item.detail }}</div>
+            <el-button
+              v-if="item.item.isTransferable"
+              type="primary"
+              size="small"
+              style="margin-top: 8px"
+              @click="showTransferItemDialog(item)"
+            >
+              转让
+            </el-button>
           </el-card>
         </div>
         <el-empty v-else description="暂无财产" />
@@ -70,6 +89,15 @@
             <div class="item-name">{{ item.item.name }}</div>
             <div class="item-amount">× {{ item.amount }}</div>
             <div v-if="item.item.detail" class="item-detail">{{ item.item.detail }}</div>
+            <el-button
+              v-if="item.item.isTransferable"
+              type="primary"
+              size="small"
+              style="margin-top: 8px"
+              @click="showTransferItemDialog(item)"
+            >
+              转让
+            </el-button>
           </el-card>
         </div>
         <el-empty v-else description="暂无道具" />
@@ -151,11 +179,71 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="transferDialogVisible"
+      :title="transferMode === 'kusa' ? '转让草' : '转让物品'"
+      width="480px"
+    >
+      <el-form label-width="90px">
+        <el-form-item label="转让内容">
+          <el-tag v-if="transferMode === 'kusa'" type="success">草（最多 {{ formatNumber(transferMax) }}）</el-tag>
+          <el-tag v-else type="success">{{ transferItemName }}（最多 {{ formatNumber(transferMax) }}）</el-tag>
+        </el-form-item>
+        <el-form-item label="接收方">
+          <div class="transfer-target-row">
+            <el-input
+              v-model="transferForm.target"
+              placeholder="请输入接收方QQ号"
+              @input="transferTargetInfo = null"
+              @keyup.enter="handleResolveTarget"
+            />
+            <el-button :loading="resolvingTarget" @click="handleResolveTarget">查询</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="transferTargetInfo" label="接收方确认" class="transfer-confirm-item">
+          <el-alert type="success" :closable="false">
+            {{ transferTargetInfo.name || '未设置昵称' }}（QQ: {{ transferTargetInfo.qq || '未绑定' }}，ID: {{ transferTargetInfo.userId }}）
+          </el-alert>
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input
+            v-if="transferMode === 'kusa'"
+            v-model.number="transferForm.amount"
+            type="number"
+            :min="1"
+            :max="transferMax"
+            placeholder="请输入数量"
+            @blur="clampTransferAmount"
+          />
+          <el-input-number
+            v-else
+            v-model="transferForm.amount"
+            :min="1"
+            :max="transferMax"
+            style="width: 160px"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="transferDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="transferring"
+            :disabled="!transferTargetInfo"
+            @click="handleTransfer"
+          >
+            确认转让
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { vipApi, warehouseApi } from '@/api'
+import { itemApi, vipApi, warehouseApi } from '@/api'
 import type { WarehouseInfo } from '@/types'
 import { Refresh, Star } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -171,6 +259,15 @@ const renameDialogVisible = ref(false)
 const renaming = ref(false)
 const renameForm = ref({ name: '' })
 const availableTitles = ref<string[]>([])
+
+const transferDialogVisible = ref(false)
+const transferMode = ref<'kusa' | 'item'>('kusa')
+const transferForm = ref({ target: '', amount: 1 })
+const transferTargetInfo = ref<{ userId: number; qq: string | null; name: string | null } | null>(null)
+const transferItemName = ref('')
+const transferMax = ref(1)
+const resolvingTarget = ref(false)
+const transferring = ref(false)
 
 const propertyItems = computed(() => {
   if (!warehouseInfo.value) return []
@@ -312,6 +409,91 @@ const handleUpgrade = async () => {
   }
 }
 
+const showTransferKusaDialog = () => {
+  if (!warehouseInfo.value) return
+  transferMode.value = 'kusa'
+  transferItemName.value = ''
+  transferMax.value = warehouseInfo.value.user.kusa
+  openTransferDialog()
+}
+
+const showTransferItemDialog = (item: any) => {
+  transferMode.value = 'item'
+  transferItemName.value = item.item.name
+  transferMax.value = item.amount
+  openTransferDialog()
+}
+
+const openTransferDialog = () => {
+  transferForm.value = { target: '', amount: 1 }
+  transferTargetInfo.value = null
+  transferDialogVisible.value = true
+}
+
+const clampTransferAmount = () => {
+  let amount = Number(transferForm.value.amount)
+  if (isNaN(amount) || amount < 1) amount = 1
+  if (amount > transferMax.value) amount = transferMax.value
+  transferForm.value.amount = amount
+}
+
+const handleResolveTarget = async () => {
+  const raw = transferForm.value.target.trim()
+  if (!raw) {
+    ElMessage.warning('请输入接收方QQ号')
+    return
+  }
+  if (!/^\d+$/.test(raw)) {
+    ElMessage.warning('QQ号只能填数字')
+    return
+  }
+
+  resolvingTarget.value = true
+  try {
+    transferTargetInfo.value = await warehouseApi.resolveTransferTarget({ targetQq: raw })
+    ElMessage.success('接收方已确认')
+  } catch (error: any) {
+    transferTargetInfo.value = null
+    ElMessage.error(error.message || '查询接收方失败')
+  } finally {
+    resolvingTarget.value = false
+  }
+}
+
+const handleTransfer = async () => {
+  if (!warehouseInfo.value || !transferTargetInfo.value) return
+
+  const amount = transferForm.value.amount
+  if (!amount || amount <= 0) {
+    ElMessage.warning('请输入正确的数量')
+    return
+  }
+  if (amount > transferMax.value) {
+    ElMessage.warning(`最多可转让 ${transferMax.value}`)
+    return
+  }
+
+  transferring.value = true
+  try {
+    if (transferMode.value === 'kusa') {
+      await warehouseApi.transferKusa({ targetUserId: transferTargetInfo.value.userId, amount })
+    } else {
+      await itemApi.transferItem({
+        targetUserId: transferTargetInfo.value.userId,
+        itemName: transferItemName.value,
+        amount
+      })
+    }
+    ElMessage.success('转让成功')
+    transferDialogVisible.value = false
+    await refreshWarehouse()
+  } catch (error: any) {
+    ElMessage.error(error.message || '转让失败')
+  } finally {
+    transferring.value = false
+  }
+}
+
 onMounted(() => {
   refreshWarehouse()
 })
@@ -385,6 +567,35 @@ onMounted(() => {
 .total-label {
   color: #666;
   margin-right: 8px;
+}
+
+.transfer-target-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.warehouse-card :deep(.el-descriptions__cell) {
+  vertical-align: middle;
+}
+
+.kusa-display-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kusa-display-row span {
+  line-height: 1;
+}
+
+.transfer-confirm-item {
+  align-items: center;
+}
+
+.transfer-confirm-item :deep(.el-alert) {
+  width: 100%;
+  margin: 0;
 }
 
 .total-value {
