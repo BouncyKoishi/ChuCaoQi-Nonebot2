@@ -391,7 +391,7 @@ const getMaxBuyAmount = (item: Item) => {
 // 根据货币计算最大可购买数量
 const calculateMaxByCurrency = (item: Item) => {
   const priceType = getPriceType(item)
-  const unitPrice = item.shopPrice
+  const unitPrice = item.shopPrice ?? 0
   
   if (unitPrice <= 0) return 999999
   
@@ -480,11 +480,11 @@ const calculatePrice = (item: Item) => {
   } else if (item.priceRate) {
     let totalPrice = 0
     for (let i = 0; i < amount; i++) {
-      totalPrice += Math.floor(item.shopPrice * Math.pow(item.priceRate, currentAmount + i))
+      totalPrice += Math.floor((item.shopPrice ?? 0) * Math.pow(item.priceRate, currentAmount + i))
     }
     totalPrices.value[item.name] = totalPrice
   } else {
-    totalPrices.value[item.name] = item.shopPrice * amount
+    totalPrices.value[item.name] = (item.shopPrice ?? 0) * amount
   }
 }
 
@@ -537,10 +537,6 @@ const calculateSellPrice = (item: Item) => {
   }
 }
 
-const getSellPrice = (item: Item) => {
-  return sellPrices.value[item.name] || 0
-}
-
 const getSellTotalPrice = (item: Item) => {
   const amount = sellAmounts.value[item.name] || 1
   if (item.sellingPrice) {
@@ -567,10 +563,6 @@ const handleSell = async (item: Item) => {
       selling.value[item.name] = false
     }
   }
-}
-
-const canSell = (item: Item) => {
-  return item.sellingPrice && item.sellingPrice > 0 && getCurrentAmount(item.name) > 0
 }
 
 const refreshShop = async () => {
@@ -681,15 +673,6 @@ const handleBuy = async (item: Item) => {
       buying.value[item.name] = false
     }
   }
-}
-
-// 设置购买数量（Min按钮使用）
-const setBuyAmount = (item: Item, amount: number) => {
-  const maxAmount = getMaxBuyAmount(item)
-  // 确保数量在有效范围内，且至少为1
-  const finalAmount = Math.max(1, Math.min(amount, Math.max(1, maxAmount)))
-  buyAmounts.value[item.name] = finalAmount
-  calculatePrice(item)
 }
 
 // 设置购买数量为最大值（Max按钮使用）
@@ -808,7 +791,7 @@ const calculateTotalPriceForAmount = (item: Item, amount: number): number => {
   
   for (let i = 0; i < amount; i++) {
     const priceMultiplier = Math.pow(item.priceRate, currentAmount + i)
-    totalPrice += Math.floor(item.shopPrice * priceMultiplier)
+    totalPrice += Math.floor((item.shopPrice ?? 0) * priceMultiplier)
   }
   
   return totalPrice

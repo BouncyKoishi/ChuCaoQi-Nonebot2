@@ -88,6 +88,16 @@ export interface KusaField {
   hasBlackTea: boolean
   overloadEndTime?: string
   spiritualMachineAvailable: boolean
+  hasWeeder: boolean
+  mirrorPluginAvailable: boolean
+  kusaTechLevel: number
+  kusaTechEffect: number
+  soilEffect: number
+  divinePluginAvailable: boolean
+  spiritlessDivinePluginAvailable: boolean
+  mustGrow: boolean
+  chainMagic: boolean
+  overloadMagic: boolean
 }
 
 export interface KusaHistory {
@@ -107,6 +117,10 @@ export interface GValue {
   zhuhaiValue: number
   shenzhenValue: number
   createTime: string
+  // 后端 /gmarket 返回的原始蛇形命名价格表（含大学路与上一次的 *_last）
+  values?: {
+    [key: string]: number
+  }
   areas?: {
     [key: string]: {
       current: number

@@ -13,8 +13,8 @@
               <span>DEF:{{ diceRange(panel.defPoint) }}</span><span>DOD:{{ diceRange(panel.dodPoint) }}</span>
             </div>
             <div v-if="INITIAL_CARD_EFFECTS[panel.name]" class="panel-effect">
-              <template v-for="(eff, ei) in INITIAL_CARD_EFFECTS[panel.name]" :key="eff.id">
-                <template v-for="(seg, si) in parseDescription(eff.description)" :key="`${ei}_${si}`">
+              <template v-for="(eff, _ei) in INITIAL_CARD_EFFECTS[panel.name]" :key="eff.id">
+                <template v-for="(seg, _si) in parseDescription(eff.description)" :key="`${_ei}_${_si}`">
                   <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                     <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                   </el-tooltip>
@@ -67,7 +67,7 @@
                 <div class="pc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
                 <div class="pc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
                 <div class="pc-effects">
-                  <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
+                  <template v-for="(sd, _si) in slotDisplayList(item.card)" :key="_si">
                     <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                       <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                     </el-tooltip>
@@ -86,7 +86,7 @@
                 <div class="pc-hp">HP: {{ card.cardHp }}</div>
                 <div class="pc-stats">ATK:{{ diceRange(card.atkPoint) }} DEF:{{ diceRange(card.defPoint) }} DOD:{{ diceRange(card.dodPoint) }}</div>
                 <div v-if="card.description && card.description !== '无'" class="pc-desc">
-                  <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                  <template v-for="(seg, _si) in parseDescription(card.description)" :key="_si">
                     <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                       <el-tag size="small" type="info" class="inline-effect-tag">{{ seg.text }}</el-tag>
                     </el-tooltip>
@@ -152,7 +152,7 @@
               <el-tag size="small" :type="fixedDropItem.rarity === 'epic' ? 'warning' : fixedDropItem.rarity === 'rare' ? 'danger' : 'info'">{{ fixedDropItem.rarity === 'epic' ? '史诗' : fixedDropItem.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
             </div>
             <div class="fd-desc">
-              <template v-for="(seg, si) in parseDescription(fixedDropItem.description)" :key="si">
+              <template v-for="(seg, _si) in parseDescription(fixedDropItem.description)" :key="_si">
                 <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                   <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                 </el-tooltip>
@@ -207,7 +207,7 @@
               <el-tag size="small" :type="reward.rarity === 'epic' ? 'warning' : reward.rarity === 'rare' ? 'danger' : 'info'">{{ reward.rarity === 'epic' ? '史诗' : reward.rarity === 'rare' ? '稀有' : '普通' }}</el-tag>
             </div>
             <div class="reward-desc">
-              <template v-for="(seg, si) in parseDescription(reward.description)" :key="si">
+              <template v-for="(seg, _si) in parseDescription(reward.description)" :key="_si">
                 <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                   <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                 </el-tooltip>
@@ -230,7 +230,7 @@
               <div class="tc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
               <div class="tc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="tc-effects">
-                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
+                <template v-for="(sd, _si) in slotDisplayList(item.card)" :key="_si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
@@ -256,7 +256,7 @@
           <el-card v-for="(item, idx) in shopItems" :key="idx" class="shop-card" shadow="hover">
             <div class="shop-item-name">{{ item.name }}</div>
             <div class="shop-item-desc">
-              <template v-for="(seg, si) in parseDescription(item.description)" :key="si">
+              <template v-for="(seg, _si) in parseDescription(item.description)" :key="_si">
                 <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                   <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                 </el-tooltip>
@@ -279,7 +279,7 @@
               <div class="pc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
               <div class="pc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="pc-effects">
-                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
+                <template v-for="(sd, _si) in slotDisplayList(item.card)" :key="_si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
@@ -344,7 +344,7 @@
               <div class="sc-hp">HP: {{ item.card.currentHp }}/{{ item.card.maxCardHp }}</div>
               <div class="sc-stats">ATK:{{ diceRange(item.card.atkPoint) }} DEF:{{ diceRange(item.card.defPoint) }} DOD:{{ diceRange(item.card.dodPoint) }}</div>
               <div class="sc-effects">
-                <template v-for="(sd, si) in slotDisplayList(item.card)" :key="si">
+                <template v-for="(sd, _si) in slotDisplayList(item.card)" :key="_si">
                   <el-tooltip v-if="sd.type === 'effect'" :content="sd.effect.description" placement="top">
                     <el-tag size="small" :type="slotTagType(sd.effect.slot)">{{ sd.effect.displayName }}</el-tag>
                   </el-tooltip>
@@ -370,7 +370,7 @@
           :class="{ selected: replaceChoiceIdx === ei }" @click="replaceChoiceIdx = ei">
           <el-tag size="small" type="danger">{{ eff.displayName }}</el-tag>
           <span class="replace-option-desc">
-            <template v-for="(seg, si) in parseDescription(eff.description)" :key="si">
+            <template v-for="(seg, _si) in parseDescription(eff.description)" :key="_si">
               <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                 <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
               </el-tooltip>
@@ -398,7 +398,7 @@ import { Battle } from '@/spellcard/engine'
 import {
   type DiceUpgrade, type EffectModule, type EffectSlot,
   type ExpeditionCard, type ExpeditionState, type FixedDrop,
-  type Reward, type ShopItem,
+  type Reward, type ShopItem, type StageType,
   addEffectToCard,
   addSlotCapacity,
   applyRewardToCard,
@@ -414,6 +414,8 @@ import {
   initCardOrder,
   initExpeditionState,
   INITIAL_CARD_EFFECTS,
+  NEW_CARD_POOL,
+  isEffectModule,
   isRefreshItem,
   isSlotReward,
   slotDisplayList,
@@ -431,7 +433,7 @@ const selectedPanelIdx = ref(-1)
 const basePanels = BASE_PANELS
 
 const state = ref<ExpeditionState>(initExpeditionState())
-const encounterType = ref<'normal' | 'elite' | 'boss'>('normal')
+const encounterType = ref<StageType>('normal')
 const enemyCards = ref<CardData[]>([])
 const currentEncounterEnemyCards = ref<CardData[]>([])
 const battleLog = ref<LogEntry[]>([])
@@ -532,7 +534,7 @@ function onCardDragEnd() {
   dragOverPos.value = -1
 }
 
-function onCardTouchStart(displayPos: number, event: TouchEvent) {
+function onCardTouchStart(displayPos: number, _event: TouchEvent) {
   const item = orderedPreviewCards.value[displayPos]
   if (!item || item.card.isNonCard || !item.alive) return
   if (touchDragTimer) clearTimeout(touchDragTimer)
@@ -655,7 +657,7 @@ function startBattle() {
   }
   const b = new Battle(1)
   b.setCreator('你')
-  b.creator.chosenCards = myCardDatas
+  b.creator!.chosenCards = myCardDatas
   b.setSingleEnemy('敌人', currentEncounterEnemyCards.value)
   b.runFullBattle()
 
@@ -664,7 +666,7 @@ function startBattle() {
 
   const foughtIndices = new Set<number>()
   const summary: CardSummary[] = []
-  const usedBattleIndices = b.creator.usedCardIndices
+  const usedBattleIndices = b.creator!.usedCardIndices
   const orderedIndices = state.value.cardOrder.filter(i => i < state.value.cards.length)
   for (const i of orderedIndices) {
     const card = state.value.cards[i]
@@ -679,8 +681,8 @@ function startBattle() {
       if (wasUsed) {
         foughtIndices.add(i)
         if (activePos === usedBattleIndices.length - 1) {
-          hpAfter = Math.max(b.creator.nowHp, 0)
-          broken = b.creator.nowHp <= 0
+          hpAfter = Math.max(b.creator!.nowHp, 0)
+          broken = b.creator!.nowHp <= 0
         } else {
           hpAfter = 0
           broken = true
@@ -697,8 +699,8 @@ function startBattle() {
   if (battleWon.value) {
     state.value.victories++
     state.value.spirit += getSpiritReward(encounterType.value)
-    spiritGainedInBattle.value = b.creator.spiritGained
-    state.value.spirit += b.creator.spiritGained
+    spiritGainedInBattle.value = b.creator!.spiritGained
+    state.value.spirit += b.creator!.spiritGained
     healNonCard(state.value.cards)
     healRestingCards(state.value.cards, [...foughtIndices])
   } else {
@@ -746,7 +748,7 @@ function goToReward() {
 
 function generateAndShowRewards() {
   const rng = () => Math.random()
-  currentRewards.value = generateRewards(encounterType.value, rng)
+  currentRewards.value = generateRewards(encounterType.value === 'shop' ? 'normal' : encounterType.value, rng)
   selectedRewardIdx.value = -1
   targetCardIdx.value = -1
   phase.value = 'reward'
@@ -814,7 +816,7 @@ function confirmReward() {
   if (targetCardIdx.value === -1) return
   const card = state.value.cards[targetCardIdx.value]
 
-  if ('slot' in reward && 'apply' in reward) {
+  if (isEffectModule(reward)) {
     if (!canAddEffectToSlot(card, reward.slot)) {
       const existing = card.effects[reward.slot]
       if (existing.length > 0) {
@@ -928,12 +930,6 @@ function openShopBuy(idx: number) {
   shopTargetVisible.value = true
 }
 
-function confirmShopBuyDirect(idx: number) {
-  const item = shopItems.value[idx]
-  state.value.spirit -= item.price
-  shopItems.value = shopItems.value.filter((_, i) => i !== idx)
-}
-
 function confirmShopBuy() {
   if (shopTargetIdx.value === -1 || shopBuyingIdx.value === -1) return
   const item = shopItems.value[shopBuyingIdx.value]
@@ -941,7 +937,7 @@ function confirmShopBuy() {
   const card = state.value.cards[shopTargetIdx.value]
   const reward = item.reward
 
-  if ('slot' in reward && 'apply' in reward) {
+  if (isEffectModule(reward)) {
     if (!canAddEffectToSlot(card, reward.slot)) {
       const existing = card.effects[reward.slot]
       if (existing.length > 0) {

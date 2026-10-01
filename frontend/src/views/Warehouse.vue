@@ -140,7 +140,7 @@
             type="primary"
             @click="handleUpgrade"
             :loading="upgrading"
-            :disabled="warehouseInfo?.user.vipLevel >= 8 || (warehouseInfo?.user.vipLevel < 4 && warehouseInfo?.user.kusa < getUpgradeCost(warehouseInfo.user.vipLevel + 1)) || (warehouseInfo?.user.vipLevel >= 4 && warehouseInfo?.user.vipLevel < 8 && warehouseInfo?.user.advKusa < getAdvancedUpgradeCost(warehouseInfo.user.vipLevel + 1))"
+            :disabled="upgradeDisabled"
           >
             确定
           </el-button>
@@ -252,7 +252,6 @@ import { computed, onMounted, ref } from 'vue'
 const warehouseInfo = ref<WarehouseInfo | null>(null)
 const loading = ref(false)
 const upgrading = ref(false)
-const upgradingAdvanced = ref(false)
 const upgradeDialogVisible = ref(false)
 const titleDialogVisible = ref(false)
 const renameDialogVisible = ref(false)
@@ -311,6 +310,16 @@ const getKusaBonus = (level: number) => {
   if (level === 0) return 0
   return 0.5 * (2 ** (level - 1))
 }
+
+// 升 VIP 按钮的可用性：信息缺失、已满级或资源不足时禁用
+const upgradeDisabled = computed(() => {
+  const info = warehouseInfo.value
+  if (!info) return true
+  const { vipLevel, kusa, advKusa } = info.user
+  if (vipLevel >= 8) return true
+  if (vipLevel < 4) return kusa < getUpgradeCost(vipLevel + 1)
+  return advKusa < getAdvancedUpgradeCost(vipLevel + 1)
+})
 
 const refreshWarehouse = async () => {
   loading.value = true

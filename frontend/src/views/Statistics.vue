@@ -375,7 +375,6 @@ const gMarketStats = ref<any>(null)
 const gMarketRecords = ref<any[]>([])
 const gMarketRecordsTotal = ref(0)
 const gMarketPage = ref(1)
-const rankSortByAdvKusa = ref(false)
 const rankType = ref<'kusa' | 'advKusa' | 'totalAdvKusa'>('kusa')
 const totalAdvKusaRank = ref<any[]>([])
 
@@ -425,8 +424,8 @@ const fetchDailyProduction = async () => {
     }
     
     // 判断是否有产量加成因素
-    hasProductionFactors.value = Object.values(productionFactors.value).some(value => {
-      return value > 0 || value === true
+    hasProductionFactors.value = Object.values(productionFactors.value as Record<string, unknown>).some(value => {
+      return Number(value) > 0 || value === true
     })
   } catch (error) {
     dailyProduction.value = null

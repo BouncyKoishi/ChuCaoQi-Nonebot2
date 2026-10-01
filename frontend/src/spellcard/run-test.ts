@@ -4,7 +4,7 @@ import { generateEncounter, generateExEncounter, generateNewCardDrop, getExStage
 import type { Battler, CardData, LogEntry } from './engine'
 import { Battle, Effect, formatDice, isDiceFixed, parseDice } from './engine'
 import {
-  type Encounter, type ExpeditionCard, type ExpeditionState, type Reward, type ShopItem,
+  type EffectModule, type Encounter, type ExpeditionCard, type ExpeditionState, type Reward, type ShopItem, type StageType,
   addEffectToCard, addSlotCapacity,
   applyRewardToCard,
   BASE_PANELS,
@@ -23,6 +23,18 @@ import { DICE_POOL, EFFECT_POOL, generateRewards, generateShopItems, parseDescri
 interface TestResult { name: string; passed: boolean; detail: string }
 const results: TestResult[] = []
 
+// 该脚本由 tsx 直接以 Node 运行。为避免给整个前端工程引入 @types/node（会改变 DOM 环境下的全局类型），
+// 这里只声明实际用到的 Node 全局。
+declare const process: {
+  argv: string[]
+  exit(code?: number): never
+}
+
+// 商店关卡不产出战斗奖励；测试流程沿用「当作普通关卡掷奖励」的既有行为，以保持随机序列不变
+function battleTypeOf(type: StageType): 'normal' | 'elite' | 'boss' {
+  return type === 'shop' ? 'normal' : type
+}
+
 function assert(name: string, condition: boolean, detail: string = '') {
   results.push({ name, passed: condition, detail: condition ? 'OK' : `FAIL: ${detail}` })
 }
@@ -34,10 +46,10 @@ function makeCard(overrides: Partial<CardData> = {}): CardData {
 function runBattle(creatorCards: CardData[], enemyCards: CardData[]): { log: LogEntry[]; winnerId: number | null; creatorHp: number; enemyHp: number } {
   const b = new Battle(1)
   b.setCreator('A')
-  b.creator.chosenCards = creatorCards
+  b.creator!.chosenCards = creatorCards
   b.setSingleEnemy('B', enemyCards)
   b.runFullBattle()
-  return { log: b.log.entries, winnerId: b.winnerId, creatorHp: b.creator.nowHp, enemyHp: b.joiner!.nowHp }
+  return { log: b.log.entries, winnerId: b.winnerId, creatorHp: b.creator!.nowHp, enemyHp: b.joiner!.nowHp }
 }
 
 function logContains(log: LogEntry[], text: string): boolean {
@@ -273,12 +285,12 @@ function testEffectAdvanced() {
   assert(`[${S}] aliasName覆盖displayName但保留id`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
-    b.creator.appendEffect('CantDefence', 1, '破甲')
-    const effect = b.creator.effects.find(e => e.id === 'CantDefence')
+    b.creator!.appendEffect('CantDefence', 1, '破甲')
+    const effect = b.creator!.effects.find(e => e.id === 'CantDefence')
     if (!effect) return false
     return effect.displayName === '破甲' && effect.id === 'CantDefence'
   })())
@@ -286,12 +298,12 @@ function testEffectAdvanced() {
   assert(`[${S}] 不传aliasName使用默认displayName`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
-    b.creator.appendEffect('CantDefence', 1)
-    const effect = b.creator.effects.find(e => e.id === 'CantDefence')
+    b.creator!.appendEffect('CantDefence', 1)
+    const effect = b.creator!.effects.find(e => e.id === 'CantDefence')
     if (!effect) return false
     return effect.displayName === '防御不可' && effect.id === 'CantDefence'
   })())
@@ -362,9 +374,9 @@ function testSpecialCards() {
     const card = ALL_CARDS.find(c => c.id === 64)!
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [card]
+    b.creator!.chosenCards = [card]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     b.applyCard(b.creator!, 0)
     b.applyCard(b.joiner!, 0)
@@ -377,14 +389,14 @@ function testSpecialCards() {
     const card = ALL_CARDS.find(c => c.id === 64)!
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [card]
+    b.creator!.chosenCards = [card]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     b.applyCard(b.creator!, 0)
     b.applyCard(b.joiner!, 0)
     b.onNewCardsSet()
-    b.creator.nowHp = 10
+    b.creator!.nowHp = 10
     const msg = card.onTurnStart!(b.creator!, b.joiner!)
     return msg.includes('强化2')
   })())
@@ -393,14 +405,14 @@ function testSpecialCards() {
     const card = ALL_CARDS.find(c => c.id === 64)!
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [card]
+    b.creator!.chosenCards = [card]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     b.applyCard(b.creator!, 0)
     b.applyCard(b.joiner!, 0)
     b.onNewCardsSet()
-    b.creator.nowHp = 7
+    b.creator!.nowHp = 7
     const msg = card.onTurnStart!(b.creator!, b.joiner!)
     return msg.includes('强化2') && msg.includes('追击2')
   })())
@@ -409,14 +421,14 @@ function testSpecialCards() {
     const card = ALL_CARDS.find(c => c.id === 64)!
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [card]
+    b.creator!.chosenCards = [card]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     b.applyCard(b.creator!, 0)
     b.applyCard(b.joiner!, 0)
     b.onNewCardsSet()
-    b.creator.nowHp = 3
+    b.creator!.nowHp = 3
     const msg = card.onTurnStart!(b.creator!, b.joiner!)
     return msg.includes('强化2') && msg.includes('追击2') && msg.includes('吸血1')
   })())
@@ -428,9 +440,9 @@ function testRewardEffects() {
   assert(`[${S}] 新增宣言效果可正常apply`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     const effects = [
       { id: 'set_weaken1', apply: (_u: Battler, e: Battler) => { e.appendEffect('Weaken', 1); return '' } },
@@ -450,9 +462,9 @@ function testRewardEffects() {
   assert(`[${S}] 新增亡语效果可正常apply`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     const effects = [
       { id: 'break_sluggishborder', apply: (_u: Battler, e: Battler) => { e.appendBorder('SluggishBorder', 3, 1); return '' } },
@@ -467,9 +479,9 @@ function testRewardEffects() {
   assert(`[${S}] 新增被动效果可正常apply`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
     try { b.creator!.removeEffect('Stable', 1); b.creator!.appendEffect('Stable', 1) } catch { return false }
     return true
@@ -482,7 +494,7 @@ function testRewardEffects() {
     )
     const hurtEntries = r.log.filter(e => e.phase === 'hurt')
     if (hurtEntries.length === 0) return false
-    return hurtEntries[0].joinerHp <= 47
+    return hurtEntries[0]!.joinerHp! <= 47
   })())
 
   assert(`[${S}] 骰子数+1为epic稀有度`, (() => {
@@ -691,7 +703,7 @@ function testBugFixes() {
   assert(`[${S}] 时符免疫效果伤害日志`, (() => {
     const r = runBattle(
       [
-        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', isTimeCard: true, timeCardTurns: 3, onTurnStart(u, e) { const info = e.effectHurt(2); return `造成2点直接伤害\n${info}` } },
+        { id: -2, cost: 0, name: '测试时符', cardHp: 3, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', isTimeCard: true, timeCardTurns: 3, onTurnStart(_u, e) { const info = e.effectHurt(2); return `造成2点直接伤害\n${info}` } },
         makeCard({ atkPoint: '1d1', cardHp: 50 }),
       ],
       [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
@@ -827,10 +839,10 @@ function testBugFixes() {
     }
     const b = new Battle(1)
     b.setCreator('玩家')
-    b.creator.chosenCards = myCardDatas
+    b.creator!.chosenCards = myCardDatas
     b.setSingleEnemy('敌人', [makeCard({ atkPoint: '1d1+98', cardHp: 50 })])
     b.runFullBattle()
-    const usedBattleIndices = b.creator.usedCardIndices
+    const usedBattleIndices = b.creator!.usedCardIndices
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i]
       const activePos = activeIndices.indexOf(i)
@@ -840,7 +852,7 @@ function testBugFixes() {
       } else {
         const wasUsed = activePos < usedBattleIndices.length
         if (wasUsed) {
-          hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0
+          hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator!.nowHp, 0) : 0
         } else {
           hpAfter = card.currentHp
         }
@@ -917,13 +929,13 @@ function testBugFixes() {
   assert(`[${S}] _brokenCardRef使用后被清除`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       { id: -10, cost: 0, name: '亡语卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(_u, e) { e.effectHurt(1); return '亡语' } },
       makeCard({ atkPoint: '1d1', cardHp: 50 }),
     ]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1+98', cardHp: 50 })])
     b.runFullBattle()
-    return b.creator._brokenCardRef === null
+    return b.creator!._brokenCardRef === null
   })())
 
   assert(`[${S}] onEnemyCardBreak在新符卡上触发`, (() => {
@@ -1052,34 +1064,34 @@ function testDiceSystem() {
   assert(`[${S}] 宣言·吸血: 宣言时获得吸血1`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onCardSet(u) { u.nowHp = 45; const eff = EFFECT_POOL.find(e => e.id === 'set_drain1')!; eff.apply(u, u.enemy!); return '' } }]
+    b.creator!.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onCardSet(u) { u.nowHp = 45; const eff = EFFECT_POOL.find(e => e.id === 'set_drain1')!; eff.apply(u, u.enemy!); return '' } }]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
-    const drainEffect = b.creator.effects.find(e => e.id === 'Drain')
+    const drainEffect = b.creator!.effects.find(e => e.id === 'Drain')
     return drainEffect !== undefined && drainEffect.amount === 1
   })())
 
   assert(`[${S}] 宣言·强化结界: 宣言时展开3回合强化结界3`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const eff = EFFECT_POOL.find(e => e.id === 'set_strborder3')!
-    eff.apply(b.creator, b.joiner!)
-    const border = b.creator.effects.find(e => e.id === 'StrengthBorder')
+    eff.apply(b.creator!, b.joiner!)
+    const border = b.creator!.effects.find(e => e.id === 'StrengthBorder')
     return border !== undefined && (border as any).turns === 3 && (border as any).strength === 3
   })())
 
   assert(`[${S}] 宣言·大护盾: 宣言时获得护盾4`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const eff = EFFECT_POOL.find(e => e.id === 'set_shield4')!
-    eff.apply(b.creator, b.joiner!)
-    const shield = b.creator.effects.find(e => e.id === 'Shield')
+    eff.apply(b.creator!, b.joiner!)
+    const shield = b.creator!.effects.find(e => e.id === 'Shield')
     return shield !== undefined && shield.amount === 4
   })())
 
@@ -1098,37 +1110,37 @@ function testDiceSystem() {
     const eff = EFFECT_POOL.find(e => e.id === 'break_permstr')!
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       { id: -10, cost: 0, name: '遗志卡', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardBreak(u, e) { return eff.apply(u, e) } },
       makeCard({ atkPoint: '1d1', cardHp: 50 }),
     ]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1+98', cardHp: 50 })])
     b.runFullBattle()
-    const border = b.creator.effects.find(e => e.id === 'StrengthBorder')
+    const border = b.creator!.effects.find(e => e.id === 'StrengthBorder')
     return border !== undefined && (border as any).turns === 99 && (border as any).strength === 1
   })())
 
   assert(`[${S}] 被动·追击: 每回合获得追击1`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const eff = EFFECT_POOL.find(e => e.id === 'turn_chase1')!
-    eff.apply(b.creator, b.joiner!)
-    const chase = b.creator.effects.find(e => e.id === 'Chase')
+    eff.apply(b.creator!, b.joiner!)
+    const chase = b.creator!.effects.find(e => e.id === 'Chase')
     return chase !== undefined && chase.amount === 1
   })())
 
   assert(`[${S}] 被动·追踪: 每回合获得追踪1`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const eff = EFFECT_POOL.find(e => e.id === 'turn_trace1')!
-    eff.apply(b.creator, b.joiner!)
-    const trace = b.creator.effects.find(e => e.id === 'Trace')
+    eff.apply(b.creator!, b.joiner!)
+    const trace = b.creator!.effects.find(e => e.id === 'Trace')
     return trace !== undefined && trace.amount === 1
   })())
   assert(`[${S}] 亡语击破新卡: 正确记录击破日志并换卡`, (() => {
@@ -1195,8 +1207,8 @@ function testDiceSystem() {
   assert(`[${S}] justApplied在宣言触发后被重置`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
-      { ...makeCard({ name: '卡1', atkPoint: '1d1+98', cardHp: 1, defPoint: '1d1-1', dodPoint: '1d1-1' }), onCardSet(u) { return '宣言' } },
+    b.creator!.chosenCards = [
+      { ...makeCard({ name: '卡1', atkPoint: '1d1+98', cardHp: 1, defPoint: '1d1-1', dodPoint: '1d1-1' }), onCardSet(_u) { return '宣言' } },
       makeCard({ name: '卡2', atkPoint: '1d1+5', cardHp: 50 }),
     ]
     b.setSingleEnemy('B', [
@@ -1204,7 +1216,7 @@ function testDiceSystem() {
       makeCard({ name: '敌卡2', atkPoint: '1d1', cardHp: 50 }),
     ])
     b.runFullBattle()
-    return b.creator.justApplied === false
+    return b.creator!.justApplied === false
   })())
   assert(`[${S}] 非符亡语槽满时仍可替换`, (() => {
     const nonCard = createNonCard()
@@ -1237,10 +1249,10 @@ function testDiceSystem() {
   assert(`[${S}] 宣言·灵力+2: 宣言时获得2灵力`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onCardSet(u, _e) { const eff = EFFECT_POOL.find(x => x.id === 'set_spirit2')!; return eff.apply(u, _e) } }]
+    b.creator!.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onCardSet(u, _e) { const eff = EFFECT_POOL.find(x => x.id === 'set_spirit2')!; return eff.apply(u, _e) } }]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
-    return b.creator.spiritGained >= 2
+    return b.creator!.spiritGained >= 2
   })())
 
   assert(`[${S}] 宣言·造成2伤害: 宣言时对敌方造成2点直接伤害`, (() => {
@@ -1293,10 +1305,10 @@ function testDiceSystem() {
   assert(`[${S}] 被动·灵力+1: 每回合获得1灵力`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onTurnStart(u, _e) { const eff = EFFECT_POOL.find(x => x.id === 'turn_spirit1')!; return eff.apply(u, _e) } }]
+    b.creator!.chosenCards = [{ ...makeCard({ atkPoint: '1d1+9', cardHp: 50 }), onTurnStart(u, _e) { const eff = EFFECT_POOL.find(x => x.id === 'turn_spirit1')!; return eff.apply(u, _e) } }]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
-    return b.creator.spiritGained >= 1
+    return b.creator!.spiritGained >= 1
   })())
 
   assert(`[${S}] 被动·伤害: 每回合对敌方造成1点直接伤害`, (() => {
@@ -1324,7 +1336,7 @@ function testDiceSystem() {
   assert(`[${S}] 被动·击杀回复: 回复不超过血量上限`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       { ...makeCard({ atkPoint: '1d1+98', cardHp: 50 }), onEnemyCardBreak(u, _enemy) { const eff = EFFECT_POOL.find(x => x.id === 'ek_kill_heal3')!; return eff.apply(u, _enemy) } },
       makeCard({ atkPoint: '1d1', cardHp: 50 }),
     ]
@@ -1333,13 +1345,13 @@ function testDiceSystem() {
       makeCard({ atkPoint: '1d1', cardHp: 50 }),
     ])
     b.runFullBattle()
-    return b.creator.nowHp <= b.creator.nowCard!.cardHp
+    return b.creator!.nowHp <= b.creator!.nowCard!.cardHp
   })())
 
   assert(`[${S}] 被动·击杀回复: 回复上限为maxCardHp而非cardHp`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       { ...makeCard({ cardHp: 8, maxCardHp: 20, atkPoint: '1d1+98', defPoint: '1d1+98', dodPoint: '1d1+98' }), onEnemyCardBreak(u, _enemy) { const eff = EFFECT_POOL.find(x => x.id === 'ek_kill_heal3')!; return eff.apply(u, _enemy) } },
       makeCard({ atkPoint: '1d1', cardHp: 50 }),
     ]
@@ -1349,7 +1361,7 @@ function testDiceSystem() {
       makeCard({ cardHp: 1, atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1' }),
     ])
     b.runFullBattle()
-    return b.creator.nowHp > 8 && b.creator.nowHp <= 20
+    return b.creator!.nowHp > 8 && b.creator!.nowHp <= 20
   })())
 
   assert(`[${S}] 被动·击杀强化: 击破对方符卡时获得强化2`, (() => {
@@ -1385,9 +1397,9 @@ function testDiceSystem() {
   assert(`[${S}] [精准]效果: 攻击骰最小值提升`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d4', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d4', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.appendEffect('Precision', 1)
+    b.creator!.appendEffect('Precision', 1)
     b.runFullBattle()
     const atkLogs = b.log.entries.filter(e => e.message.includes('精准触发'))
     return atkLogs.length > 0
@@ -1396,9 +1408,9 @@ function testDiceSystem() {
   assert(`[${S}] [精准]效果: 不超过骰子最大值`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d4', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d4', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    b.creator.appendEffect('Precision', 10)
+    b.creator!.appendEffect('Precision', 10)
     b.runFullBattle()
     const atkValues: number[] = []
     for (const e of b.log.entries) {
@@ -1451,7 +1463,7 @@ function testBattleFlow() {
   assert(`[${S}] 最后一张卡亡语: 清理敌方效果(CantDefence)不报错`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       { id: -10, cost: 0, name: '红寸劲', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.appendEffect('CantDefence', -1); return '' }, onCardBreak(_u, e) { e.removeEffect('CantDefence'); return '' } },
       makeCard({ cardHp: 50 }),
     ]
@@ -1509,9 +1521,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1+10', cardHp: 50 })])
-    const e = new EnemyDefBreakEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new EnemyDefBreakEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '被强制破防')
   })())
@@ -1523,9 +1535,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', dodPoint: '1d1+10', cardHp: 50 })])
-    const e = new EnemyDodgeBreakEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new EnemyDodgeBreakEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '被强制破避')
   })())
@@ -1540,9 +1552,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    const e = new DealDmgEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new DealDmgEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '造成了') && logContains(b.log.entries, '点伤害')
   })())
@@ -1557,9 +1569,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    const e = new EnemyHurtUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new EnemyHurtUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '受到额外伤害')
   })())
@@ -1574,9 +1586,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', defPoint: '1d1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', defPoint: '1d1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1+9', cardHp: 50 })])
-    const e = new DefDiceUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new DefDiceUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '防御骰保底5')
   })())
@@ -1591,9 +1603,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', dodPoint: '1d1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', dodPoint: '1d1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1+9', cardHp: 50 })])
-    const e = new DodDiceUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new DodDiceUpEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '回避骰保底5')
   })())
@@ -1608,9 +1620,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1+9', cardHp: 50 })])
-    const e = new OnHurtEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new OnHurtEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '受到了') && logContains(b.log.entries, '点伤害')
   })())
@@ -1625,10 +1637,10 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
     const e = new OnEffectHurtEffect(); e.user = b.joiner!; e.enemy = b.creator; b.joiner!.effects.push(e)
-    b.creator.appendEffect('Strength', 2)
+    b.creator!.appendEffect('Strength', 2)
     b.runFullBattle()
     return true
   })())
@@ -1642,9 +1654,9 @@ function testBattleFlow() {
     }
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1+9', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', cardHp: 50 })])
-    const e = new OnTurnEndEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator.effects.push(e)
+    const e = new OnTurnEndEffect(); e.user = b.creator; e.enemy = b.joiner!; b.creator!.effects.push(e)
     b.runFullBattle()
     return logContains(b.log.entries, '回合结束')
   })())
@@ -1687,13 +1699,13 @@ function testBattleFlow() {
   assert(`[${S}] 结界叠加: 同类型结界取最大回合`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
-    b.creator.setEnemy(b.joiner!)
+    b.creator!.setEnemy(b.joiner!)
     b.joiner!.setEnemy(b.creator!)
-    b.creator.appendBorder('StrengthBorder', 3, 2)
-    b.creator.appendBorder('StrengthBorder', 5, 1)
-    const border = b.creator.effects.find(e => e.id === 'StrengthBorder')
+    b.creator!.appendBorder('StrengthBorder', 3, 2)
+    b.creator!.appendBorder('StrengthBorder', 5, 1)
+    const border = b.creator!.effects.find(e => e.id === 'StrengthBorder')
     return border !== undefined && (border as any).turns === 5 && (border as any).strength === 2
   })())
 
@@ -1732,51 +1744,51 @@ function testBattleFlow() {
   assert(`[${S}] 骰子范围: 1d6攻击值在1-6范围内`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d6', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d6', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const pts = b.log.entries.filter(e => e.phase === 'points' && e.visual?.creatorAtk !== undefined)
-    for (const e of pts) { if (e.visual!.creatorAtk < 1 || e.visual!.creatorAtk > 6) return false }
+    for (const e of pts) { if (e.visual!.creatorAtk! < 1 || e.visual!.creatorAtk! > 6) return false }
     return pts.length > 0
   })())
 
   assert(`[${S}] 骰子范围: 1d(2~4)攻击值在2-4范围内`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d(2~4)', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d(2~4)', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const pts = b.log.entries.filter(e => e.phase === 'points' && e.visual?.creatorAtk !== undefined)
-    for (const e of pts) { if (e.visual!.creatorAtk < 2 || e.visual!.creatorAtk > 4) return false }
+    for (const e of pts) { if (e.visual!.creatorAtk! < 2 || e.visual!.creatorAtk! > 4) return false }
     return pts.length > 0
   })())
 
   assert(`[${S}] 骰子范围: 2d4攻击值在2-8范围内`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '2d4', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '2d4', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const pts = b.log.entries.filter(e => e.phase === 'points' && e.visual?.creatorAtk !== undefined)
-    for (const e of pts) { if (e.visual!.creatorAtk < 2 || e.visual!.creatorAtk > 8) return false }
+    for (const e of pts) { if (e.visual!.creatorAtk! < 2 || e.visual!.creatorAtk! > 8) return false }
     return pts.length > 0
   })())
 
   assert(`[${S}] 骰子范围: 1d3+1攻击值在2-4范围内`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d3+1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d3+1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const pts = b.log.entries.filter(e => e.phase === 'points' && e.visual?.creatorAtk !== undefined)
-    for (const e of pts) { if (e.visual!.creatorAtk < 2 || e.visual!.creatorAtk > 4) return false }
+    for (const e of pts) { if (e.visual!.creatorAtk! < 2 || e.visual!.creatorAtk! > 4) return false }
     return pts.length > 0
   })())
 
   assert(`[${S}] 骰子范围: 1d1-1攻击值为0`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
+    b.creator!.chosenCards = [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })]
     b.setSingleEnemy('B', [makeCard({ atkPoint: '1d1-1', defPoint: '1d1-1', dodPoint: '1d1-1', cardHp: 50 })])
     b.runFullBattle()
     const pts = b.log.entries.filter(e => e.phase === 'points' && e.visual?.creatorAtk !== undefined)
@@ -1891,7 +1903,7 @@ function testAnimationCardTracking() {
   assert(`[${S}] onCardSet后续日志不覆盖符卡名`, (() => {
     const r = runBattle(
       [
-        { id: -4, cost: 0, name: '宣言卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(u, e) { e.effectHurt(2); return '宣言效果触发' } },
+        { id: -4, cost: 0, name: '宣言卡', cardHp: 50, atkPoint: '1d1', defPoint: '1d1-1', dodPoint: '1d1-1', description: '', onCardSet(_u, e) { e.effectHurt(2); return '宣言效果触发' } },
       ],
       [makeCard({ atkPoint: '1d1', cardHp: 50 })],
     )
@@ -1942,12 +1954,6 @@ function testStateMachine() {
       .filter(e => e.phase === 'card_break')
       .map(e => side === 'creator' ? (e.creatorCard?.name ?? '') : (e.joinerCard?.name ?? ''))
       .filter(n => n !== '')
-  }
-
-  function getCardSetHp(log: LogEntry[], index: number): { cHp: number | undefined; jHp: number | undefined } {
-    const sets = log.filter(e => e.phase === 'card_set' && e.message.includes('宣言'))
-    if (index >= sets.length) return { cHp: undefined, jHp: undefined }
-    return { cHp: sets[index].creatorHp, jHp: sets[index].joinerHp }
   }
 
   assert(`[${S}] runFullBattle: 双方同时击破-无亡语-每张卡只击破一次`, (() => {
@@ -2058,7 +2064,7 @@ function testStateMachine() {
     for (let seed = 1; seed <= 200; seed++) {
       const b = new Battle(1, seed)
       b.setCreator('A')
-      b.creator.chosenCards = [
+      b.creator!.chosenCards = [
         makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
@@ -2086,7 +2092,7 @@ function testStateMachine() {
     for (let seed = 1; seed <= 200; seed++) {
       const b = new Battle(1, seed)
       b.setCreator('A')
-      b.creator.chosenCards = [
+      b.creator!.chosenCards = [
         makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
       ]
@@ -2196,7 +2202,7 @@ function testStateMachine() {
   assert(`[${S}] playCardAndResolve: 双方同时击破-不会重复记录击破`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
       makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
     ]
@@ -2219,7 +2225,7 @@ function testStateMachine() {
   assert(`[${S}] playCardAndResolve: 双方同时击破-宣言时HP>0`, (() => {
     const b = new Battle(1, 42)
     b.setCreator('A')
-    b.creator.chosenCards = [
+    b.creator!.chosenCards = [
       makeCard({ name: '我方卡1', cardHp: 1, atkPoint: '1d1+98', defPoint: '1d1-1', dodPoint: '1d1-1' }),
       makeCard({ name: '我方卡2', atkPoint: '1d1', cardHp: 50 }),
     ]
@@ -2243,7 +2249,7 @@ function testStateMachine() {
     for (let seed = 1; seed <= 100; seed++) {
       const b = new Battle(1, seed)
       b.setCreator('A')
-      b.creator.chosenCards = [
+      b.creator!.chosenCards = [
         makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
@@ -2256,9 +2262,9 @@ function testStateMachine() {
       b.runFullBattle()
       const cBreakCount = getBreakCardNames(b.log.entries, 'creator').length
       const jBreakCount = getBreakCardNames(b.log.entries, 'joiner').length
-      const cUsed = b.creator.usedCardIndices.length
+      const cUsed = b.creator!.usedCardIndices.length
       const jUsed = b.joiner!.usedCardIndices.length
-      const cLastBroken = b.creator.nowHp <= 0
+      const cLastBroken = b.creator!.nowHp <= 0
       const jLastBroken = b.joiner!.nowHp <= 0
       const expectedCBreaks = cLastBroken ? cUsed : cUsed - 1
       const expectedJBreaks = jLastBroken ? jUsed : jUsed - 1
@@ -2411,17 +2417,11 @@ function testStateMachine() {
       ],
       [makeCard({ atkPoint: '1d1-1', cardHp: 50 })],
     )
-    let prevCreatorEffs: string[] = []
-    let prevJoinerEffs: string[] = []
     for (let i = 0; i < r.log.length; i++) {
       const e = r.log[i]
-      const curCreatorEffs = (e.creatorEffects ?? []).map(ef => `${ef.id}${ef.effectType === 'BORDER' ? `t${ef.turns}` : `a${ef.amount}`}`).sort().join(',')
-      const curJoinerEffs = (e.joinerEffects ?? []).map(ef => `${ef.id}${ef.effectType === 'BORDER' ? `t${ef.turns}` : `a${ef.amount}`}`).sort().join(',')
       if (e.phase !== 'card_set' && e.phase !== 'card_break' && e.phase !== 'hurt' && e.phase !== 'turn_start' && e.phase !== 'turn_end') {
         continue
       }
-      prevCreatorEffs = curCreatorEffs
-      prevJoinerEffs = curJoinerEffs
     }
     return true
   })())
@@ -2430,7 +2430,7 @@ function testStateMachine() {
     for (let seed = 1; seed <= 200; seed++) {
       const b = new Battle(1, seed)
       b.setCreator('A')
-      b.creator.chosenCards = [
+      b.creator!.chosenCards = [
         makeCard({ name: 'A1', cardHp: 3, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A2', cardHp: 5, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
         makeCard({ name: 'A3', cardHp: 8, atkPoint: '1d6', defPoint: '1d3', dodPoint: '1d3' }),
@@ -2443,7 +2443,7 @@ function testStateMachine() {
       b.runFullBattle()
       const lastEntry = b.log.entries[b.log.entries.length - 1]
       if (!lastEntry) { console.error(`seed=${seed} no log entries`); return false }
-      const finalCreatorEffs = b.creator.effects.map(e => e.toData())
+      const finalCreatorEffs = b.creator!.effects.map(e => e.toData())
       const finalJoinerEffs = b.joiner!.effects.map(e => e.toData())
       if (lastEntry.creatorEffects!.length !== finalCreatorEffs.length) {
         console.error(`seed=${seed} creator effects count mismatch: log=${lastEntry.creatorEffects!.length} actual=${finalCreatorEffs.length}`)
@@ -2492,10 +2492,10 @@ function testExpeditionFlowUsability() {
     if (myCardDatas.length === 0) return { won: false, battle: null as any, activeIndices }
     const b = new Battle(1)
     b.setCreator('玩家')
-    b.creator.chosenCards = myCardDatas
+    b.creator!.chosenCards = myCardDatas
     b.setSingleEnemy('敌人', enc.enemyCards)
     b.runFullBattle()
-    const usedBattleIndices = b.creator.usedCardIndices
+    const usedBattleIndices = b.creator!.usedCardIndices
     for (let i = 0; i < state.cards.length; i++) {
       const card = state.cards[i]
       const activePos = activeIndices.indexOf(i)
@@ -2503,7 +2503,7 @@ function testExpeditionFlowUsability() {
       if (activePos === -1) { hpAfter = card.currentHp }
       else {
         const wasUsed = activePos < usedBattleIndices.length
-        if (wasUsed) { hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0 }
+        if (wasUsed) { hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator!.nowHp, 0) : 0 }
         else { hpAfter = card.currentHp }
       }
       card.currentHp = hpAfter
@@ -2662,13 +2662,11 @@ function testExpeditionFlowUsability() {
   })())
 
   assert(`[${S}] 战斗: 失败时HP可能为0`, (() => {
-    const state = initTestState()
     const enc = generateEncounter(6, 4, rng)
-    let lost = false
     for (let i = 0; i < 20; i++) {
       const s2 = initTestState()
       const r2 = runBattleForState(s2, enc)
-      if (!r2.won) { lost = true; break }
+      if (!r2.won) { break }
     }
     return true
   })())
@@ -2976,7 +2974,7 @@ function testExpeditionFlowUsability() {
           state.cardOrder.push(state.cards.length - 1)
         }
       }
-      const rewards = generateRewards(enc.type, rng)
+      const rewards = generateRewards(battleTypeOf(enc.type), rng)
       if (rewards.length > 0) {
         const r = rewards[0]
         const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
@@ -3108,7 +3106,7 @@ function testExpeditionFlowUsability() {
     state.exActive = true
     state.exBattle = 0
     healAllForNewStage(state.cards)
-    const shopItems = generateShopItems(rng)
+    generateShopItems(rng)
     state.exBattle = 1
     for (let b = 1; b <= 7; b++) {
       const enc = generateExEncounter(b, rng)
@@ -3224,7 +3222,7 @@ function testExpeditionFlowUsability() {
       try {
         const b = new Battle(1)
         b.setCreator('A')
-        b.creator.chosenCards = [{ ...card }]
+        b.creator!.chosenCards = [{ ...card }]
         b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
         b.runFullBattle()
       } catch { return false }
@@ -3247,7 +3245,7 @@ function testExpeditionFlowUsability() {
       const cd = toCardData(sc)
       const b = new Battle(1)
       b.setCreator('A')
-      b.creator.chosenCards = [cd]
+      b.creator!.chosenCards = [cd]
       b.setSingleEnemy('B', [makeCard({ cardHp: 50 })])
       b.runFullBattle()
       return true
@@ -3352,7 +3350,7 @@ function testExpeditionFlowUsability() {
             state.cardOrder.push(state.cards.length - 1)
           }
         }
-        const rewards = generateRewards(enc.type, rng)
+        const rewards = generateRewards(battleTypeOf(enc.type), rng)
         if (rewards.length > 0) {
           const r = rewards[0]
           const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
@@ -3361,7 +3359,7 @@ function testExpeditionFlowUsability() {
         if (battle >= template.length) {
           healAllForNewStage(state.cards)
           if (stage < 6) {
-            const shopItems = generateShopItems(rng)
+            generateShopItems(rng)
           }
         }
       }
@@ -3376,7 +3374,7 @@ function testExpeditionFlowUsability() {
     state.exActive = true
     state.exBattle = 0
     healAllForNewStage(state.cards)
-    const shopItems = generateShopItems(rng)
+    generateShopItems(rng)
     state.exBattle = 1
     return state.exActive && state.exBattle === 1 && state.cards.every(c => c.currentHp === c.maxCardHp)
   })())
@@ -3386,13 +3384,12 @@ function testExpeditionFlowUsability() {
     state.exActive = true
     state.exBattle = 0
     healAllForNewStage(state.cards)
-    const shopItems = generateShopItems(rng)
+    generateShopItems(rng)
     state.exBattle = 1
-    const exTemplate = getExStageTemplate()
     for (let b = 1; b <= 7; b++) {
       const enc = generateExEncounter(b, rng)
       if (enc.type === 'shop') {
-        const shopItems2 = generateShopItems(rng)
+        generateShopItems(rng)
         continue
       }
       const result = runBattleForState(state, enc)
@@ -3407,7 +3404,7 @@ function testExpeditionFlowUsability() {
           if (tc.length > 0) d.apply(tc[0])
         }
       }
-      const rewards = generateRewards(enc.type, rng)
+      const rewards = generateRewards(battleTypeOf(enc.type), rng)
       if (rewards.length > 0) {
         const r = rewards[0]
         const tc = state.cards.filter(c => canApplyToCard(c, r, state.spirit))
@@ -3455,6 +3452,7 @@ function runSingleExpedition() {
   const state: ExpeditionState = {
     cards: [nonCard, spellCard], spirit: 0, currentStage: 1, currentBattle: 1,
     battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
+    exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false,
     cardOrder: initCardOrder([nonCard, spellCard]),
   }
   let totalRounds = 0
@@ -3473,12 +3471,12 @@ function runSingleExpedition() {
     try {
       const b = new Battle(1)
       b.setCreator('玩家')
-      b.creator.chosenCards = myCardDatas
+      b.creator!.chosenCards = myCardDatas
       b.setSingleEnemy('敌人', enc.enemyCards)
       b.runFullBattle()
       totalRounds += b.gameRound
 
-      const usedBattleIndices = b.creator.usedCardIndices
+      const usedBattleIndices = b.creator!.usedCardIndices
       for (let i = 0; i < state.cards.length; i++) {
         const card = state.cards[i]
         const activePos = activeIndices.indexOf(i)
@@ -3488,7 +3486,7 @@ function runSingleExpedition() {
         } else {
           const wasUsed = activePos < usedBattleIndices.length
           if (wasUsed) {
-            hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0
+            hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator!.nowHp, 0) : 0
           } else {
             hpAfter = card.currentHp
           }
@@ -3499,7 +3497,7 @@ function runSingleExpedition() {
       if (b.winnerId !== 1) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors }
 
       state.victories++
-      state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
+      state.spirit += getSpiritReward(enc.type) + b.creator!.spiritGained
       healNonCard(state.cards)
       healRestingCards(state.cards, activeIndices)
 
@@ -3517,7 +3515,7 @@ function runSingleExpedition() {
         }
       }
 
-      autoApplyReward(state, generateRewards(enc.type, rng))
+      autoApplyReward(state, generateRewards(battleTypeOf(enc.type), rng))
 
       const template = getStageTemplate(state.currentStage)
       if (state.currentBattle >= template.length) {
@@ -3586,12 +3584,12 @@ function runSingleExExpedition() {
     try {
       const b = new Battle(1)
       b.setCreator('玩家')
-      b.creator.chosenCards = myCardDatas
+      b.creator!.chosenCards = myCardDatas
       b.setSingleEnemy('敌人', enc.enemyCards)
       b.runFullBattle()
       totalRounds += b.gameRound
 
-      const usedBattleIndices = b.creator.usedCardIndices
+      const usedBattleIndices = b.creator!.usedCardIndices
       for (let i = 0; i < state.cards.length; i++) {
         const card = state.cards[i]
         const activePos = activeIndices.indexOf(i)
@@ -3601,7 +3599,7 @@ function runSingleExExpedition() {
         } else {
           const wasUsed = activePos < usedBattleIndices.length
           if (wasUsed) {
-            hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0
+            hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator!.nowHp, 0) : 0
           } else {
             hpAfter = card.currentHp
           }
@@ -3615,7 +3613,7 @@ function runSingleExExpedition() {
       }
 
       state.victories++
-      state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
+      state.spirit += getSpiritReward(enc.type) + b.creator!.spiritGained
       healNonCard(state.cards)
       healRestingCards(state.cards, activeIndices)
 
@@ -3648,7 +3646,7 @@ function runSingleExExpedition() {
           }
         }
 
-        autoApplyReward(state, generateRewards(enc.type, rng))
+        autoApplyReward(state, generateRewards(battleTypeOf(enc.type), rng))
 
         const template = getStageTemplate(state.currentStage)
         if (state.currentBattle >= template.length) {
@@ -3755,10 +3753,16 @@ interface Strategy {
   reorderCards: (state: ExpeditionState) => void
 }
 
+// 骰子期望值：count 颗 [min, faces] 骰子的均值 + 固定加值
+function diceAvg(diceStr: string): number {
+  const d = parseDice(diceStr)
+  return d.count * (d.min + d.faces) / 2 + d.bonus
+}
+
 function cardPower(c: ExpeditionCard): number {
-  const atk = parseDice(c.atkPoint).avg
-  const def = parseDice(c.defPoint).avg
-  const dod = parseDice(c.dodPoint).avg
+  const atk = diceAvg(c.atkPoint)
+  const def = diceAvg(c.defPoint)
+  const dod = diceAvg(c.dodPoint)
   return atk * 2 + def + dod + c.maxCardHp * 0.5
 }
 
@@ -4084,6 +4088,7 @@ function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCl
   const state: ExpeditionState = {
     cards: [nonCard, spellCard], spirit: 0, currentStage: 1, currentBattle: 1,
     battlesPerStage: 4, totalStages: 6, finished: false, victories: 0,
+    exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false,
     cardOrder: initCardOrder([nonCard, spellCard]),
   }
   let totalRounds = 0
@@ -4103,12 +4108,12 @@ function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCl
     try {
       const b = new Battle(1)
       b.setCreator('玩家')
-      b.creator.chosenCards = myCardDatas
+      b.creator!.chosenCards = myCardDatas
       b.setSingleEnemy('敌人', enc.enemyCards)
       b.runFullBattle()
       totalRounds += b.gameRound
 
-      const usedBattleIndices = b.creator.usedCardIndices
+      const usedBattleIndices = b.creator!.usedCardIndices
       for (let i = 0; i < state.cards.length; i++) {
         const card = state.cards[i]
         const activePos = activeIndices.indexOf(i)
@@ -4116,7 +4121,7 @@ function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCl
         if (activePos === -1) { hpAfter = card.currentHp }
         else {
           const wasUsed = activePos < usedBattleIndices.length
-          if (wasUsed) { hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator.nowHp, 0) : 0 }
+          if (wasUsed) { hpAfter = activePos === usedBattleIndices.length - 1 ? Math.max(b.creator!.nowHp, 0) : 0 }
           else { hpAfter = card.currentHp }
         }
         card.currentHp = hpAfter
@@ -4125,7 +4130,7 @@ function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCl
       if (b.winnerId !== 1) return { victory: false, stagesCleared: state.currentStage - 1, battlesWon: state.victories, totalRounds, errors, finalCards: [...state.cards] }
 
       state.victories++
-      state.spirit += getSpiritReward(enc.type) + b.creator.spiritGained
+      state.spirit += getSpiritReward(enc.type) + b.creator!.spiritGained
       healNonCard(state.cards)
       healRestingCards(state.cards, activeIndices)
 
@@ -4146,7 +4151,7 @@ function runStrategyExpedition(strategy: Strategy): { victory: boolean; stagesCl
         }
       }
 
-      const rewards = generateRewards(enc.type, Math.random)
+      const rewards = generateRewards(battleTypeOf(enc.type), Math.random)
       if (rewards.length > 0) {
         const ri = strategy.pickReward(rewards, state)
         const reward = ri >= 0 && ri < rewards.length ? rewards[ri] : rewards[0]

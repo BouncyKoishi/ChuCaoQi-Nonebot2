@@ -30,7 +30,7 @@
                     <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                   </div>
                   <div class="card-desc" v-if="card.description !== '无'">
-                    <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                    <template v-for="(seg, _si) in parseDescription(card.description)" :key="_si">
                       <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                         <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                       </el-tooltip>
@@ -113,7 +113,7 @@
                         <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                       </div>
                       <div class="card-desc" v-if="card.description !== '无'">
-                        <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                        <template v-for="(seg, _si) in parseDescription(card.description)" :key="_si">
                           <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                             <el-tag size="small" type="success" class="inline-effect-tag">{{ seg.text }}</el-tag>
                           </el-tooltip>
@@ -248,7 +248,7 @@
                   <span>DEF:{{ card.defPoint }}</span><span>DOD:{{ card.dodPoint }}</span>
                 </div>
                 <div class="codex-card-desc" v-if="card.description !== '无'">
-                  <template v-for="(seg, si) in parseDescription(card.description)" :key="si">
+                  <template v-for="(seg, _si) in parseDescription(card.description)" :key="_si">
                     <el-tooltip v-if="seg.type === 'effect'" :content="seg.effectDesc" placement="top">
                       <el-tag size="small" type="success" class="codex-effect-tag">{{ seg.text }}</el-tag>
                     </el-tooltip>
@@ -314,11 +314,18 @@ let animIndex = 0
 let animFullLog: LogEntry[] = []
 const logCollapsed = ref(false)
 
+interface EffectDamageVisual {
+  target: 'creator' | 'joiner'
+  amount: number
+  source: string
+}
+
 interface TurnVisualState {
   stats?: { creatorAtk: number; creatorDef: number; creatorDod: number; joinerAtk: number; joinerDef: number; joinerDod: number }
   damage?: { creatorHurt: number; joinerHurt: number; creatorDodged: boolean; joinerDodged: boolean; creatorDefended: boolean; joinerDefended: boolean }
   cardBreak?: 'creator' | 'joiner'
-  breakSource?: 'battle' | 'effect'
+  breakSource?: 'battle' | 'effect' | 'time'
+  effectDamage?: EffectDamageVisual
   round: number
   statsKey: number
   damageKey: number
@@ -363,7 +370,7 @@ const confirmCardSelection = () => {
 const handleCreateBattle = () => {
   const b = new Battle(Number(userId.value) || 1)
   b.setCreator('你')
-  b.creator.chosenCards = [...selectedCards.value]
+  b.creator!.chosenCards = [...selectedCards.value]
   const enemyCards = getRandomCards(5)
   b.setSingleEnemy('AI对手', enemyCards)
   battle.value = b
@@ -606,21 +613,21 @@ const handleQuickBattle = () => {
   try {
     const b = new Battle(Number(userId.value) || 1)
     b.setCreator('你')
-    b.creator.chosenCards = getRandomCards(5)
+    b.creator!.chosenCards = getRandomCards(5)
     b.setSingleEnemy('AI对手', getRandomCards(5))
     b.runFullBattle()
     battle.value = b
     displayedLog.value = b.log.entries
     const lastEntry = b.log.entries[b.log.entries.length - 1]
-    animCreatorHp.value = lastEntry?.creatorHp ?? b.creator.nowHp
-    animJoinerHp.value = lastEntry?.joinerHp ?? b.joiner.nowHp
-    animCreatorMaxHp.value = lastEntry?.creatorCard?.cardHp ?? b.creator.nowCard?.cardHp ?? 1
-    animJoinerMaxHp.value = lastEntry?.joinerCard?.cardHp ?? b.joiner.nowCard?.cardHp ?? 1
-    animCreatorCard.value = lastEntry?.creatorCard ?? b.creator.nowCard
-    animJoinerCard.value = lastEntry?.joinerCard ?? b.joiner.nowCard
-    animCreatorEffects.value = lastEntry?.creatorEffects ?? b.creator.effects.map(e => e.toData())
-    animJoinerEffects.value = lastEntry?.joinerEffects ?? b.joiner.effects.map(e => e.toData())
-    creatorCardIndex.value = lastEntry?.creatorCardIndex ?? b.creator.usedCardIndices.length
+    animCreatorHp.value = lastEntry?.creatorHp ?? b.creator!.nowHp
+    animJoinerHp.value = lastEntry?.joinerHp ?? b.joiner!.nowHp
+    animCreatorMaxHp.value = lastEntry?.creatorCard?.cardHp ?? b.creator!.nowCard?.cardHp ?? 1
+    animJoinerMaxHp.value = lastEntry?.joinerCard?.cardHp ?? b.joiner!.nowCard?.cardHp ?? 1
+    animCreatorCard.value = lastEntry?.creatorCard ?? b.creator!.nowCard
+    animJoinerCard.value = lastEntry?.joinerCard ?? b.joiner!.nowCard
+    animCreatorEffects.value = lastEntry?.creatorEffects ?? b.creator!.effects.map(e => e.toData())
+    animJoinerEffects.value = lastEntry?.joinerEffects ?? b.joiner!.effects.map(e => e.toData())
+    creatorCardIndex.value = lastEntry?.creatorCardIndex ?? b.creator!.usedCardIndices.length
     joinerCardIndex.value = lastEntry?.joinerCardIndex ?? b.joiner!.usedCardIndices.length
     turnVisual.value = { round: 0, statsKey: 0, damageKey: 0, breakKey: 0 }
     _statsKey = 0; _damageKey = 0; _breakKey = 0
@@ -638,7 +645,7 @@ const handleSurrender = async () => {
       battle.value.winnerId = battle.value.joinerId
       battle.value.finished = true
       battle.value.state = Battle.STATE_FINISHED
-      battle.value.log.add(battle.value.gameRound, 'end', '你投降了！AI对手 获胜！', battle.value.creator.nowHp, battle.value.joiner.nowHp)
+      battle.value.log.add(battle.value.gameRound, 'end', '你投降了！AI对手 获胜！', battle.value.creator!.nowHp, battle.value.joiner!.nowHp)
       displayedLog.value = [...battle.value.log.entries]
       logCollapsed.value = false
       battlePhase.value = 'finished'

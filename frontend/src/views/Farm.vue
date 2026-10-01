@@ -147,7 +147,7 @@
           v-else
           icon="info"
           :title="kusaField.kusaType ? kusaField.kusaType + '正在生长中' : '草正在生长中'"
-          :sub-title="kusaField.growInfo ? `预计收获时间: ${formatTime(kusaField.growInfo.finishTimestamp)}，剩余时间: ${Math.ceil(kusaField.growInfo.remainingSeconds / 60)}分钟` : `预计收获时间: ${formatTime(kusaField.kusaFinishTs)}`"
+          :sub-title="kusaField.growInfo ? `预计收获时间: ${formatTime(kusaField.growInfo.finishTimestamp)}，剩余时间: ${Math.ceil(kusaField.growInfo.remainingSeconds / 60)}分钟` : `预计收获时间: ${kusaField.kusaFinishTs ? formatTime(kusaField.kusaFinishTs) : '未知'}`"
         >
           <template #extra>
             <div v-if="kusaField.growInfo && kusaField.growInfo.isPrescient">
@@ -248,7 +248,7 @@ const formatOverloadEndTime = (isoString: string) => {
 }
 
 // 草之精华概率映射
-const ADV_KUSA_PROBABILITY_DICT = { 0: 0, 1: 0.125, 2: 0.5, 3: 0.5, 4: 0.625 }
+const ADV_KUSA_PROBABILITY_DICT: Record<number, number> = { 0: 0, 1: 0.125, 2: 0.5, 3: 0.5, 4: 0.625 }
 
 const getAdvKusaProbability = (level: number) => {
   const probability = ADV_KUSA_PROBABILITY_DICT[level] || 0
@@ -294,14 +294,6 @@ const checkOverloadMagic = async () => {
   } catch (error) {
     console.error('检查过载魔法失败:', error)
     hasOverloadMagic.value = false
-  }
-}
-
-const checkAutoHarvest = async () => {
-  if (farmWebSocket.isConnected()) {
-    farmWebSocket.requestStatus()
-  } else {
-    await refreshField()
   }
 }
 
@@ -365,7 +357,7 @@ const handlePlant = async () => {
 const handleWeed = async () => {
   weeding.value = true
   try {
-    const result = await farmApi.weedKusa()
+    await farmApi.weedKusa()
     ElMessage.success('除草成功！草已清除')
     const lastType = localStorage.getItem('lastKusaType')
     if (lastType) {

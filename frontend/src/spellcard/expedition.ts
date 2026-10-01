@@ -67,7 +67,7 @@ export interface ExpeditionCard {
   slotCapacity: SlotCapacity
 }
 
-export type StageType = 'normal' | 'elite' | 'boss'
+export type StageType = 'normal' | 'elite' | 'boss' | 'shop'
 
 export interface FixedDrop {
   type: 'dice' | 'newCard'
@@ -235,7 +235,7 @@ export function initExpeditionState(): ExpeditionState {
   return { cards: [], spirit: 0, currentStage: 1, currentBattle: 1, battlesPerStage: 4, totalStages: 6, finished: false, victories: 0, exActive: false, exBattle: 0, exCardsBroken: 0, exFinished: false, cardOrder: [] }
 }
 
-export function isSlotReward(r: Reward): boolean {
+export function isSlotReward(r: Reward): r is ExtraSlotReward {
   return 'slot' in r && !('apply' in r)
 }
 
@@ -259,7 +259,7 @@ export function isDiceMinUpgrade(r: Reward): boolean {
   return 'apply' in r && !('slot' in r) && r.id.endsWith('_min1')
 }
 
-export function isEffectModule(r: Reward): boolean {
+export function isEffectModule(r: Reward): r is EffectModule {
   return 'slot' in r && 'apply' in r
 }
 
@@ -278,7 +278,7 @@ export function canApplyToCard(card: ExpeditionCard, r: Reward, spirit: number, 
     if (isStatUpgrade(r)) return true
     if (isDiceUpgrade(r)) return true
     if (isEffectModule(r)) {
-      return card.slotCapacity[(r as EffectModule).slot] > 0
+      return card.slotCapacity[r.slot] > 0
     }
     return false
   }
@@ -287,11 +287,8 @@ export function canApplyToCard(card: ExpeditionCard, r: Reward, spirit: number, 
 
 export function applyRewardToCard(card: ExpeditionCard, reward: Reward) {
   if (isSlotReward(reward)) { addSlotCapacity(card, reward.slot); return }
-  if ('slot' in reward && 'apply' in reward) {
-    addEffectToCard(card, reward)
-  } else if ('apply' in reward) {
-    reward.apply(card)
-  }
+  if (isEffectModule(reward)) { addEffectToCard(card, reward); return }
+  if ('apply' in reward) { reward.apply(card) }
 }
 
 export type SlotDisplay = { type: 'effect'; effect: EffectModule & { slot: EffectSlot } } | { type: 'empty'; slot: EffectSlot }

@@ -313,44 +313,42 @@ const activeTab = ref('draw')
 const pools = ref<string[]>([])
 const selectedPool = ref('')
 const selectedRare = ref('')
-const storageData = ref<any>({ byRare: {} })
+interface LotteryStorageItem { name: string; amount: number }
+interface LotteryRareGroup { total: number; owned: number; items: LotteryStorageItem[] }
+interface LotteryStorageData { total: number; byRare: Record<string, LotteryRareGroup> }
+
+const storageData = ref<LotteryStorageData>({ total: 0, byRare: {} })
 const storageSearchKeyword = ref('')
 const expandedRares = ref<Record<string, boolean>>({})
 
-const filteredStorageData = computed(() => {
-  if (!storageData.value.byRare) return { byRare: {} }
-  
-  const result: any = { byRare: {} }
+const filterStorageItems = (data: LotteryRareGroup, keyword: string): LotteryStorageItem[] => {
+  return keyword
+    ? data.items.filter(item => item.name.toLowerCase().includes(keyword))
+    : data.items
+}
+
+const filteredStorageData = computed<LotteryStorageData>(() => {
+  const result: LotteryStorageData = { total: storageData.value.total, byRare: {} }
   const keyword = storageSearchKeyword.value.toLowerCase().trim()
-  
-  for (const [rare, rareData] of Object.entries(storageData.value.byRare)) {
-    const data = rareData as any
-    const filteredItems = keyword 
-      ? data.items.filter((item: any) => item.name.toLowerCase().includes(keyword))
-      : data.items
+
+  for (const [rare, data] of Object.entries(storageData.value.byRare)) {
     result.byRare[rare] = {
       ...data,
-      items: filteredItems
+      items: filterStorageItems(data, keyword)
     }
   }
-  
+
   return result
 })
 
 const updateExpandedRares = () => {
-  if (!storageData.value.byRare) return
-  
   const newExpandedRares: Record<string, boolean> = {}
   const keyword = storageSearchKeyword.value.toLowerCase().trim()
-  
-  for (const [rare, rareData] of Object.entries(storageData.value.byRare)) {
-    const data = rareData as any
-    const filteredItems = keyword 
-      ? data.items.filter((item: any) => item.name.toLowerCase().includes(keyword))
-      : data.items
-    newExpandedRares[rare] = filteredItems.length <= 100
+
+  for (const [rare, data] of Object.entries(storageData.value.byRare)) {
+    newExpandedRares[rare] = filterStorageItems(data, keyword).length <= 100
   }
-  
+
   expandedRares.value = newExpandedRares
 }
 

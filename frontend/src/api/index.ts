@@ -1,12 +1,25 @@
 import type { GValue, Item, KusaField, UserInfo, WarehouseInfo } from '@/types'
 import axios from 'axios'
+import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 
-const api = axios.create({
+// 响应拦截器在运行时会：
+//   1. 遇到 { success: false } 直接抛业务错误
+//   2. 遇到 { success: true, data: xxx } 解包成 xxx
+// 因此对外暴露的方法签名按「解包后的结果」声明，而不是 axios 原生的 AxiosResponse。
+export interface UnwrappedApi {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+}
+
+const http = axios.create({
   baseURL: import.meta.env.PROD ? '/kusa/api' : '/api',
   timeout: 10000
 })
 
-api.interceptors.request.use(
+http.interceptors.request.use(
   config => {
     const sessionToken = localStorage.getItem('sessionToken') || ''
     if (sessionToken) {
@@ -19,7 +32,7 @@ api.interceptors.request.use(
   }
 )
 
-api.interceptors.response.use(
+http.interceptors.response.use(
   response => {
     // blob 响应直接返回，不走 JSON 解包（供图片等二进制下载使用）
     if (response.config.responseType === 'blob') {
@@ -31,7 +44,7 @@ api.interceptors.response.use(
     if (data && typeof data === 'object') {
       if ('success' in data) {
         if (!data.success) {
-          const error = new Error(data.error || '请求失败')
+          const error = new Error(data.error || '请求失败') as Error & { response?: AxiosResponse }
           error.response = response
           throw error
         }
@@ -49,6 +62,8 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+const api = http as unknown as UnwrappedApi
 
 export const authApi = {
   login: (qq: string, token?: string) => api.post<UserInfo>('/auth/login', { qq, token }),
@@ -99,7 +114,7 @@ export const itemApi = {
 
 export const farmApi = {
   getField: () => api.get<KusaField>('/farm'),
-  plantKusa: (kusaType: string, overload: boolean = false) => api.post<{ success: boolean; message: string; kusaType: string; kusaFinishTs: number; growTime: number }>('/farm/plant', { kusaType, overload }),
+  plantKusa: (kusaType: string, overload: boolean = false) => api.post<{ success: boolean; message: string; kusaType: string; kusaFinishTs: number; growTime: number; prayRolls?: number; autoAssigned?: boolean }>('/farm/plant', { kusaType, overload }),
   weedKusa: () => api.post<{ success: boolean; kusa: number; advKusa: number; kusaType: string }>('/farm/weed'),
   getHistory: () => api.get<any[]>('/farm/history'),
   getAvailableKusaTypes: () => api.get<any[]>('/farm/available-kusa-types'),
@@ -212,7 +227,7 @@ export const adminApi = {
 
   // 自定义排行榜
   generateCustomRank: (payload: {
-    dimension: 'kusa' | 'advKusa' | 'totalAdvKusa' | 'item'
+    dimension: 'kusa' | 'advKusa' | 'totalAdvKusa' | 'kusaOnce' | 'advKusaOnce' | 'item'
     limit?: number
     levelMax?: number
     showInactive?: boolean
