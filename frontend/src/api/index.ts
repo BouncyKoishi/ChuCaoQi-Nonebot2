@@ -1,4 +1,4 @@
-import type { GValue, Item, KusaField, UserInfo, WarehouseInfo } from '@/types'
+import type { GValue, Item, KusaField, TransferRecordPage, UserInfo, WarehouseInfo } from '@/types'
 import axios from 'axios'
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 
@@ -102,7 +102,9 @@ export const warehouseApi = {
   getGMarketRecords: (page: number, pageSize: number) => api.get<any>('/warehouse/stats/gmarket/records', { params: { page, pageSize } }),
   compressKusa: (amount: number) => api.post<{ success: boolean; message: string; advKusaGained?: number; kusaUsed?: number }>('/warehouse/compress-kusa', { amount }),
   resolveTransferTarget: (payload: { targetQq?: string; targetUserId?: number }) => api.post<{ userId: number; qq: string | null; name: string | null }>('/warehouse/transfer-target', payload),
-  transferKusa: (payload: { targetQq?: string; targetUserId?: number; amount: number }) => api.post<{ success: boolean; message: string }>('/warehouse/transfer-kusa', payload)
+  transferKusa: (payload: { targetQq?: string; targetUserId?: number; amount: number }) => api.post<{ success: boolean; message: string }>('/warehouse/transfer-kusa', payload),
+  getTransferRecords: (params: { direction?: 'all' | 'in' | 'out'; tradeType?: 'all' | '草' | '物品'; page?: number; pageSize?: number }) =>
+    api.get<TransferRecordPage>('/warehouse/transfer-records', { params })
 }
 
 export const itemApi = {

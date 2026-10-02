@@ -49,14 +49,13 @@ class ItemService:
             await itemDB.changeItemAmount(from_user_id, item_name, -amount)
             await itemDB.changeItemAmount(to_user_id, item_name, amount)
 
-        await baseDB.setTradeRecord(
-            userId=from_user_id,
-            tradeType='物品转让',
-            gainItemAmount=0,
-            gainItemName='',
-            costItemAmount=amount,
-            costItemName=item_name,
-            detail=f'转让给{to_user_id}'
+        # 转让同时记录双方，供收款方在 Web 端查询确认；不再写入 TradeRecord（其仅记录发起方收付，用于统计）
+        await baseDB.setTransferRecord(
+            fromUserId=from_user_id,
+            toUserId=to_user_id,
+            tradeType='物品',
+            itemName=item_name,
+            amount=amount
         )
 
         return {

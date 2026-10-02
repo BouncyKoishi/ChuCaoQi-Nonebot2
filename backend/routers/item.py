@@ -13,6 +13,7 @@ from core.services import ItemService
 import core.db.kusa_item as itemDB
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
+from common import resolve_transfer_target
 
 router = APIRouter()
 
@@ -77,19 +78,6 @@ async def compose_ticket(request: Request):
 
 # ==================== 物品转让接口 ====================
 
-async def _resolve_transfer_target(target_user_id, target_qq):
-    """按用户ID或QQ号解析接收方，返回 (user, error)"""
-    if target_user_id:
-        try:
-            target_user_id = int(target_user_id)
-        except (TypeError, ValueError):
-            return None, '用户ID格式不正确'
-        return await ItemService.get_transfer_target_by_id(target_user_id), None
-    if target_qq:
-        return await ItemService.get_transfer_target_by_qq(str(target_qq).strip()), None
-    return None, '请输入接收方的QQ号或用户ID'
-
-
 @router.post("/transfer")
 @limiter.limit("30/minute")
 async def transfer_item(request: Request):
@@ -110,7 +98,7 @@ async def transfer_item(request: Request):
     if amount <= 0:
         return {"success": False, "error": "转让数量不合法"}
 
-    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    target, error = await resolve_transfer_target(ItemService, body.get('targetUserId'), body.get('targetQq'))
     if error:
         return {"success": False, "error": error}
     if not target:

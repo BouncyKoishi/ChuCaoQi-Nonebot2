@@ -181,6 +181,25 @@ class TradeRecord(Model):
     timestamp = IntField()
 
 
+class TransferRecord(Model):
+    """转让记录表
+
+    与 TradeRecord（仅记录发起方的物品/草收付，用于统计）不同，
+    本表同时记录转让双方，供收款方查询「收到转让」并确认入账。
+    tradeType 取值：'草' / '物品'
+    """
+    id = IntField(pk=True)
+    fromUser = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="transfer_records_out", source_field="fromUserId")
+    toUser = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="transfer_records_in", source_field="toUserId")
+    tradeType = CharField(max_length=8)
+    itemName = CharField(max_length=64, null=True)
+    amount = IntField()
+    timestamp = IntField()
+
+    class Meta:
+        table = "transfer_record"
+
+
 class PageView(Model):
     id = IntField(pk=True)
     userId = IntField(null=True)

@@ -16,6 +16,7 @@ import core.db.kusa_system as baseDB
 
 from middleware.session_auth import get_user_id
 from middleware.rate_limiter import limiter
+from common import resolve_transfer_target
 
 router = APIRouter()
 
@@ -254,29 +255,54 @@ async def compress_kusa(request: Request):
 
 # ==================== 转让接口 ====================
 
-async def _resolve_transfer_target(target_user_id, target_qq):
-    """按用户ID或QQ号解析接收方，返回 (user, error)"""
-    if target_user_id:
-        try:
-            target_user_id = int(target_user_id)
-        except (TypeError, ValueError):
-            return None, '用户ID格式不正确'
-        return await WarehouseService.get_transfer_target_by_id(target_user_id), None
-    if target_qq:
-        return await WarehouseService.get_transfer_target_by_qq(str(target_qq).strip()), None
-    return None, '请输入接收方的QQ号或用户ID'
+@router.get("/transfer-records")
+@limiter.limit("60/minute")
+async def get_transfer_records(
+    request: Request,
+    direction: str = Query('all', description="all=全部 / in=仅收到 / out=仅转出"),
+    tradeType: str = Query('all', description="all=全部 / 草 / 物品"),
+    page: int = Query(1, description="页码，从1开始"),
+    pageSize: int = Query(10, description="每页条数")
+):
+    """查询本人相关的转让记录（转出与收到），供收款方确认入账"""
+    userId = get_user_id(request)
+    if not userId:
+        return {"success": False, "error": "未登录或登录已过期"}
+
+    if direction not in ('all', 'in', 'out'):
+        return {"success": False, "error": "direction参数不合法"}
+    if tradeType not in ('all', '草', '物品'):
+        return {"success": False, "error": "tradeType参数不合法"}
+
+    pageSize = max(1, min(pageSize, 50))
+
+    data = await WarehouseService.get_transfer_records(
+        userId=userId,
+        direction=direction,
+        tradeType=tradeType,
+        page=page,
+        pageSize=pageSize
+    )
+
+    # 补齐对方显示名：无昵称时回退为QQ号（与仓库展示规则一致）
+    counterparty_ids = [record['counterpartyId'] for record in data['records']]
+    name_map = await baseDB.getNameListByKusaUserId(counterparty_ids) if counterparty_ids else {}
+    for record in data['records']:
+        record['counterpartyName'] = name_map.get(record['counterpartyId'])
+
+    return {"success": True, "data": data}
 
 
 @router.post("/transfer-target")
 @limiter.limit("60/minute")
-async def resolve_transfer_target(request: Request):
+async def query_transfer_target(request: Request):
     """查询转让接收方信息（供前端确认，避免转错人）"""
     userId = get_user_id(request)
     if not userId:
         return {"success": False, "error": "未登录或登录已过期"}
 
     body = await request.json()
-    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    target, error = await resolve_transfer_target(WarehouseService, body.get('targetUserId'), body.get('targetQq'))
     if error:
         return {"success": False, "error": error}
     if not target:
@@ -308,7 +334,7 @@ async def transfer_kusa(request: Request):
     if amount <= 0:
         return {"success": False, "error": "转让数量不合法"}
 
-    target, error = await _resolve_transfer_target(body.get('targetUserId'), body.get('targetQq'))
+    target, error = await resolve_transfer_target(WarehouseService, body.get('targetUserId'), body.get('targetQq'))
     if error:
         return {"success": False, "error": error}
     if not target:

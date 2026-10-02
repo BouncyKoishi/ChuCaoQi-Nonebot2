@@ -24,6 +24,26 @@ export interface WarehouseInfo {
   items: UserItem[]
 }
 
+export interface TransferRecord {
+  timestamp: number
+  tradeType: '草' | '物品'
+  itemName: string | null
+  amount: number
+  isIncoming: boolean
+  fromUserId: number
+  toUserId: number
+  counterpartyId: number
+  counterpartyQq: string | null
+  counterpartyName?: string | null
+}
+
+export interface TransferRecordPage {
+  records: TransferRecord[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export interface Item {
   name: string
   detail: string | null

@@ -6,8 +6,8 @@
 
 import datetime
 from typing import Dict, List, Optional
-from tortoise.expressions import F
-from .models import KusaBase, KusaField, Flag, DonateRecord, TradeRecord
+from tortoise.expressions import F, Q
+from .models import KusaBase, KusaField, Flag, DonateRecord, TradeRecord, TransferRecord
 from . import user as user_db
 
 
@@ -246,3 +246,56 @@ async def setTradeRecord(userId, tradeType, gainItemAmount, gainItemName, costIt
     await TradeRecord.create(user=unifiedUser, tradeType=tradeType, detail=detail, timestamp=timestamp,
                              gainItemAmount=gainItemAmount, gainItemName=gainItemName,
                              costItemAmount=costItemAmount, costItemName=costItemName)
+
+
+# ===== TransferRecord 相关操作 =====
+
+async def setTransferRecord(fromUserId, toUserId, tradeType, itemName, amount):
+    """写入转让记录（同时记录转让方与接收方）"""
+    fromUser = await user_db.getUnifiedUser(fromUserId)
+    toUser = await user_db.getUnifiedUser(toUserId)
+    if not fromUser or not toUser:
+        return
+    timestamp = datetime.datetime.now().timestamp()
+    await TransferRecord.create(fromUser=fromUser, toUser=toUser, tradeType=tradeType,
+                                itemName=itemName, amount=amount, timestamp=timestamp)
+
+
+async def getTransferRecords(userId=None, fromUserId=None, toUserId=None, tradeType=None,
+                             limit=None, offset=None):
+    """按条件获取转让记录，按时间倒序返回
+
+    Args:
+        userId: 同时匹配转出与转入的记录
+        fromUserId / toUserId: 仅匹配转出方 / 接收方
+        tradeType: '草' 或 '物品'
+        limit / offset: 分页参数，limit 为 None 时不限制
+    """
+    query = TransferRecord.all()
+    if userId:
+        # 同时匹配转出与转入
+        query = query.filter(Q(fromUser_id=userId) | Q(toUser_id=userId))
+    if fromUserId:
+        query = query.filter(fromUser_id=fromUserId)
+    if toUserId:
+        query = query.filter(toUser_id=toUserId)
+    if tradeType:
+        query = query.filter(tradeType=tradeType)
+    query = query.order_by('-timestamp')
+    if limit is not None:
+        query = query.offset(offset or 0).limit(limit)
+    return await query
+
+
+async def countTransferRecords(userId=None, fromUserId=None, toUserId=None, tradeType=None):
+    """统计符合条件的转让记录数量（分页用）"""
+    query = TransferRecord.all()
+    if userId:
+        query = query.filter(Q(fromUser_id=userId) | Q(toUser_id=userId))
+    if fromUserId:
+        query = query.filter(fromUser_id=fromUserId)
+    if toUserId:
+        query = query.filter(toUser_id=toUserId)
+    if tradeType:
+        query = query.filter(tradeType=tradeType)
+    return await query.count()

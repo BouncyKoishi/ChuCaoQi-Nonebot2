@@ -5,12 +5,16 @@
         <div class="card-header">
           <h2>仓库</h2>
           <div class="header-actions">
-            <el-button @click="refreshWarehouse" circle size="default" style="width: 32px; height: 32px;">
-              <el-icon><Refresh /></el-icon>
+            <el-button class="icon-text-button" @click="openTransferRecords" size="small">
+              <el-icon><Tickets /></el-icon>
+              转让记录
             </el-button>
-            <el-button @click="showUpgradeDialog" type="primary" size="small">
+            <el-button class="icon-text-button" @click="showUpgradeDialog" type="primary" size="small">
               <el-icon><Star /></el-icon>
               信息员升级
+            </el-button>
+            <el-button @click="refreshWarehouse" circle size="default" style="width: 32px; height: 32px;">
+              <el-icon><Refresh /></el-icon>
             </el-button>
           </div>
         </div>
@@ -239,13 +243,74 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="transferRecordsVisible" title="转让记录" width="720px" @open="handleRecordsOpen">
+      <div class="records-toolbar">
+        <el-radio-group v-model="recordsDirection" size="small" @change="handleRecordsFilterChange">
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="in">收到</el-radio-button>
+          <el-radio-button label="out">转出</el-radio-button>
+        </el-radio-group>
+        <el-radio-group v-model="recordsTradeType" size="small" @change="handleRecordsFilterChange">
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="草">草</el-radio-button>
+          <el-radio-button label="物品">物品</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <el-table v-loading="recordsLoading" :data="transferRecords" style="width: 100%" empty-text="暂无转让记录">
+        <el-table-column label="方向" width="80">
+          <template #default="scope">
+            <el-tag :type="scope.row.isIncoming ? 'success' : 'warning'" size="small">
+              {{ scope.row.isIncoming ? '收到' : '转出' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="对方" min-width="150">
+          <template #default="scope">
+            <div>{{ scope.row.counterpartyName || '未设置昵称' }}</div>
+            <div class="records-sub-text">
+              QQ: {{ scope.row.counterpartyQq || '未绑定' }} / ID: {{ scope.row.counterpartyId }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="内容" min-width="140">
+          <template #default="scope">
+            <span v-if="scope.row.tradeType === '草'">{{ formatNumber(scope.row.amount) }} 草</span>
+            <span v-else>{{ scope.row.itemName }} × {{ formatNumber(scope.row.amount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="时间" width="170">
+          <template #default="scope">
+            {{ scope.row.timestamp ? new Date(scope.row.timestamp * 1000).toLocaleString() : '' }}
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        v-if="transferRecordsTotal > 0"
+        layout="prev, pager, next"
+        :total="transferRecordsTotal"
+        :page-size="recordsPageSize"
+        :current-page="recordsPage"
+        @current-change="handleRecordsPageChange"
+        style="margin-top: 16px; justify-content: center"
+      />
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="transferRecordsVisible = false">关闭</el-button>
+          <el-button type="primary" :loading="recordsLoading" @click="fetchTransferRecords">刷新</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { itemApi, vipApi, warehouseApi } from '@/api'
-import type { WarehouseInfo } from '@/types'
-import { Refresh, Star } from '@element-plus/icons-vue'
+import type { TransferRecord, WarehouseInfo } from '@/types'
+import { Refresh, Star, Tickets } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 
@@ -267,6 +332,16 @@ const transferItemName = ref('')
 const transferMax = ref(1)
 const resolvingTarget = ref(false)
 const transferring = ref(false)
+
+// 转让记录（供收款方确认是否收到转让）
+const transferRecordsVisible = ref(false)
+const recordsLoading = ref(false)
+const recordsDirection = ref<'all' | 'in' | 'out'>('all')
+const recordsTradeType = ref<'all' | '草' | '物品'>('all')
+const recordsPage = ref(1)
+const recordsPageSize = ref(10)
+const transferRecords = ref<TransferRecord[]>([])
+const transferRecordsTotal = ref(0)
 
 const propertyItems = computed(() => {
   if (!warehouseInfo.value) return []
@@ -418,6 +493,45 @@ const handleUpgrade = async () => {
   }
 }
 
+const openTransferRecords = () => {
+  recordsPage.value = 1
+  transferRecordsVisible.value = true
+}
+
+const handleRecordsOpen = () => {
+  fetchTransferRecords()
+}
+
+const fetchTransferRecords = async () => {
+  recordsLoading.value = true
+  try {
+    const response = await warehouseApi.getTransferRecords({
+      direction: recordsDirection.value,
+      tradeType: recordsTradeType.value,
+      page: recordsPage.value,
+      pageSize: recordsPageSize.value
+    })
+    transferRecords.value = response.records || []
+    transferRecordsTotal.value = response.total || 0
+  } catch (error: any) {
+    transferRecords.value = []
+    transferRecordsTotal.value = 0
+    ElMessage.error(error.message || '获取转让记录失败')
+  } finally {
+    recordsLoading.value = false
+  }
+}
+
+const handleRecordsFilterChange = () => {
+  recordsPage.value = 1
+  fetchTransferRecords()
+}
+
+const handleRecordsPageChange = (page: number) => {
+  recordsPage.value = page
+  fetchTransferRecords()
+}
+
 const showTransferKusaDialog = () => {
   if (!warehouseInfo.value) return
   transferMode.value = 'kusa'
@@ -495,6 +609,10 @@ const handleTransfer = async () => {
     }
     ElMessage.success('转让成功')
     transferDialogVisible.value = false
+    if (transferRecordsVisible.value) {
+      // 记录弹窗已打开时同步刷新，方便立刻核对
+      await fetchTransferRecords()
+    }
     await refreshWarehouse()
   } catch (error: any) {
     ElMessage.error(error.message || '转让失败')
@@ -522,6 +640,17 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 带图标与文字的按钮：图标和文字之间留出间距 */
+.header-actions .icon-text-button :deep(.el-icon) {
+  margin-right: 6px;
 }
 
 .card-header h2 {
@@ -582,6 +711,18 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   width: 100%;
+}
+
+.records-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.records-sub-text {
+  font-size: 12px;
+  color: #909399;
 }
 
 .warehouse-card :deep(.el-descriptions__cell) {

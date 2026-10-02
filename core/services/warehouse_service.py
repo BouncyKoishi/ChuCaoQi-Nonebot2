@@ -241,15 +241,14 @@ class WarehouseService:
         except _Rollback as e:
             return e.result
         
-        # 记录交易
-        await baseDB.setTradeRecord(
-            userId=userId,
-            tradeType='草转让',
-            gainItemAmount=0,
-            gainItemName='',
-            costItemAmount=amount,
-            costItemName='草',
-            detail=f'转让给用户{target_userId}'
+        # 记录转让（同时记录双方，供收款方在 Web 端查询确认）
+        # 不再写入 TradeRecord：TradeRecord 仅记录发起方的物品/草收付用于统计，转让改由 TransferRecord 承载
+        await baseDB.setTransferRecord(
+            fromUserId=userId,
+            toUserId=target_userId,
+            tradeType='草',
+            itemName=None,
+            amount=amount
         )
         
         return {
@@ -283,6 +282,82 @@ class WarehouseService:
             UnifiedUser 或 None
         """
         return await user_db.getUnifiedUser(user_id)
+
+    @staticmethod
+    async def get_transfer_records(
+        userId: int,
+        direction: str = 'all',
+        tradeType: str = 'all',
+        page: int = 1,
+        pageSize: int = 10
+    ) -> Dict[str, Any]:
+        """查询本人相关的转让记录（转出与转入）
+
+        Args:
+            userId: 查询者用户ID
+            direction: 'in' 仅收到 / 'out' 仅转出 / 'all' 全部
+            tradeType: '草' / '物品' / 'all'
+            page: 页码，从 1 开始
+            pageSize: 每页条数
+
+        Returns:
+            Dict: {'records': [...], 'total': int, 'page': int, 'pageSize': int}
+            每条记录含 fromUserId/toUserId/counterpartyId/counterpartyQq/isIncoming 等字段
+        """
+        # 方向决定按接收方还是转出方过滤；'all' 时同时匹配两者
+        fromUserId = userId if direction == 'out' else None
+        toUserId = userId if direction == 'in' else None
+
+        type_filter = tradeType if tradeType in ('草', '物品') else None
+
+        total = await baseDB.countTransferRecords(
+            userId=userId if direction == 'all' else None,
+            fromUserId=fromUserId,
+            toUserId=toUserId,
+            tradeType=type_filter
+        )
+
+        page = max(1, page)
+        pageSize = max(1, pageSize)
+        records = await baseDB.getTransferRecords(
+            userId=userId if direction == 'all' else None,
+            fromUserId=fromUserId,
+            toUserId=toUserId,
+            tradeType=type_filter,
+            limit=pageSize,
+            offset=(page - 1) * pageSize
+        )
+
+        # 只取当前页涉及的对方ID，批量补齐QQ号，避免逐条查询
+        counterparty_ids = []
+        for record in records:
+            counterparty_id = record.toUser_id if record.fromUser_id == userId else record.fromUser_id
+            if counterparty_id not in counterparty_ids:
+                counterparty_ids.append(counterparty_id)
+        qq_map = await user_db.getRealQQsByUserIds(counterparty_ids)
+
+        items = []
+        for record in records:
+            is_incoming = record.toUser_id == userId
+            counterparty_id = record.fromUser_id if is_incoming else record.toUser_id
+            items.append({
+                'timestamp': int(record.timestamp),
+                'tradeType': record.tradeType,
+                'itemName': record.itemName,
+                'amount': record.amount,
+                'isIncoming': is_incoming,
+                'fromUserId': record.fromUser_id,
+                'toUserId': record.toUser_id,
+                'counterpartyId': counterparty_id,
+                'counterpartyQq': qq_map.get(counterparty_id)
+            })
+
+        return {
+            'records': items,
+            'total': total,
+            'page': page,
+            'pageSize': pageSize
+        }
 
     @staticmethod
     async def change_name(userId: int, name: str) -> Dict[str, Any]:

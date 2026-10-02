@@ -8,7 +8,7 @@
 import os
 import yaml
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 from core.config import PROJECT_ROOT, plugin_config
 
@@ -70,3 +70,28 @@ def set_user_disabled(userId, disabled_seconds: int):
     """设置用户禁用状态"""
     until = int((datetime.now().timestamp() + disabled_seconds) * 1000)
     disabled_users[str(userId)] = until
+
+
+# ==================== 转让相关共享工具 ====================
+
+async def resolve_transfer_target(service: Any, target_user_id, target_qq):
+    """按用户ID或QQ号解析转让接收方
+
+    Args:
+        service: 提供 get_transfer_target_by_id / get_transfer_target_by_qq 的服务类
+                 （WarehouseService 或 ItemService）
+        target_user_id: 接收方用户ID，优先级高于QQ号
+        target_qq: 接收方QQ号
+
+    Returns:
+        (target_user, error)：解析成功时 error 为 None，失败时 target_user 为 None
+    """
+    if target_user_id:
+        try:
+            target_user_id = int(target_user_id)
+        except (TypeError, ValueError):
+            return None, '用户ID格式不正确'
+        return await service.get_transfer_target_by_id(target_user_id), None
+    if target_qq:
+        return await service.get_transfer_target_by_qq(str(target_qq).strip()), None
+    return None, '请输入接收方的QQ号或用户ID'
