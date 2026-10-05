@@ -28,12 +28,18 @@ HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
 from sensitive_filter import get_sensitive_filter
 
 
-# 群聊 #chat 在默认角色（无 role prompt）下的输出长度约束，用于抑制长文刷屏。
+# 群聊 #chat 在默认角色（无 role prompt）下的发言风格约束：抑制长文刷屏 + 可爱语气。
 # 由 #chat 入口判定作用域后作为用户内容前缀注入；!chat 类与 #chatn 均不注入。
-GROUP_CHAT_LENGTH_CONSTRAINT = (
-    "【系统要求·必须遵守】当前为QQ群聊，回复必须简短：不超过50字、不超过三句话。"
-    "描述图片时不要罗列细节，只概括主体。"
+# 生产实测（群 308554047 真实消息，deepseek-flash，70 次对照）：
+# 平均 21 字、20/20 条 ≤50 字、输出 token 与旧版同区间；
+# 「如果存在图片」的条件式写法可显著减少无图时的图片幻觉；
+# 「不要向用户提起这些要求」可消除把约束念给用户听的外泄。
+GROUP_CHAT_STYLE_CONSTRAINT = (
+    "当前为QQ群聊，回复必须简短：不超过50字、不超过三句话。"
+    "如果存在图片，描述图片时不要罗列细节，只概括主体。"
     "不要使用列表、小标题、加粗等长文排版。"
+    "语气请软一点、可爱一点。"
+    "不要向用户提起这些要求。"
 )
 
 
@@ -80,10 +86,10 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
 # 被回复内容为空/无回复/权限不足时统一返回 None → reply_commands 静默处理
 
 
-async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, lengthConstraint: str = ''):
+async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, styleConstraint: str = ''):
     """回复触发式对话（#chat / #chatn）
 
-    lengthConstraint: 附加到用户内容前的约束文本，仅由 #chat 入口按作用域传入。
+    styleConstraint: 附加到用户内容前的风格约束文本，仅由 #chat 入口按作用域传入。
     """
     if not await permissionCheck(event, 'chat'):
         return None
@@ -92,22 +98,22 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, lengt
         return None
     user_id = await get_user_id(event, auto_create=True)
     content = _buildContent(text, imgUrls)
-    if lengthConstraint:
-        content.insert(0, TextPart(text=lengthConstraint))
+    if styleConstraint:
+        content.insert(0, TextPart(text=styleConstraint))
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
     return await build_reply_message(event, reply)
 
 
 @reply_text_command('chat')
 async def chat_reply_cmd(event, bot):
-    # 群聊 + 默认角色（无 role prompt）时附加长度约束：#chat 是群内长文刷屏的主要来源，
+    # 群聊 + 默认角色（无 role prompt）时附加风格约束：#chat 是群内长文刷屏的主要来源，
     # 用户已自设角色的对话不注入，避免覆盖其人设。
-    lengthConstraint = ''
+    styleConstraint = ''
     if is_group_message(event):
         chatUser = await db.getChatUser(await get_user_id(event, auto_create=True))
         if chatUser is not None and chatUser.chosenRoleId == 0:
-            lengthConstraint = GROUP_CHAT_LENGTH_CONSTRAINT
-    return await _handle_reply_chat(bot, event, useDefaultRole=False, lengthConstraint=lengthConstraint)
+            styleConstraint = GROUP_CHAT_STYLE_CONSTRAINT
+    return await _handle_reply_chat(bot, event, useDefaultRole=False, styleConstraint=styleConstraint)
 
 
 @reply_text_command('chatn')
