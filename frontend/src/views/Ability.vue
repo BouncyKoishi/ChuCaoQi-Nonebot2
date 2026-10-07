@@ -367,7 +367,6 @@ const confirmCompress = async () => {
     return
   }
   
-  // 大规模消耗时二次确认（超过总草量的1/3）
   if (compressAmount.value * 1000000 >= userKusa.value / 3) {
     try {
       await ElMessageBox.confirm(
@@ -433,7 +432,6 @@ const confirmCompose = async () => {
     return
   }
   
-  // 大规模合成时二次确认（超过材料总量的1/3）
   const sourceAmount = getItemAmount(getComposeSourceName(composeTarget.value))
   if (composeAmount.value * 10 >= sourceAmount / 3) {
     try {

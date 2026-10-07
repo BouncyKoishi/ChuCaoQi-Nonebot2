@@ -327,7 +327,6 @@ const abilityItems = computed(() => {
 })
 
 const sellableItems = computed(() => {
-  // 显示可以出售的物品
   // 在"全部展示"模式下显示所有可出售物品，否则只显示用户持有的
   return shopItems.value.filter(item => {
     const canSell = item.sellingPrice && item.sellingPrice > 0
@@ -621,7 +620,6 @@ const handleBuy = async (item: Item) => {
     return
   }
 
-  // 检查是否花费超过1/3货币
   const totalPrice = getTotalPrice(item)
   const priceType = getPriceType(item)
   let currentCurrency = 0

@@ -743,7 +743,6 @@ class GMarketService:
         max_user_name = name_list.get(max_profit_user_id, max_profit_user_id)
         min_user_name = name_list.get(min_profit_user_id, min_profit_user_id)
 
-        # 获取称号
         max_user = await baseDB.getKusaUser(max_profit_user_id)
         min_user = await baseDB.getKusaUser(min_profit_user_id)
         max_user_title = max_user.title if max_user and max_user.title else ""

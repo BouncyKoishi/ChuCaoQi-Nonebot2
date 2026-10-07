@@ -71,7 +71,6 @@ async def handle_十连抽(event: Union[OneBotV11MessageEvent, QQMessageEvent], 
     baseLevel, poolName = await _getLevelAndPoolName(strippedArg)
     baseLevel = baseLevel if baseLevel is not None else 0
 
-    # 使用 Service 层进行完整的十连抽流程（包含券检查扣减）
     result = await LotteryService.draw_ten_full(userId=userId, base_level=baseLevel, pool_name=poolName)
 
     if not result['success']:
@@ -331,7 +330,6 @@ async def _itemSearch(event: Union[OneBotV11MessageEvent, QQMessageEvent], args:
     await send_finish(matcher, output)
 
 
-# 注册物品仓库翻页处理器
 async def handle_warehouse_next_page(user_id: str, state: dict, next_page: int) -> str:
     """处理物品仓库翻页"""
     items = state['items']
@@ -354,7 +352,6 @@ async def handle_warehouse_next_page(user_id: str, state: dict, next_page: int) 
     return output
 
 
-# 注册物品搜索翻页处理器
 async def handle_search_next_page(user_id: str, state: dict, next_page: int) -> str:
     """处理物品搜索翻页"""
     keyword = state['keyword']
@@ -378,7 +375,6 @@ async def handle_search_next_page(user_id: str, state: dict, next_page: int) -> 
     return output
 
 
-# 注册自制物品列表翻页处理器
 async def handle_self_made_items_next_page(user_id: str, state: dict, next_page: int) -> str:
     """处理自制物品列表翻页"""
     items = state['items']
@@ -401,7 +397,6 @@ async def handle_self_made_items_next_page(user_id: str, state: dict, next_page:
     return output
 
 
-# 注册处理器
 register_pagination_handler('warehouse', handle_warehouse_next_page)
 register_pagination_handler('search', handle_search_next_page)
 register_pagination_handler('self_made_items', handle_self_made_items_next_page)

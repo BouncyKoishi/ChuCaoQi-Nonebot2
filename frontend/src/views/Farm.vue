@@ -247,7 +247,6 @@ const formatOverloadEndTime = (isoString: string) => {
   })
 }
 
-// 草之精华概率映射
 const ADV_KUSA_PROBABILITY_DICT: Record<number, number> = { 0: 0, 1: 0.125, 2: 0.5, 3: 0.5, 4: 0.625 }
 
 const getAdvKusaProbability = (level: number) => {
@@ -300,7 +299,6 @@ const checkOverloadMagic = async () => {
 const handleWebSocketMessage = (data: any) => {
   if (data) {
     console.log('收到 farm_status_update:', data)
-    // 更新状态数据
     kusaField.value = { ...kusaField.value, ...data }
     console.log('更新后 isGrowing:', kusaField.value?.isGrowing)
   }
@@ -313,7 +311,6 @@ const handleKusaHarvested = (data: any) => {
   if (data) {
     // 立即更新显示收获结果
     kusaField.value = { ...kusaField.value, ...data }
-    // 延迟500ms后刷新获取最新状态
     setTimeout(() => {
       refreshField()
     }, 500)

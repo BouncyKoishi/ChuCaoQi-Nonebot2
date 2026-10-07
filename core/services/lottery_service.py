@@ -112,7 +112,6 @@ class LotteryService:
         ten_ticket_names = ['十连券', '高级十连券', '特级十连券', '天琴十连券']
         ticket_name = ten_ticket_names[base_level] if 0 <= base_level < len(ten_ticket_names) else '十连券'
 
-        # 检查券数量
         ticket_amount = await itemDB.getItemAmount(userId, ticket_name)
         if ticket_amount < 1:
             return {
@@ -121,13 +120,10 @@ class LotteryService:
                 'message': f'你没有{ticket_name}，无法进行十连抽'
             }
 
-        # 扣除券
         await itemDB.changeItemAmount(userId, ticket_name, -1)
 
-        # 执行十连抽
         draw_result = await LotteryService.draw_ten(userId=userId, base_level=base_level, pool_name=pool_name)
 
-        # 记录交易
         await baseDB.setTradeRecord(
             userId=userId, tradeType='十连抽',
             gainItemAmount=0, gainItemName='',

@@ -320,7 +320,6 @@ class ItemService:
         Returns:
             Dict: 包含 success, message, error 等字段的结果
         """
-        # 检查是否有合成机
         machine_exist = await itemDB.getItemAmount(userId, '奖券合成机')
         if not machine_exist:
             return {'success': False, 'error': 'NO_MACHINE', 'message': '你没有奖券合成机，无法进行奖券合成'}
@@ -333,16 +332,13 @@ class ItemService:
         source = compose_list[target]
         need_amount = amount * 10
 
-        # 检查材料数量
         source_amount = await itemDB.getItemAmount(userId, source)
         if source_amount < need_amount:
             return {'success': False, 'error': 'INSUFFICIENT', 'message': f'你不够{source}，需要{need_amount}个'}
 
-        # 执行合成
         await itemDB.changeItemAmount(userId, source, -need_amount)
         await itemDB.changeItemAmount(userId, target, amount)
 
-        # 记录交易
         await baseDB.setTradeRecord(
             userId=userId, tradeType='奖券合成',
             gainItemName=target, gainItemAmount=amount,

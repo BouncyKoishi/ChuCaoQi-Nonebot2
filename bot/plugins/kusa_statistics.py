@@ -108,7 +108,6 @@ async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     if not userId_str:
         userId = self_userId
     else:
-        # 使用通用函数解析用户标识符
         userId = await parse_user_identifier(userId_str)
         if not userId:
             await send_finish(kusa_adv_cmd, "用户不存在")
@@ -301,7 +300,6 @@ async def handle_give_title(event: Union[OneBotV11MessageEvent, QQMessageEvent],
     stripped_arg = args.extract_plain_text().strip()
     userId_str, title = stripped_arg.split(" ")
 
-    # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(give_title_cmd, "用户不存在")
@@ -329,7 +327,6 @@ async def handle_set_donation(event: Union[OneBotV11MessageEvent, QQMessageEvent
     amount = parts[1] if len(parts) > 1 else "0"
     source = parts[2] if len(parts) > 2 else "qq"
 
-    # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(set_donation_cmd, "用户不存在")
@@ -352,7 +349,6 @@ async def handle_set_name(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     stripped_arg = args.extract_plain_text().strip()
     userId_str, name = stripped_arg.split(" ") if " " in stripped_arg else (stripped_arg, None)
 
-    # 使用通用函数解析用户标识符
     userId = await parse_user_identifier(userId_str)
     if not userId:
         await send_finish(set_name_cmd, "用户不存在")

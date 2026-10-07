@@ -101,7 +101,6 @@ async def handle_shop_internal(event: Union[OneBotV11MessageEvent, QQMessageEven
     await send_finish(shop_cmd, output)
 
 
-# 商店帮助命令
 shop_help_cmd = on_command("商店帮助", priority=5, block=True)
 
 @shop_help_cmd.handle()
@@ -114,7 +113,6 @@ async def handle_shop_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
         await send_finish(shop_help_cmd, '帮助文件未找到')
 
 
-# 查询命令
 query_cmd = on_command("查询", aliases={"道具详情"}, priority=5, block=True)
 
 @query_cmd.handle()
@@ -163,7 +161,6 @@ async def handle_query(event: Union[OneBotV11MessageEvent, QQMessageEvent], args
     await send_finish(query_cmd, output)
 
 
-# 购买命令
 buy_cmd = on_command("购买", priority=5, block=True)
 
 @buy_cmd.handle()
@@ -344,7 +341,6 @@ async def handle_buy_confirm(event: Union[OneBotV11MessageEvent, QQMessageEvent]
         await send_finish(buy_cmd, f'购买处理出错: {e}')
 
 
-# 出售命令
 sell_cmd = on_command("出售", priority=5, block=True)
 
 @sell_cmd.handle()
@@ -379,7 +375,6 @@ async def handle_sell(event: Union[OneBotV11MessageEvent, QQMessageEvent], args:
             await send_finish(sell_cmd, f'出售失败：{result.get("message", "未知错误")}')
 
 
-# 转让命令
 transfer_cmd = on_command("转让", aliases={"道具转让"}, priority=5, block=True)
 
 @transfer_cmd.handle()
@@ -397,9 +392,7 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     
     get_name_success, item_name, transfer_amount = get_item_name_and_amount(arg_text)
     
-    # 解析qq参数
     qq_number_match = re.search(r'(?<=(QQ|qq)=)\d+', arg_text)
-    # 解析id参数
     id_match = re.search(r'(?<=(ID|id)=)\d+', arg_text)
     
     receiver_qq = qq_number_match.group(0) if qq_number_match else None
@@ -413,10 +406,8 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     from core.services.item_service import ItemService
     receiver_user = None
     if receiver_id:
-        # 优先使用id
         receiver_user = await ItemService.get_transfer_target_by_id(receiver_id)
     elif receiver_qq:
-        # 使用qq
         receiver_user = await ItemService.get_transfer_target_by_qq(receiver_qq)
     else:
         await send_finish(transfer_cmd, '需要被转让人的QQ号(qq=xxx)或用户ID(id=xxx)！')
@@ -459,7 +450,6 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
         await send_private_msg(receiver_user.id, f'{nickname}({real_qq})转让了{transfer_amount}个{item_name}给你！')
 
 
-# 启用命令
 enable_cmd = on_command("启用", aliases={"道具启用"}, priority=5, block=True)
 
 @enable_cmd.handle()
@@ -468,7 +458,6 @@ async def handle_enable(event: Union[OneBotV11MessageEvent, QQMessageEvent], arg
     await handle_enable_or_disable(event, args, True)
 
 
-# 禁用命令
 disable_cmd = on_command("禁用", aliases={"道具禁用"}, priority=5, block=True)
 
 @disable_cmd.handle()
@@ -504,7 +493,6 @@ async def handle_enable_or_disable(event: Union[OneBotV11MessageEvent, QQMessage
     await send_finish(enable_cmd, f'已{"启用" if enable else "禁用"}你的 {item_name}')
 
 
-# 合成命令
 compose_cmd = on_command("合成", priority=5, block=True)
 
 @compose_cmd.handle()
@@ -518,7 +506,6 @@ async def handle_compose(event: Union[OneBotV11MessageEvent, QQMessageEvent], ar
         await send_finish(compose_cmd, '需要待合成物品名！')
         return
 
-    # 使用 Service 层进行奖券合成
     result = await ItemService.compose_ticket(userId=user_id, target=item_name, amount=amount)
 
     if not result['success']:
@@ -545,7 +532,6 @@ def get_item_name_and_amount(arg_text: str):
     - [物品名] - 默认为1个
     - 数量支持 k/m/b 后缀，如：10k
     """
-    # 名字匹配中文字符
     item_name_result = re.search(r'[\u4e00-\u9fa5G]+[IVX]*', arg_text)
     
     if not item_name_result:
@@ -554,7 +540,6 @@ def get_item_name_and_amount(arg_text: str):
     item_name = item_name_result.group(0)
     
     # 提取数量 - 排除 qq= 和 id= 后面的数字
-    # 先移除所有 qq=xxx 和 id=xxx 的部分，避免误识别
     temp_text = re.sub(r'(?i)(qq|id)=\d+', '', arg_text)
     item_amount_result = re.search(r'\b\d+[kmbKMB]?\b', temp_text)
     

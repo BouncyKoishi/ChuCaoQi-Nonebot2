@@ -91,7 +91,6 @@ async def handle_下一页(event: OneBotV11MessageEvent):
     
     user_id_str = str(user_id)
     
-    # 检查是否有翻页状态
     state = get_pagination_state(user_id_str)
     if not state:
         await 下一页_cmd.finish('没有可翻页的内容，请先使用带翻页功能的命令')
@@ -105,19 +104,15 @@ async def handle_下一页(event: OneBotV11MessageEvent):
         await 下一页_cmd.finish('已经是最后一页了')
         return
     
-    # 检查是否有对应的处理器
     handler = pagination_handlers.get(pagination_type)
     if not handler:
         await 下一页_cmd.finish(f'未知的翻页类型: {pagination_type}')
         return
     
-    # 计算下一页
     next_page = current_page + 1
     
-    # 调用对应的处理器
     try:
         output = await handler(user_id_str, state, next_page)
-        # 更新状态
         state['current_page'] = next_page
         await 下一页_cmd.finish(output)
     except Exception as e:
@@ -139,7 +134,6 @@ async def handle_上一页(event: OneBotV11MessageEvent):
     
     user_id_str = str(user_id)
     
-    # 检查是否有翻页状态
     state = get_pagination_state(user_id_str)
     if not state:
         await 上一页_cmd.finish('没有可翻页的内容，请先使用带翻页功能的命令')
@@ -152,19 +146,15 @@ async def handle_上一页(event: OneBotV11MessageEvent):
         await 上一页_cmd.finish('已经是第一页了')
         return
     
-    # 检查是否有对应的处理器
     handler = pagination_handlers.get(pagination_type)
     if not handler:
         await 上一页_cmd.finish(f'未知的翻页类型: {pagination_type}')
         return
     
-    # 计算上一页
     prev_page = current_page - 1
     
-    # 调用对应的处理器
     try:
         output = await handler(user_id_str, state, prev_page)
-        # 更新状态
         state['current_page'] = prev_page
         await 上一页_cmd.finish(output)
     except Exception as e:

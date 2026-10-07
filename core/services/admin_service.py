@@ -383,7 +383,6 @@ async def update_account_marks(userId: int, related_user_id: Optional[int], is_r
     if not unified_user:
         return {'success': False, 'error': '用户不存在'}
 
-    # 处理小号关联
     if related_user_id is not None:
         if related_user_id == userId:
             return {'success': False, 'error': '不能关联到自身'}
@@ -416,7 +415,6 @@ async def get_title_list_with_owners() -> List[Dict[str, Any]]:
     result = []
 
     for title in titles:
-        # 查询拥有该称号的用户
         storages = await KusaItemStorage.filter(item=title, amount__gt=0).all()
         owner_ids = [s.user_id for s in storages]
 
@@ -460,13 +458,10 @@ async def delete_title(name: str) -> Dict[str, Any]:
     if item.type != '称号':
         return {'success': False, 'error': '该物品不是称号'}
 
-    # 查询持有者数量
     storages = await KusaItemStorage.filter(item=item, amount__gt=0).all()
     owner_count = len(storages)
 
-    # 删除所有持有记录
     await KusaItemStorage.filter(item=item).delete()
-    # 删除称号定义
     await item.delete()
 
     return {

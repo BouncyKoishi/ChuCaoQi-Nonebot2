@@ -89,7 +89,6 @@ async def login(request: Request):
             return {"success": False, "error": "请使用Token登录，Token可在Bot中通过 !生成token 获取"}
         # 用户未设置TOKEN且兼容模式开启，允许登录
     
-    # 生成 sessionToken
     session_token = await create_session_token(unified_user)
     
     userId = unified_user.id

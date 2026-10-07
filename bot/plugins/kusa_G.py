@@ -45,7 +45,6 @@ g_pic_cache: Dict[str, Optional[bytes]] = {
 g_pic_cache_version: Optional[tuple] = None
 
 
-# ==================== G市查询命令 ====================
 
 check_g_cmd = on_command("测G", priority=5, block=True)
 
@@ -102,7 +101,6 @@ async def handle_g_help(event: OneBotV11MessageEvent):
         await send_finish(g_help_cmd, '帮助文件未找到')
 
 
-# 测F命令
 check_f_cmd = on_command("测F", priority=5, block=True)
 
 @check_f_cmd.handle()
@@ -111,7 +109,6 @@ async def handle_check_f(event: OneBotV11MessageEvent):
     await send_finish(check_f_cmd, '啊，这……')
 
 
-# 测H命令
 check_h_cmd = on_command("测H", priority=5, block=True)
 
 @check_h_cmd.handle()
@@ -120,7 +117,6 @@ async def handle_check_h(event: OneBotV11MessageEvent):
     await send_finish(check_h_cmd, '您不够H^ ^')
 
 
-# 测*命令
 check_star_cmd = on_command("测*", priority=5, block=True)
 
 @check_star_cmd.handle()
@@ -129,7 +125,6 @@ async def handle_check_star(event: OneBotV11MessageEvent):
     await send_finish(check_star_cmd, '*^ ^*')
 
 
-# 交易总结命令
 trade_summary_cmd = on_command("交易总结", priority=5, block=True)
 
 @trade_summary_cmd.handle()
@@ -160,7 +155,6 @@ async def handle_trade_summary(event: OneBotV11MessageEvent):
     await send_finish(trade_summary_cmd, st[:-1])
 
 
-# 上期交易总结命令
 last_trade_summary_cmd = on_command("上期交易总结", priority=5, block=True)
 
 @last_trade_summary_cmd.handle()
@@ -193,7 +187,6 @@ async def handle_last_trade_summary(event: OneBotV11MessageEvent):
     await send_finish(last_trade_summary_cmd, st)
 
 
-# 上期G线图命令
 last_g_pic_cmd = on_command("上期G线图", priority=5, block=True)
 
 last_g_pic_cache: Dict[str, Optional[bytes]] = {

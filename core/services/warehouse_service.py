@@ -214,7 +214,6 @@ class WarehouseService:
         Returns:
             Dict: 包含 success, message, error 等字段的结果
         """
-        # 检查目标用户是否存在
         target_user = await user_db.getUnifiedUser(target_userId)
         if not target_user:
             return {'success': False, 'error': 'TARGET_NOT_FOUND', 'message': '目标用户不存在'}

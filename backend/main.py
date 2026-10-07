@@ -11,11 +11,9 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import os
 
-# 保存 backend 目录路径
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
-# 添加 backend 和 project root 到路径
 sys.path.insert(0, BACKEND_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 

@@ -3,7 +3,6 @@ import os
 
 from core.config import DATA_DIR
 
-# 全局数据库初始化标志
 _db_initialized = False
 
 async def init_db():

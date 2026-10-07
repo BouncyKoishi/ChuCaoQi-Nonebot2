@@ -195,7 +195,6 @@ class StatisticService:
         unified_users = await UnifiedUser.filter(id__in=unified_user_ids).all()
         unified_user_map = {u.id: u for u in unified_users}
 
-        # 去重 + 排除 bot
         seen_user_ids = set()
         deduped = []
         for user in user_list:
@@ -206,7 +205,6 @@ class StatisticService:
                 continue
             deduped.append(user)
 
-        # 统一过滤（等级/小号/不活跃）
         filtered_users = await _filter_users(deduped, unified_user_map, level_max, show_inactive, show_subaccount)
 
         all_trade_records = await baseDB.getAllTradeRecordsByCostItem('草之精华')
@@ -275,7 +273,6 @@ class StatisticService:
         unified_users = await UnifiedUser.filter(id__in=user_ids).all()
         unified_map = {u.id: u for u in unified_users}
 
-        # 仅在管理后台传了过滤参数时执行用户过滤
         need_filter = level_max is not None or not show_inactive or not show_subaccount
         if need_filter:
             active_ids = None
@@ -333,7 +330,6 @@ class StatisticService:
         unified_users = await UnifiedUser.filter(id__in=user_ids).all()
         unified_map = {u.id: u for u in unified_users}
 
-        # 仅在管理后台传了过滤参数时执行用户过滤
         need_filter = level_max is not None or not show_inactive or not show_subaccount
         if need_filter:
             active_ids = None

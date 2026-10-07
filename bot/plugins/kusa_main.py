@@ -157,9 +157,7 @@ async def handle_warehouse(
     user_id = await get_user_id(event, auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     
-    # 解析qq参数
     target_qq_match = re.search(r'(?<=(QQ|qq)=)\d+', stripped_arg)
-    # 解析id参数
     target_id_match = re.search(r'(?<=(ID|id)=)\d+', stripped_arg)
     
     target_qq = int(target_qq_match.group(0)) if target_qq_match else None
@@ -172,7 +170,6 @@ async def handle_warehouse(
             await send_finish(warehouse_cmd, '你当前不能查看别人的仓库！请到商店购买侦察凭证。')
             return
 
-        # 优先使用id
         if target_id:
             target_user = await WarehouseService.get_transfer_target_by_id(target_id)
         else:
@@ -455,11 +452,8 @@ async def handle_transfer_kusa(
     user_id = await get_user_id(event, auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
-    # 解析qq参数
     qq_number_match = re.search(r'(?<=(QQ|qq)=)\d+', stripped_arg)
-    # 解析id参数
     id_match = re.search(r'(?<=(ID|id)=)\d+', stripped_arg)
-    # 解析草数量
     transfer_kusa_match = re.search(r'(?<=(kusa|Kusa|KUSA)=)[\d,]+[kmbKMB]?', stripped_arg)
 
     receiver_qq = int(qq_number_match.group(0)) if qq_number_match else None
@@ -469,10 +463,8 @@ async def handle_transfer_kusa(
     # 检查目标用户
     target_user = None
     if receiver_id:
-        # 优先使用id
         target_user = await WarehouseService.get_transfer_target_by_id(receiver_id)
     elif receiver_qq:
-        # 使用qq
         target_user = await WarehouseService.get_transfer_target_by_qq(str(receiver_qq))
     else:
         await send_finish(transfer_kusa_cmd, '需要被转让人的QQ号(qq=xxx)或用户ID(id=xxx)！正确格式：!草转让 qq=QQ号 kusa=草数 或 !草转让 id=用户ID kusa=草数')

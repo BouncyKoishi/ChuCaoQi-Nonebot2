@@ -58,7 +58,6 @@ class ConnectionManager:
                 logger.warning(f"发送消息失败，标记连接为死亡: userId={userId}, error={e}")
                 dead_connections.append(connection)
         
-        # 清理死亡连接
         for conn in dead_connections:
             self.disconnect(conn, userId)
     

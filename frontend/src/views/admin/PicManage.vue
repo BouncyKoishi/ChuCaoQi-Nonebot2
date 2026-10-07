@@ -279,7 +279,6 @@ const goNext = () => {
   if (currentIndex.value < pendingList.value.length - 1) currentIndex.value++
 }
 
-// 操作完成后：移除当前项，自动到下一张
 const removeCurrentAndAdvance = () => {
   pendingList.value.splice(currentIndex.value, 1)
   if (currentIndex.value >= pendingList.value.length) {
