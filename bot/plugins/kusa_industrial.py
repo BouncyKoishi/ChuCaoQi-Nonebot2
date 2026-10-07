@@ -1,7 +1,7 @@
-﻿"""
+"""
 工业系统插件 - NoneBot2 版本
 包含生草工厂、草精炼厂、每日产量统计等功能
-定时批量结算已下沉至 scheduler 进程（core.services.IndustrialService.settle_all_daily）
+定时批量结算由 scheduler/jobs/industrial.py 执行
 """
 
 from typing import Union
@@ -72,11 +72,6 @@ async def handle_force_industrial(event: Union[OneBotV11MessageEvent, QQMessageE
     await force_industrial_cmd.send('开始强制执行工业生产...')
     await daily_industrial()
     await send_finish(force_industrial_cmd, '工业生产执行完成！')
-
-
-# ==================== 定时任务 ====================
-# A7 每日工业生产已下沉至 scheduler/jobs/industrial.py（阶段 4），
-# 批量结算逻辑位于 core.services.IndustrialService.settle_all_daily()
 
 
 async def daily_industrial():

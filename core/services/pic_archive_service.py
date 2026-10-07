@@ -2,7 +2,6 @@
 图片归档服务模块
 
 提供图片审核、分类、删除等业务逻辑（bot 与 web 共用）
-从 bot/plugins/pic_archive.py 提取，消除两端代码重复
 """
 
 import os
@@ -101,7 +100,7 @@ def parse_uploader_qq(filename: str) -> Optional[str]:
 # ==================== 待审核图片查询 ====================
 
 def get_pending_pics() -> List[Dict[str, Any]]:
-    """获取待审核图片列表（从 pic_archive.py getExamineFiles 提取）"""
+    """获取待审核图片列表"""
     examine_path = get_examine_path()
     if not os.path.exists(examine_path):
         return []
@@ -208,8 +207,6 @@ def get_pic_abs_path(filename: str) -> Optional[str]:
 
 def classify_pic(filename: str, category_key: str) -> Dict[str, Any]:
     """将待审核图片移动到指定分类目录
-
-    从 pic_archive.py examinepic 指令的数字分支提取
     """
     if category_key not in ARCHIVE_INFO:
         return {'success': False, 'error': '无效的分类'}
@@ -234,8 +231,6 @@ def classify_pic(filename: str, category_key: str) -> Dict[str, Any]:
 
 def delete_pic(filename: str) -> Dict[str, Any]:
     """删除待审核图片
-
-    从 pic_archive.py examinepic 指令的 'd' 分支提取
     """
     src_path = _safe_examine_path(filename)
     if not src_path or not os.path.isfile(src_path):
@@ -246,10 +241,7 @@ def delete_pic(filename: str) -> Dict[str, Any]:
 
 
 def save_pic(filename: str) -> Dict[str, Any]:
-    """将待审核图片移动到私藏目录
-
-    从 pic_archive.py examinepic 指令的 's' 分支提取
-    """
+    """将待审核图片移动到私藏目录"""
     src_path = _safe_examine_path(filename)
     if not src_path or not os.path.isfile(src_path):
         return {'success': False, 'error': '文件不存在'}
@@ -330,7 +322,6 @@ async def download_and_check_dup(
 ) -> Tuple[int, int, int, Set[str]]:
     """下载图片到待分类目录并查重（带 MD5 查重）并拦截超大图片
 
-    从 pic_archive.py 的 commitpic 上传逻辑提取
     bot 端 commitpic / #commitpic 指令调用，传入 bot 维护的 md5_set
 
     大小拦截：发起流式 GET，在读取 body 前利用 Content-Length 头预判大小，

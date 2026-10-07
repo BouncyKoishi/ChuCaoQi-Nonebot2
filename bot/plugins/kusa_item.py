@@ -613,7 +613,3 @@ def get_item_price(item, item_amount):
     if not item.priceRate:
         return item.shopPrice
     return int(item.shopPrice * (item.priceRate ** item_amount))
-
-
-# ==================== 定时任务 ====================
-# A4 限时物品清理已下沉至 scheduler/jobs/item.py（阶段 2）

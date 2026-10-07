@@ -134,7 +134,7 @@ import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
-// ==================== 页面访问统计（从 About.vue 迁移） ====================
+// ==================== 页面访问统计 ====================
 const statsDays = ref(30)
 const statsLoading = ref(false)
 const statsData = ref<{

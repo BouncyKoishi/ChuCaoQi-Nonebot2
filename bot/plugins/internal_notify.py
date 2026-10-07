@@ -71,7 +71,7 @@ async def _handle_send_private(data: dict) -> bool:
 
 
 async def _handle_kusa_harvested_event(data: dict) -> bool:
-    """生草结算事件：{actions: [...]}（阶段 5，结算在 scheduler，玩法在 bot）
+    """生草结算事件：{actions: [...]}（结算在 scheduler，玩法在 bot）
 
     结算动作列表由 core.services.FarmService.settle_field 生成：
       private  → 私聊消息（生草完毕提示/时光胶囊/过载提示）

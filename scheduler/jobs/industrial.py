@@ -1,7 +1,7 @@
 """
 A7 每日工业生产
 
-批量结算逻辑已下沉到 core.services.IndustrialService.settle_all_daily()（阶段 4）。
+批量结算逻辑在 core.services.IndustrialService.settle_all_daily()。
 本 job 只做：调服务结算 + 按 env 决定是否发群公告（经 notifier 推 bot）+ 发日志群。
 """
 
@@ -26,7 +26,7 @@ async def daily_industrial():
             'message': result['signStr']
         })
 
-    # 运行日志（对齐原 bot 侧 send_log：发往日志群，bot 侧的 print 由本日志替代）
+    # 运行日志发往日志群
     log_group = plugin_config.get('group', {}).get('log')
     if log_group:
         await notifier.notify_qq('send_group', {
@@ -38,7 +38,7 @@ async def daily_industrial():
 
 
 def register(scheduler):
-    """注册每日工业任务（参数与原 bot 侧一致）"""
+    """注册每日工业任务"""
     scheduler.add_job(
         daily_industrial, 'cron',
         hour=0, misfire_grace_time=None,

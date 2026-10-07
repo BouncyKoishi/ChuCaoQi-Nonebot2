@@ -1,9 +1,8 @@
 """
 A5 G值波动 / A6 G周期重置
 
-从 bot/plugins/kusa_G.py 迁移：
-- A5（阶段 2）：生成新 G 值入库。G市图不在 scheduler 生成——bot 侧 G线图命令按需现算
-- A6（阶段 4）：重置日 23:45 全用户 G 兑换 + 新周期开启；23:50 发周期总结（含收盘价图）
+- A5：生成新 G 值入库。G市图不在 scheduler 生成——bot 侧 G线图命令按需现算
+- A6：重置日 23:45 全用户 G 兑换 + 新周期开启；23:50 发周期总结（含收盘价图）
   群通知经 notifier 推 bot 转发（send_group 动作）
 """
 
@@ -92,7 +91,7 @@ def _get_g_values_col_map(g_values_list):
 
 
 def _create_g_pic_all(g_values_col_map) -> bytes:
-    """创建所有校区G线图（迁移自 kusa_G.py，纯函数无 QQ 依赖）"""
+    """创建所有校区G线图"""
     buf = io.BytesIO()
     plt.plot(list(map(lambda x: x / GMarketService.START_VALUE_MAP['东'], g_values_col_map['eastValue'])), label='East')
     plt.plot(list(map(lambda x: x / GMarketService.START_VALUE_MAP['南'], g_values_col_map['southValue'])), label='South')
@@ -151,7 +150,7 @@ async def g_reset_summary():
 
 
 def register(scheduler):
-    """注册G市任务（参数与原 bot 侧一致）"""
+    """注册G市任务"""
     scheduler.add_job(
         g_change, 'cron',
         minute='*/30', misfire_grace_time=None,

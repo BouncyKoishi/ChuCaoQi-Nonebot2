@@ -1,7 +1,5 @@
 """
 A4 限时物品清理
-
-从 bot/plugins/kusa_item.py 原样迁移（阶段 2），纯 DB 逻辑。
 """
 
 import logging
@@ -17,7 +15,7 @@ async def clean_time_limited_items():
 
 
 def register(scheduler):
-    """注册限时物品清理任务（参数与原 bot 侧一致）"""
+    """注册限时物品清理任务"""
     scheduler.add_job(
         clean_time_limited_items, 'interval',
         seconds=50, max_instances=10, misfire_grace_time=500,

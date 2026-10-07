@@ -434,8 +434,7 @@ def create_g_pic_all(g_values_col_map):
 
 
 # ==================== 定时任务 ====================
-# A5 G值波动已下沉至 scheduler/jobs/gmarket.py（阶段 2）
-# A6 G周期重置(23:45)/重置总结(23:50)已下沉至 scheduler/jobs/gmarket.py（阶段 4）
+# G值波动与G周期重置由 scheduler/jobs/gmarket.py 执行
 
 
 def area_translate_value(area_name):

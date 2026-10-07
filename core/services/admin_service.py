@@ -76,7 +76,7 @@ async def get_user_list(
 
 
 async def give_title(userId: int, title_name: str) -> Dict[str, Any]:
-    """授予用户称号（从 kusa_statistics.py GIVE_TITLE 迁移）"""
+    """授予用户称号"""
     user = await baseDB.getKusaUser(userId)
     if not user:
         return {'success': False, 'error': '用户不存在'}
@@ -95,7 +95,7 @@ async def give_title(userId: int, title_name: str) -> Dict[str, Any]:
 
 
 async def set_donation(userId: int, amount: float, source: str = 'qq') -> Dict[str, Any]:
-    """设置用户捐赠金额（从 kusa_statistics.py SET_DONATION 迁移）
+    """设置用户捐赠金额
 
     自动称号规则：仅在跨阈值时发放
     - 投喂者：累计≥20元

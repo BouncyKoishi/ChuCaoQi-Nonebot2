@@ -18,7 +18,7 @@ import core.db.kusa_item as itemDB
 class IndustrialService:
     """工厂服务类"""
 
-    # 每日工业批量结算涉及的物品与技术（从 bot 插件迁移）
+    # 每日工业批量结算涉及的物品与技术
     INDUSTRIAL_ITEMS = [
         '生草机器', '生草工厂', '流动生草工厂', '草精炼厂',
         '核心装配工厂', '红茶池', '奖券印刷机',
@@ -243,7 +243,7 @@ class IndustrialService:
             'remiBonus': remi_bonus
         }
 
-    # ==================== 每日工业批量结算（从 bot/plugins/kusa_industrial.py 下沉） ====================
+    # ==================== 每日工业批量结算 ====================
 
     @staticmethod
     async def settle_all_daily() -> Dict[str, Any]:

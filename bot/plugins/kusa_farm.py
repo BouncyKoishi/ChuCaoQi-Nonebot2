@@ -55,8 +55,7 @@ async def notify_web_status_update(user_id):
 async def notify_web_kusa_harvested(payload: dict):
     """通知web端生草完毕（bot 本地命令路径使用，如 KUSA_FINISH 强制收获）
 
-    常规结算路径的 web 通知已随 A1 下沉至 scheduler/jobs/farm.py（阶段 5），
-    由 scheduler 直接推 backend；payload 为 FarmService.settle_field 返回的 web 字段。
+    payload 为 FarmService.settle_field 返回的 web 字段。
     """
     try:
         async with aiohttp.ClientSession() as session:
@@ -83,7 +82,6 @@ class RobInfo:
 
 systemRandom = random.SystemRandom()
 rob_dict: Dict[str, RobInfo] = {}
-# 喜报判定/连号/过载奖励等常量表已随结算逻辑移至 core/services/farm_service.py（阶段 5）
 
 
 def format_plant_result(data: dict, prefix: str = "开始") -> str:
@@ -559,10 +557,9 @@ async def stop_robbing_timer(duration: int, rob_id: str):
 
 
 async def start_robbing(target_id: int, rob_limit: int, extra_kusa_adv: bool):
-    """激活围殴（事件驱动版，阶段 5）
+    """激活围殴
 
-    原 activate_robbing 随喜报发送内联在结算链中；结算下沉后由结算事件
-    （core.services.FarmService._send_report 生成的 robbing action）触发。
+    由结算事件（core.services.FarmService._send_report 生成的 robbing action）触发。
     """
     global rob_dict
     duration = random.randint(120, 300)
@@ -598,11 +595,3 @@ async def execute_harvest_actions(actions):
             await send_group_msg(main_group, act['message'])
         elif kind == 'robbing':
             await start_robbing(act['targetId'], act['robLimit'], act.get('extraKusaAdv', False))
-
-
-# A1 生草结算已下沉至 scheduler/jobs/farm.py + core.services.FarmService.settle_due_fields（阶段 5）
-# A2 承载力基础恢复 / A3 非活跃承载力恢复已下沉至 scheduler/jobs/farm.py（阶段 2）
-
-
-# 结算链（kusa_harvest/good_news_report/get_chain_bonus/get_overload_bonus/send_report_msg）
-# 已整体下沉至 core/services/farm_service.py（阶段 5），QQ 侧玩法经 execute_harvest_actions 事件驱动。

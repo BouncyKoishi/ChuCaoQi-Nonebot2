@@ -68,7 +68,6 @@ async def main():
     scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
     scheduler.add_listener(_on_job_missed, EVENT_JOB_MISSED)
 
-    # 注册 A 类任务（阶段 1 为空注册，后续阶段逐个填充）
     register_jobs(scheduler)
 
     scheduler.start()

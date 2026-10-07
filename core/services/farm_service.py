@@ -887,14 +887,14 @@ class FarmService:
         overload_magic = await itemDB.getItemAmount(userId, '奈奈的过载魔法')
         return {'hasOverloadMagic': overload_magic > 0}
 
-    # ==================== 生草结算（A1，阶段 5 下沉） ====================
+    # ==================== 生草结算 ====================
 
     @staticmethod
     async def settle_due_fields(limit: int = 2) -> List[Dict[str, Any]]:
         """生草结算轮询入口（scheduler 每 15 秒调用）
 
-        扫描到期田地批量结算，每轮最多处理 limit 块（与原 bot 侧
-        finished_fields[:2] 一致）。返回结算事件列表，由调用方分发通知。
+        扫描到期田地批量结算，每轮最多处理 limit 块。
+        返回结算事件列表，由调用方分发通知。
         """
         finished_fields = await fieldDB.getAllKusaField(onlyFinished=True)
         time_capsule_user_ids = await itemDB.getUserIdListByItem('时光胶囊标记')
@@ -912,9 +912,8 @@ class FarmService:
     async def settle_field(field, time_capsule: bool = False) -> Optional[Dict[str, Any]]:
         """单块田生草结算：完成全部 DB 写入，返回事件描述
 
-        结算顺序与原 bot 侧 kusa_harvest 严格一致；本方法不做任何网络发送，
-        QQ 消息与围殴激活以 actions 列表返回，由调用方（scheduler 经通知通道
-        推送 / bot 本地命令直接调用）执行，保证结算逻辑只有一份。
+        本方法不做任何网络发送，QQ 消息与围殴激活以 actions 列表返回，
+        由调用方（scheduler 经通知通道推送 / bot 本地命令直接调用）执行。
 
         返回 {'web': <web通知payload>, 'actions': [...]}，action 类型：
           {'action': 'private', 'userId': int, 'message': str}   私聊消息
@@ -979,7 +978,7 @@ class FarmService:
 
     @staticmethod
     async def _good_news_report(field, actions):
-        """喜报判定（阈值条件与原 bot 侧一致；报告文本在此生成，发送由 bot 完成）"""
+        """喜报判定（报告文本在此生成，发送由 bot 完成）"""
         quality_level = await itemDB.getTechLevel(field.user_id, '生草质量')
 
         if quality_level >= 2:
