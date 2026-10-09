@@ -171,6 +171,19 @@ async def get_group_member_nickname(bot, group_id: int, user_id: int) -> str:
     return str(user_id)
 
 
+def parse_transfer_target_args(text: str):
+    """解析指令文本中的转让对象参数 qq=/id=
+
+    用于仓库查询与草/物品转让指令。qq 与 id 同时传入时以 id 为准，
+    由调用方按 id 优先的顺序取值。返回 (qq, id)，未传入的项为 None。
+    """
+    qq_match = re.search(r'(?<=(QQ|qq)=)\d+', text)
+    id_match = re.search(r'(?<=(ID|id)=)\d+', text)
+    qq = int(qq_match.group(0)) if qq_match else None
+    target_id = int(id_match.group(0)) if id_match else None
+    return qq, target_id
+
+
 # 支持k,m,b单位的数字字符串转换为int
 def convertNumStrToInt(numStr):
     match = re.search(r'([\d,]+)([kmbKMB]?)', numStr)

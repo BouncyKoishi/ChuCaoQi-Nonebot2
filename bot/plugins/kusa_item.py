@@ -7,7 +7,7 @@ import re
 import os
 import codecs
 from typing import Union
-from utils import convertNumStrToInt
+from utils import convertNumStrToInt, parse_transfer_target_args
 from reloader import kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
@@ -392,23 +392,17 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     
     get_name_success, item_name, transfer_amount = get_item_name_and_amount(arg_text)
     
-    qq_number_match = re.search(r'(?<=(QQ|qq)=)\d+', arg_text)
-    id_match = re.search(r'(?<=(ID|id)=)\d+', arg_text)
-    
-    receiver_qq = qq_number_match.group(0) if qq_number_match else None
-    receiver_id = int(id_match.group(0)) if id_match else None
-    
+    receiver_qq, receiver_id = parse_transfer_target_args(arg_text)
+
     if not get_name_success:
         await send_finish(transfer_cmd, '需要物品名！')
         return
-    
-    # 检查目标用户
-    from core.services.item_service import ItemService
+
     receiver_user = None
     if receiver_id:
         receiver_user = await ItemService.get_transfer_target_by_id(receiver_id)
     elif receiver_qq:
-        receiver_user = await ItemService.get_transfer_target_by_qq(receiver_qq)
+        receiver_user = await ItemService.get_transfer_target_by_qq(str(receiver_qq))
     else:
         await send_finish(transfer_cmd, '需要被转让人的QQ号(qq=xxx)或用户ID(id=xxx)！')
         return

@@ -24,7 +24,7 @@ import core.db.kusa_item as item_db
 import core.db.kusa_field as field_db
 import core.db.user as user_db
 from core.db.models import KusaBase
-from utils import convertNumStrToInt
+from utils import convertNumStrToInt, parse_transfer_target_args
 from kusa_base import (
     plugin_config, send_private_msg, send_group_msg, get_bot_qq
 )
@@ -157,11 +157,7 @@ async def handle_warehouse(
     user_id = await get_user_id(event, auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     
-    target_qq_match = re.search(r'(?<=(QQ|qq)=)\d+', stripped_arg)
-    target_id_match = re.search(r'(?<=(ID|id)=)\d+', stripped_arg)
-    
-    target_qq = int(target_qq_match.group(0)) if target_qq_match else None
-    target_id = int(target_id_match.group(0)) if target_id_match else None
+    target_qq, target_id = parse_transfer_target_args(stripped_arg)
 
     if target_qq or target_id:
         watcher_id = user_id
@@ -452,12 +448,8 @@ async def handle_transfer_kusa(
     user_id = await get_user_id(event, auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
-    qq_number_match = re.search(r'(?<=(QQ|qq)=)\d+', stripped_arg)
-    id_match = re.search(r'(?<=(ID|id)=)\d+', stripped_arg)
+    receiver_qq, receiver_id = parse_transfer_target_args(stripped_arg)
     transfer_kusa_match = re.search(r'(?<=(kusa|Kusa|KUSA)=)[\d,]+[kmbKMB]?', stripped_arg)
-
-    receiver_qq = int(qq_number_match.group(0)) if qq_number_match else None
-    receiver_id = int(id_match.group(0)) if id_match else None
     transfer_kusa = convertNumStrToInt(transfer_kusa_match.group(0)) if transfer_kusa_match else 0
 
     # 检查目标用户
