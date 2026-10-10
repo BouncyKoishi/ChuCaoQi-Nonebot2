@@ -345,11 +345,9 @@ auto_freeze_cmd = on_command("gh_auto_freeze", priority=5, block=True)
 
 @reply_text_command('怪话')
 async def 怪话_cmd(event, bot):
-    if not hasattr(event, 'reply') or not event.reply:
-        return 'Reply获取异常^ ^'
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
-        return '暂不支持非文本格式怪话^ ^'
+        return '请回复一条包含文字或图片的消息^ ^'
     group_num = getattr(event, 'group_id', default_group_num)
     if allow_model and random.random() < 0.8:
         reply = await get_sentence_advance(group_num, text, imgUrls=imgUrls)
