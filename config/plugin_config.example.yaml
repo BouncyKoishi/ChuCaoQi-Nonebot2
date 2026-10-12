@@ -68,8 +68,6 @@ web:
     key: "" # OpenAI API Key
   deepseek:
     key: "" # Deepseek API Key
-  gemini:
-    key: "" # Gemini API Key
   lzusa:
     base_url: "" # Lzusa 自定义模型 API 地址
     key: "" # Lzusa API Key

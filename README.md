@@ -116,7 +116,7 @@ ChuCaoQi-Web/
    ```
    编辑 `config/plugin_config.yaml`，填入必要的配置：
    - QQ号、群号等基础信息
-   - 各API密钥（OpenAI、Deepseek、Gemini等，按需填写）
+   - 各API密钥（OpenAI、Deepseek、Lzusa等，按需填写）
    - 代理设置（如需要）
 
 2. **Web 后端配置文件**

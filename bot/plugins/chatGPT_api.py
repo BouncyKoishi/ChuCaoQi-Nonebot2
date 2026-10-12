@@ -304,14 +304,7 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
     strippedText = args.extract_plain_text().strip()
     
     if strippedText:
-        if "gemini" in strippedText:
-            if not await permissionCheck(event, "admin"):
-                return
-            if "pro" in strippedText:
-                newModel = "gemini-2.5-pro"
-            else:
-                newModel = "gemini-2.5-flash"
-        elif "deepseek" in strippedText:
+        if "deepseek" in strippedText:
             # 所有 deepseek 系（含 deepseek/deepseek-pro/vision 等）统一路由到 deepseek-flash
             newModel = "deepseek-flash"
         elif strippedText == "lzusa" or strippedText.startswith("lzusa ") or strippedText.startswith("lzusa:"):
@@ -446,10 +439,7 @@ async def handle_chat_help(bot: Bot, event: Event):
     if chatUser.allowRole:
         output += ("\nrole_change: 切换当前角色\nrole_detail: 查看角色描述信息\n"
                    "role_update: 新增/更新角色描述信息(-g 设置为全局角色)\nrole_delete: 删除角色")
-    if chatUser.allowAdvancedModel:
-        output += "\nmodel_change: 切换语言模型（deepseek-flash/lzusa/gemini-2.5）"
-    else:
-        output += "\nmodel_change: 切换语言模型（deepseek-flash/lzusa）"
+    output += "\nmodel_change: 切换语言模型（deepseek-flash/lzusa，lzusa 需进阶模型权限）"
     if await is_super_admin(user_id):
         output += "\nchat_user_update: 更改指定人员chat权限(-p私聊 -r角色 -m进阶模型 -v更高上限 -u无限使用)"
     output += "\n\n当前默认使用的模型：deepseek-flash\n对话使用的是收费api，请勿滥用！"

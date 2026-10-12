@@ -115,7 +115,6 @@ class ChatService:
     # 模型配置
     _openai_client: Optional[OpenAI] = None
     _deepseek_client: Optional[OpenAI] = None
-    _gemini_client: Optional[OpenAI] = None
     _lzusa_client: Optional[OpenAI] = None
     
     @staticmethod
@@ -127,12 +126,10 @@ class ChatService:
             
             openai_key = web_config.get('openai', {}).get('key', '')
             deepseek_key = web_config.get('deepseek', {}).get('key', '')
-            gemini_key = web_config.get('gemini', {}).get('key', '')
             lzusa_key = web_config.get('lzusa', {}).get('key', '')
             lzusa_base_url = web_config.get('lzusa', {}).get('base_url', '')
             
             deepseek_base_url = "https://api.deepseek.com"
-            gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
             
             # 设置代理环境变量（所有模型统一使用代理）
             if proxy:
@@ -141,7 +138,6 @@ class ChatService:
             
             # 初始化所有客户端
             ChatService._openai_client = OpenAI(api_key=openai_key)
-            ChatService._gemini_client = OpenAI(api_key=gemini_key, base_url=gemini_base_url)
             ChatService._deepseek_client = OpenAI(api_key=deepseek_key, base_url=deepseek_base_url)
             if lzusa_key and lzusa_base_url:
                 ChatService._lzusa_client = OpenAI(api_key=lzusa_key, base_url=lzusa_base_url)
@@ -160,8 +156,6 @@ class ChatService:
             return ChatService._lzusa_client, model.split(':', 1)[1]
         if 'deepseek' in model:
             return ChatService._deepseek_client, model
-        elif 'gemini' in model:
-            return ChatService._gemini_client, model
         else:
             return ChatService._openai_client, model
     
@@ -170,7 +164,7 @@ class ChatService:
         """判断模型是否走 Responses API 路由
 
         deepseek / gpt 系列走 Responses API（支持联网搜索、思维链档位控制），
-        gemini / lzusa 无 OpenAI 兼容的 /responses 端点，继续 Chat Completions。
+        lzusa 无 OpenAI 兼容的 /responses 端点，继续 Chat Completions。
         """
         return 'deepseek' in model or 'gpt' in model
 

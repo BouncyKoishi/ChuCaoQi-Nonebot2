@@ -1157,7 +1157,7 @@ export const commands: Command[] = [
     description: '使用AI对最近的起卦结果进行解卦。每日限10次。',
     details: [
       '需先使用 !起卦 命令进行占卜',
-      '使用 deepseek-v4-flash 模型生成解卦内容',
+      '使用 deepseek-flash 模型生成解卦内容',
       '每日解卦次数上限为10次',
       '解卦内容由AI生成，仅供参考'
     ],
@@ -1356,7 +1356,7 @@ export const commands: Command[] = [
     details: [
       '开启一个全新的对话，会自动保存上一轮对话并初始化新的对话历史',
       '使用当前选择的角色设定作为系统提示词',
-      '使用当前选择的模型（默认 deepseek-v4-flash）',
+      '使用当前选择的模型（默认 deepseek-flash）',
       '群聊中无需额外权限即可使用，私聊需要私聊权限',
       '每日有 token 用量限制，超出后无法使用'
     ],
@@ -1498,9 +1498,10 @@ export const commands: Command[] = [
   {
     name: 'model_change',
     params: '[模型名称]',
-    description: '切换对话使用的语言模型。不提供参数时默认切换到 deepseek-v4-flash。',
+    description: '切换对话使用的语言模型。不提供参数时默认切换到 deepseek-flash。',
     details: [
-      '支持的预设模型：deepseek-v4-flash、deepseek-v4-pro、deepseek-vision（识图模型）、gpt-5-mini、gpt-5（需进阶模型权限）、lzusa（需进阶模型权限）、gemini-2.5-flash、gemini-2.5-pro（需管理员权限）',
+      '支持的预设模型：deepseek-flash（默认，所有 deepseek 系参数均路由到它）、lzusa（需进阶模型权限）',
+      'lzusa 也支持 lzusa:模型名 形式指定具体模型，不指定时为服务端默认模型',
       '也可以输入自定义模型名称，但会提示可能报错'
     ],
     category: 'ChatBot',
