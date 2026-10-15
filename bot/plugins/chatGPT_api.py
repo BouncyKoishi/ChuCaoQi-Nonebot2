@@ -54,6 +54,8 @@ async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
     
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=True)
+    if reply is None:
+        return  # 模型方未给出回复，静默终止
     await send_finish(chat_cmd, await build_reply_message(event, reply))
 
 
@@ -66,6 +68,8 @@ async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True)
+    if reply is None:
+        return  # 模型方未给出回复，静默终止
     await send_finish(chatn_cmd, await build_reply_message(event, reply))
 
 
@@ -78,6 +82,8 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=False)
+    if reply is None:
+        return  # 模型方未给出回复，静默终止
     await send_finish(chatc_cmd, await build_reply_message(event, reply))
 
 
@@ -101,6 +107,8 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     if styleConstraint:
         content.insert(0, TextPart(text=styleConstraint))
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
+    if reply is None:
+        return None  # 模型方未给出回复，静默终止（reply_commands 对 None 不发送）
     return await build_reply_message(event, reply)
 
 
@@ -149,6 +157,8 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     inputContent = content if args.extract_plain_text() else lastMessage.content
     reply = await chat(user_id, inputContent, isNewConversation=False)
+    if reply is None:
+        return  # 模型方未给出回复，静默终止
     await send_finish(chatr_cmd, await build_reply_message(event, reply))
 
 
@@ -485,9 +495,17 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
     history.append(ChatMessage(role="user", content=content))
 
     try:
-        reply, tokenUsage = await getChatReply(model, history)
+        result = await getChatReply(model, history)
+        reply = result.reply
+        if not reply or not reply.strip():
+            # DeepSeek 服务方故障时，网关会在 ~900s 超时后返回 200 空响应
+            # （total=0、finish 为空），等同于模型方长时间未给出回复。
+            # 此时静默终止：不发送空回复、不写历史、不计 token，仅记录日志。
+            print(f"[chat] 模型返回空响应，chat 已静默终止: user={user_id} model={model} "
+                  f"total={result.token_usage} finish={result.finish_reason}")
+            return None
         reply = get_sensitive_filter().filter(reply)
-        await db.addTokenUsage(chatUser, tokenUsage)
+        await db.addTokenUsage(chatUser, result.token_usage)
         saveDefaultConversation(user_id, history)
 
         if isNewConversation:
@@ -498,7 +516,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             roleName = systemPrompt.botRoleName if systemPrompt else ""
         roleSign = f"\nRole: {roleName}" if roleName else ""
         modelSign = "(Lzusa)" if "lzusa" in model else ""
-        tokenSign = f"\nTokens{modelSign}: {tokenUsage}"
+        tokenSign = f"\nTokens{modelSign}: {result.token_usage}"
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
         reason = str(e) if str(e) else "Timeout"
@@ -511,20 +529,27 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
 
 
 async def getChatReply(model, history):
+    """调用大模型并返回 ChatReply
+
+    空回复（模型方长时间未给出回复后的空响应）不写入 history，
+    由调用方 chat() 静默终止，避免空 assistant 消息污染后续对话上下文。
+    """
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
     result = await ChatService.get_chat_reply(model, history, reasoning_effort="none", source="chat")
-    reply, tokenUsage = result.reply, result.token_usage
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
-    print(f"Response: {reply}")
-    history.append(ChatMessage(role="assistant", content=reply))
+    print(f"Response: {result.reply}")
+    if result.reply:
+        history.append(ChatMessage(role="assistant", content=result.reply))
+    else:
+        print(f"Empty Response: total={result.token_usage} finish={result.finish_reason}")
     if "deepseek" in model and result.reasoning_text:
         print(f"Reasoning Content:{result.reasoning_text}")
     finishReason = result.finish_reason
     if finishReason != "stop":
         print(f"Finish Reason: {finishReason}")
-    return reply, tokenUsage
+    return result
 
 
 async def undo(user_id):

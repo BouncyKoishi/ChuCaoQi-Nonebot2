@@ -96,7 +96,14 @@ async def handle_解卦(bot: Bot, event: Event, args: Message = CommandArg()):
     
     chat_gpt_prompt = getChatGPTPrompt(result['stripped_arg'], base_result_str)
     reply_msg = (await ChatService.get_chat_reply("deepseek-flash", chat_gpt_prompt, source="trigrams")).reply
-    
+
+    if not reply_msg or not reply_msg.strip():
+        # DeepSeek 服务方故障时空响应（等同模型方长时间未给出回复）：
+        # 静默终止，不发送空解卦；空响应未消耗任何 token，退回本次解卦次数。
+        print(f"[trigrams] 模型返回空响应，解卦已静默终止: user={user_id}")
+        gptUseRecord[user_id] = gptUseRecord.get(user_id, 1) - 1
+        return
+
     await send_finish(解卦_cmd, f'{reply_msg}\n\n注：以上解卦内容由AI生成，仅供参考。')
 
 
