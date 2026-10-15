@@ -179,6 +179,11 @@ def is_valid_cache_message(event: GroupMessageEvent) -> tuple[bool, str, int]:
 
 def match_strange_word(reply: str, model_list: list) -> Optional[str]:
     """将LLM输出匹配到怪话库，失败返回None"""
+    if not reply or not reply.strip():
+        # 空回复必须判为未匹配：下面模糊匹配用 '' in s 判断子串，
+        # 空串是任意句子的子串，会恒定命中并返回列表第一句
+        # （API 故障期每次空回复都输出同一句的根因）。
+        return None
     if reply in model_list:
         return reply
     # 模糊匹配
