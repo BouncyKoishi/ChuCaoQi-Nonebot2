@@ -33,8 +33,12 @@ adapters = [
 #   draw_item / kusa_G → pagination_helper
 #   kusa_main → kusa_statistics
 plugins = [
+    # ---- 基础设施 ----
     "plugins.internal_notify",
+    # ---- 插件依赖 ----
+    "plugins.pagination_helper",
     # ---- 业务插件 ----
+    "plugins.draw_item",
     "plugins.identity_bind",
     "plugins.reply_commands",
     "plugins.strange_word",
