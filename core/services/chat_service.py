@@ -6,6 +6,7 @@
 
 import sys
 import os
+import re
 import asyncio
 import datetime
 from dataclasses import dataclass
@@ -92,6 +93,13 @@ class ChatMessage:
         )
 
 
+# DeepSeek 抓不到历史消息里的图片时会整请求 400，报错带坏图 URL
+# （形如 ".messages[0].image[0]: Failed to download image from <url>"，
+# Responses API 为 "input[0].image[0]: ..."），据此剔除该图后重试。
+IMAGE_EXPIRED_PLACEHOLDER = '（图片已失效，已忽略）'
+_IMAGE_DOWNLOAD_FAIL_RE = re.compile(r'Failed to download image from (\S+?)(?:\s+\(request_id:|$)')
+
+
 @dataclass
 class ChatReply:
     """大模型回复的统一结果对象
@@ -175,6 +183,29 @@ class ChatService:
             m if isinstance(m, ChatMessage) else ChatMessage.from_dict(m)
             for m in messages
         ]
+
+    @staticmethod
+    def parse_expired_image_url(error) -> Optional[str]:
+        """从 400 报错里取出下载失败的图片 URL；其它错误返回 None（调用方原样抛出）"""
+        match = _IMAGE_DOWNLOAD_FAIL_RE.search(str(error or ''))
+        return match.group(1) if match else None
+
+    @staticmethod
+    def drop_image_parts(messages: list[ChatMessage], url: str) -> int:
+        """原地剔除该 URL 的图片块并返回数量；消息被删空时补占位文本"""
+        if not url:
+            return 0
+        removed = 0
+        for msg in messages:
+            if not isinstance(msg.content, list):
+                continue
+            kept = [p for p in msg.content if not (isinstance(p, ImagePart) and p.url == url)]
+            if len(kept) == len(msg.content):
+                continue
+            removed += len(msg.content) - len(kept)
+            # 空 content 会被 Responses 丢弃、被 Chat Completions 拒收
+            msg.content = kept or [TextPart(text=IMAGE_EXPIRED_PLACEHOLDER)]
+        return removed
 
     @staticmethod
     def _messages_to_responses_input(messages: list[ChatMessage]) -> list:
@@ -286,6 +317,10 @@ class ChatService:
                 try:
                     return client.responses.create(**kwargs), True
                 except Exception as e:
+                    # 图片抓取失败与 API 形态无关，回退到 Chat Completions 只会再失败一次，
+                    # 直接把错误抛给调用方做图片自愈。
+                    if ChatService.parse_expired_image_url(e):
+                        raise
                     print(f"[ChatService] {model} Responses API 调用失败，回退 Chat Completions: {e}")
                     return client.chat.completions.create(
                         messages=[m.to_dict() for m in messages], model=actual_model, timeout=120

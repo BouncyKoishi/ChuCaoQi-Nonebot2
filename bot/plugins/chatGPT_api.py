@@ -4,6 +4,8 @@ import os
 import time
 import json
 
+from openai import BadRequestError
+
 import core.db.chat as db
 from kusa_base import is_super_admin, plugin_config, send_log
 from reloader import db_command as on_command
@@ -528,6 +530,26 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
             return "对话出错了，请稍后再试。"
 
 
+async def _get_chat_reply_with_image_selfheal(model, history):
+    """调用模型；历史图片失效时剔除该图后重试
+
+    DeepSeek 抓不到历史图片会整请求 400（报错含坏图 URL），这里按 URL 剔除后重试，
+    让对话忽略过期图片继续。每次至少剔掉一张图，循环必然收敛；剔除结果由 chat()
+    成功存档时落盘，一次修复永久生效。
+    """
+    dropped = 0
+    while True:
+        try:
+            return await ChatService.get_chat_reply(
+                model, history, reasoning_effort="none", source="chat")
+        except BadRequestError as e:
+            url = ChatService.parse_expired_image_url(e)
+            if not url or not ChatService.drop_image_parts(history, url):
+                raise
+            dropped += 1
+            print(f"[chat-selfheal] 历史图片已失效，剔除后重试: url={url} 累计剔除={dropped}")
+
+
 async def getChatReply(model, history):
     """调用大模型并返回 ChatReply
 
@@ -536,7 +558,7 @@ async def getChatReply(model, history):
     """
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
-    result = await ChatService.get_chat_reply(model, history, reasoning_effort="none", source="chat")
+    result = await _get_chat_reply_with_image_selfheal(model, history)
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
     print(f"Response: {result.reply}")
