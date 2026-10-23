@@ -33,7 +33,7 @@ async def handle_putgame(args: Message = CommandArg()):
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
             response = await client.put(
                 KONNI_URL,
-                json={"host": host, "port": port, "profile_name": "", "message": ""},
+                json={"host": host, "port": port, "profile_name": "", "message": "ChuCaoQi IP Put"},
             )
         response.raise_for_status()
     except httpx.HTTPStatusError as error:
