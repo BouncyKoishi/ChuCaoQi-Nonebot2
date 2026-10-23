@@ -12,7 +12,7 @@ _reply_duel_confirmations: Dict[int, dict] = {}
 # 搜图存储结果：限制条数避免长期运行内存缓涨，先进先出
 _MAX_STORED_RESULTS = 200
 _reply_stored_results: "OrderedDict[str, dict]" = OrderedDict()
-_reply_text_handlers: Dict[str, Tuple[Callable, str]] = {}
+_reply_text_handlers: Dict[str, Tuple[Callable, str, bool]] = {}
 
 _reply_main_handler = on_message(priority=10, block=False)
 
@@ -35,9 +35,10 @@ def reply_command(
     return decorator
 
 
-def reply_text_command(command: str):
+def reply_text_command(command: str, with_args: bool = False):
+    """注册文本类 # 指令；with_args=True 时把指令后文字作为第三个参数传给 handler"""
     def decorator(func: Callable):
-        _reply_text_handlers[command] = (func, func.__name__)
+        _reply_text_handlers[command] = (func, func.__name__, with_args)
         return func
     return decorator
 
@@ -144,19 +145,23 @@ async def handle_reply_command(bot: Bot, event, state: T_State):
     if not hasattr(event, 'reply') or not event.reply:
         return
 
-    message = event.get_message()
-    message_text = str(message)
-    stripped_text = message_text.strip()
+    # 取纯文本而非 str(Message)：str() 会带 CQ 码与转义，命令名和参数都会被污染
+    message_text = event.get_message().extract_plain_text().strip()
 
-    if not stripped_text.startswith('#'):
+    if not message_text.startswith('#'):
         return
 
-    command = stripped_text[1:].strip().lower()
+    # 首个空白前为命令名，其后为参数文本（参数保持原样，不做 lower）
+    parts = message_text[1:].strip().split(maxsplit=1)
+    if not parts:
+        return
+    command = parts[0].lower()
+    arg_text = parts[1].strip() if len(parts) > 1 else ''
 
     if command in _reply_text_handlers:
-        handler = _reply_text_handlers[command][0]
+        handler, _, with_args = _reply_text_handlers[command]
         try:
-            result = await handler(event, bot)
+            result = await (handler(event, bot, arg_text) if with_args else handler(event, bot))
             if result:
                 await bot.send(event=event, message=result)
         except Exception as e:

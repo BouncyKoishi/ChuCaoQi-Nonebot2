@@ -94,16 +94,20 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
 # 被回复内容为空/无回复/权限不足时统一返回 None → reply_commands 静默处理
 
 
-async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, styleConstraint: str = ''):
+async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, styleConstraint: str = '',
+                             appendText: str = ''):
     """回复触发式对话（#chat / #chatn）
 
     styleConstraint: 附加到用户内容前的风格约束文本，仅由 #chat 入口按作用域传入。
+    appendText: 指令后附带的文字，接在被回复内容之后；被回复消息无可提取内容时仍不触发。
     """
     if not await permissionCheck(event, 'chat'):
         return None
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
         return None
+    if appendText:
+        text = f'{text}\n{appendText}' if text else appendText
     user_id = await get_user_id(event, auto_create=True)
     content = _buildContent(text, imgUrls)
     if styleConstraint:
@@ -114,8 +118,8 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     return await build_reply_message(event, reply)
 
 
-@reply_text_command('chat')
-async def chat_reply_cmd(event, bot):
+@reply_text_command('chat', with_args=True)
+async def chat_reply_cmd(event, bot, arg_text: str = ''):
     # 群聊 + 默认角色（无 role prompt）时附加风格约束：#chat 是群内长文刷屏的主要来源，
     # 用户已自设角色的对话不注入，避免覆盖其人设。
     styleConstraint = ''
@@ -123,12 +127,13 @@ async def chat_reply_cmd(event, bot):
         chatUser = await db.getChatUser(await get_user_id(event, auto_create=True))
         if chatUser is not None and chatUser.chosenRoleId == 0:
             styleConstraint = GROUP_CHAT_STYLE_CONSTRAINT
-    return await _handle_reply_chat(bot, event, useDefaultRole=False, styleConstraint=styleConstraint)
+    return await _handle_reply_chat(bot, event, useDefaultRole=False,
+                                    styleConstraint=styleConstraint, appendText=arg_text)
 
 
-@reply_text_command('chatn')
-async def chatn_reply_cmd(event, bot):
-    return await _handle_reply_chat(bot, event, useDefaultRole=True)
+@reply_text_command('chatn', with_args=True)
+async def chatn_reply_cmd(event, bot, arg_text: str = ''):
+    return await _handle_reply_chat(bot, event, useDefaultRole=True, appendText=arg_text)
 
 
 chatb_cmd = on_command('chatb', priority=5, block=True)
@@ -444,8 +449,8 @@ async def handle_chat_help(bot: Bot, event: Event):
     output = "chat_user: 查看chat权限等相关信息\nchat: 开始一个新对话（可附带文本/图片）"
     output += "\nchatc: 继续上一轮对话\nchatb: 撤回上一轮对话\nchatr: 撤回上一轮对话并重新生成"
     output += "\nchatn: 无视当前角色设定，开始一个新对话"
-    output += "\n#chat: 回复一条消息，以被回复内容开始新对话"
-    output += "\n#chatn: 回复一条消息，以被回复内容开始新对话（使用默认角色）"
+    output += "\n#chat: 回复一条消息，以被回复内容开始新对话（可在指令后附加文字）"
+    output += "\n#chatn: 回复一条消息，以被回复内容开始新对话（使用默认角色，可附加文字）"
     output += "\nchat_save: 手动保存当前对话记录"
     output += "\nchat_load: 加载已保存的对话记录文件"
     if chatUser.allowRole:
