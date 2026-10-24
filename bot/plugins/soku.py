@@ -28,7 +28,6 @@ _soku_config = plugin_config.get('soku') or {}
 _allowed_users = {
     str(user_id) for user_id in (_soku_config.get('allowed_users') or [])
 }
-_web_proxy = plugin_config.get('web', {}).get('proxy') or None
 
 if not _allowed_users:
     logger.warning("soku: 未配置 soku.allowed_users，/putgame 不会响应任何用户")
@@ -66,8 +65,10 @@ async def handle_putgame(event: Event, args: Message = CommandArg()):
     payload = {"host": host, "port": port, "profile_name": "", "message": "ChuCaoQi IP Put"}
     logger.info(f"soku: 用户 {user_id} 发布 {host}:{port}，请求 {KONNI_URL} payload={payload}")
     try:
+        # 该服务从服务器/本机均可直连；Mihomo 代理对境外域名经常节点超时，
+        # 且 chat_service 会把 web.proxy 写进 http_proxy 环境变量，故固定直连
         async with httpx.AsyncClient(
-            timeout=REQUEST_TIMEOUT, proxy=_web_proxy
+            timeout=REQUEST_TIMEOUT, trust_env=False
         ) as client:
             response = await client.put(KONNI_URL, json=payload)
     except httpx.RequestError as error:
