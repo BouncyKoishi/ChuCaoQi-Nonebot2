@@ -46,6 +46,7 @@ plugins = [
     "plugins.pic_archive",
     "plugins.pic_classifier",
     "plugins.simple_commands",
+    "plugins.soku",
     "plugins.kusa_statistics",
     "plugins.weather",
     "plugins.earthquake",
