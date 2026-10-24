@@ -16,6 +16,9 @@ group:
   allow:
     - 0 # 允许使用Bot的群号列表
 
+soku:
+  allowed_users: [] # 允许使用内部指令 /putgame（Konni 对局发布）的用户 QQ 号列表，空列表表示禁用该指令
+
 guaihua:
   notRecordWords:
     - 'CQ:at'
