@@ -31,24 +31,13 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
         return
 
     if event.sub_type == 'add':
-        if event.comment.strip() == '':
-            # 原napcat实现中没有user2_id！这里是修改了napcat的源码后实现的
-            # NoneBot2 中可能需要通过其他方式获取邀请人信息
-            rejectReason = '请填写年级专业东方兴趣方向或说明来意' if isSysu else '加群备注不能为空'
-            await bot.set_group_add_request(
-                flag=event.flag,
-                sub_type=event.sub_type,
-                approve=False,
-                reason=rejectReason,
-            )
-            await bot.send_group_msg(
-                group_id=groupNum,
-                message='备注信息为空，已自动拒绝加群申请。',
-            )
-            await send_log(f'群聊{groupNum}触发空备注风控，已拒绝{adder_qq}的申请')
-            return
+        comment = (event.comment or '').strip()
+
+        # 注意：原版 NapCat 无法区分“用户主动申请”和“群员邀请他人后待审核”，
+        # 后者同样上报为 sub_type='add' 且 comment 为空，因此其余风控只提示不拒绝。
+        # 唯一会主动拒绝加群申请的规则：关键词风控（防广告号）
         for keyword in ('交流学习', '通过一下', '你好', '朋友推荐', ):
-            if keyword in event.comment:
+            if keyword in comment:
                 await bot.set_group_add_request(
                     flag=event.flag,
                     sub_type=event.sub_type,
@@ -61,27 +50,28 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
                 )
                 await send_log(f'群聊{groupNum}触发关键词风控（{keyword}），已拒绝{adder_qq}的申请')
                 return
+
+        # 以下风控仅群内提示并保留申请
+        warnReasons = []
+        if comment == '':
+            warnReasons.append('未填写备注（可能是群员邀请后待审核）')
         try:
             strangerInfo = await bot.get_stranger_info(user_id=adder_qq)
-            if 0 < strangerInfo['qqLevel'] < 8:
-                await bot.set_group_add_request(
-                    flag=event.flag,
-                    sub_type=event.sub_type,
-                    approve=False,
-                    reason='触发风控，已自动拒绝加群申请',
-                )
-                await bot.send_group_msg(
-                    group_id=groupNum,
-                    message='触发等级风控，已自动拒绝加群申请。如有需要，请联系该用户通过邀请方式进群。',
-                )
-                await send_log(f'群聊{groupNum}触发等级风控（{strangerInfo["level"]}），已拒绝{adder_qq}的申请')
-            if strangerInfo['qqLevel'] == 0:
-                await bot.send_group_msg(
-                    group_id=groupNum,
-                    message='注意：该用户隐藏了QQ等级，请注意分辨。',
-                )
+            qqLevel = strangerInfo.get('qqLevel', strangerInfo.get('level'))
+            if qqLevel is not None and 0 < qqLevel < 8:
+                warnReasons.append(f'QQ等级较低（{qqLevel}级）')
+            elif qqLevel == 0:
+                warnReasons.append('隐藏了QQ等级')
         except Exception as e:
             print(f'获取陌生人信息失败：{e}')
+
+        if warnReasons:
+            reasonText = '、'.join(warnReasons)
+            await bot.send_group_msg(
+                group_id=groupNum,
+                message=f'注意：{adder_qq} 的加群申请{reasonText}，请管理员人工确认。',
+            )
+            await send_log(f'群聊{groupNum}触发提示（{reasonText}），已保留{adder_qq}的申请，等待人工审核')
 
 
 # 处理好友请求
