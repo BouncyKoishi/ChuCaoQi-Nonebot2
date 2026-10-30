@@ -52,7 +52,7 @@ except ImportError:
     print("[WARN] QQ adapter not installed, OneBot V11 only")
 
 # 初始化 NoneBot，设置命令前缀
-nonebot.init(command_start={"/", "!"})
+nonebot.init(command_start={"!"})
 
 # 注册适配器
 driver = nonebot.get_driver()

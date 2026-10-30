@@ -15,6 +15,9 @@ from nonebot_plugin_apscheduler import scheduler
 last_spell_record: dict = {}
 repeat_warning: dict = {}
 
+# 统一指令入口：! 为业务指令， # 为 reply_commands 的回复类指令
+COMMAND_PREFIXES = ('!', '#')
+
 
 @event_preprocessor
 async def preprocessor_handler(event):
@@ -25,7 +28,7 @@ async def preprocessor_handler(event):
         return
 
     raw_message = event.raw_message if hasattr(event, 'raw_message') else str(event.message)
-    if not raw_message.startswith('!') or raw_message.startswith('/') or raw_message.startswith('#'):
+    if not raw_message.startswith(COMMAND_PREFIXES):
         return
 
     user_id = str(event.user_id)
