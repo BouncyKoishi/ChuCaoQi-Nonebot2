@@ -37,6 +37,8 @@ plugins = [
     "plugins.internal_notify",
     # 全局指令门禁：黑名单、群白名单、防刷（拦截 ! 与 # 指令）
     "plugins.preprocessor",
+    # 出站消息限流：抑制瞬时大量发送，保护账号
+    "plugins.send_limiter",
     # ---- 插件依赖 ----
     "plugins.pagination_helper",
     # ---- 业务插件 ----
