@@ -21,6 +21,8 @@ _reply_main_handler = on_message(priority=10, block=False)
 class ReplyCommandResult:
     message: str = ''
     stored_id: Optional[dict] = None
+    # 文本类 # 指令发送成功后回调，用于埋点等旁路逻辑；不得影响发送结果。
+    on_sent: Optional[Callable] = None
 
 
 def reply_command(
@@ -162,7 +164,15 @@ async def handle_reply_command(bot: Bot, event, state: T_State):
         handler, _, with_args = _reply_text_handlers[command]
         try:
             result = await (handler(event, bot, arg_text) if with_args else handler(event, bot))
-            if result:
+            if isinstance(result, ReplyCommandResult):
+                if result.message:
+                    sent = await bot.send(event=event, message=result.message)
+                    if result.on_sent:
+                        try:
+                            result.on_sent(sent)
+                        except Exception as exc:
+                            logger.warning(f"reply_text_command on_sent callback failed for '{command}': {exc}")
+            elif result:
                 await bot.send(event=event, message=result)
         except Exception as e:
             logger.error(f"reply_text_command handler error for '{command}': {e}")

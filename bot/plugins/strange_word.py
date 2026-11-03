@@ -32,7 +32,8 @@ from nonebot_plugin_apscheduler import scheduler
 
 from kusa_base import plugin_config
 from core.config import DATA_DIR
-from .reply_commands import reply_text_command, extract_reply_content
+from .reply_commands import reply_text_command, extract_reply_content, ReplyCommandResult
+from . import strange_word_feedback as feedback_log
 from core.services.chat_service import ChatService, TextPart, ImagePart
 from sensitive_filter import get_sensitive_filter
 from utils import get_group_member_nickname, extractImgUrls
@@ -81,13 +82,27 @@ class GroupChatBuffer:
         self.msg_count_since_reply = 0
         self.willingness = auto_reply_talk_value
 
-    def add(self, name, content, timestamp):
-        self.messages.append({'name': name, 'content': content, 'time': timestamp})
+    def add(self, user_id, name, content, timestamp, message_id=None):
+        self.messages.append({
+            'user_id': str(user_id or ''),
+            'name': name,
+            'content': content,
+            'time': timestamp,
+            'message_id': message_id,
+            'is_bot': False,
+        })
         self.msg_count_since_reply += 1
 
-    def add_bot_reply(self, name, content, timestamp):
+    def add_bot_reply(self, user_id, name, content, timestamp):
         """记录bot自己的怪话回复到群聊上下文，但不计入触发自动回复的消息数"""
-        self.messages.append({'name': name, 'content': content, 'time': timestamp})
+        self.messages.append({
+            'user_id': str(user_id or ''),
+            'name': name,
+            'content': content,
+            'time': timestamp,
+            'message_id': None,
+            'is_bot': True,
+        })
 
     def on_replied(self):
         self.last_reply_time = time.time()
@@ -194,8 +209,11 @@ def match_strange_word(reply: str, model_list: list) -> Optional[str]:
     return None
 
 
-async def get_sentence_advance(group_num: int, input_str: str, exclude: str = '', imgUrls: list = None) -> str:
+async def get_sentence_advance(group_num: int, input_str: str, exclude: str = '', imgUrls: list = None,
+                               user_id=None, log_feedback: bool = True, source: str = 'cmd') -> str:
     """使用AI从怪话库中选择最合适的回复（基于单条输入，输入可含图片）"""
+    if log_feedback:
+        feedback_log.discard_last(group_num)
     model_sentence_list = get_model_sentence_list(group_num)
     if not model_sentence_list:
         return get_random_sentence(group_num)
@@ -222,6 +240,10 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
         print(f'[怪话] AI选中怪话含敏感词，替换为随机怪话')
         return get_random_sentence(group_num)
 
+    if log_feedback:
+        await feedback_log.log_decision(
+            group_num, source, user_id, f'用户发言：{input_str}', 'speak', matched
+        )
     return matched
 
 
@@ -277,8 +299,10 @@ def should_auto_reply(group_id: int) -> bool:
     return random.random() < buf.willingness
 
 
-async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
+async def pick_strange_word_by_context(group_id: int, source: str = 'auto',
+                                       current_user_id=None) -> Optional[str]:
     """基于群聊上下文，用AI从怪话库中选择最合适的怪话。返回怪话原文或None（沉默）"""
+    feedback_log.discard_last(group_id)
     buf = group_buffers.get(group_id)
     model_list = get_model_sentence_list(group_id)
     if not buf or not buf.messages or not model_list:
@@ -290,6 +314,8 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
 
     recent = list(buf.messages)[-auto_reply_max_context:]
     context_text = "\n".join(f"{m['name']}: {m['content']}" for m in recent)
+    decision_context = feedback_log.build_context_excerpt(recent)
+    speaker_id = current_user_id or (recent[-1].get('user_id', '') if recent else '')
     candidates = random.sample(available, min(auto_reply_sample_size, len(available)))
     candidate_text = "\n".join(f"- {s}" for s in candidates)
 
@@ -313,6 +339,9 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
     reply = reply.strip()
     if reply == "无":
         print(f'[怪话] AI判断当前无合适怪话，选择沉默')
+        await feedback_log.log_decision(
+            group_id, source, speaker_id, decision_context, 'silence', ''
+        )
         return None
 
     matched = match_strange_word(reply, model_list)
@@ -324,6 +353,9 @@ async def pick_strange_word_by_context(group_id: int) -> Optional[str]:
         print(f'[怪话] AI选中怪话含敏感词，沉默')
         return None
 
+    await feedback_log.log_decision(
+        group_id, source, speaker_id, decision_context, 'speak', matched
+    )
     return matched
 
 
@@ -335,8 +367,14 @@ async def send_auto_reply(bot: Bot, group_num: int, reply: str, poke_time: int =
     buf = group_buffers.get(group_num)
     if buf:
         buf.on_replied()
-        buf.add_bot_reply(await get_bot_nickname(bot, group_num), reply, poke_time or int(time.time()))
-    await bot.send_group_msg(group_id=group_num, message=reply)
+        buf.add_bot_reply(
+            int(bot.self_id),
+            await get_bot_nickname(bot, group_num),
+            reply,
+            poke_time or int(time.time()),
+        )
+    sent = await bot.send_group_msg(group_id=group_num, message=reply)
+    feedback_log.bind_last(group_num, feedback_log.extract_message_id(sent))
 
 
 say_cmd = on_command("说点怪话", priority=5, block=True)
@@ -355,11 +393,18 @@ async def 怪话_cmd(event, bot):
         return '请回复一条包含文字或图片的消息^ ^'
     group_num = getattr(event, 'group_id', default_group_num)
     if allow_model and random.random() < 0.8:
-        reply = await get_sentence_advance(group_num, text, imgUrls=imgUrls)
+        reply = await get_sentence_advance(
+            group_num, text, imgUrls=imgUrls, user_id=event.user_id
+        )
     else:
         reply = get_random_sentence(group_num)
     update_poke_cache(group_num, reply, event.time)
-    return reply
+    return ReplyCommandResult(
+        message=reply,
+        on_sent=lambda sent: feedback_log.bind_last(
+            group_num, feedback_log.extract_message_id(sent)
+        ),
+    )
 
 
 @reply_text_command('remove')
@@ -412,11 +457,14 @@ async def handle_say(event: MessageEvent, args: Message = CommandArg()):
     stripped_text = args.extract_plain_text().strip()
     imgUrls = extractImgUrls(args)
     if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
-        reply = await get_sentence_advance(group_num, stripped_text, imgUrls=imgUrls)
+        reply = await get_sentence_advance(
+            group_num, stripped_text, imgUrls=imgUrls, user_id=event.user_id
+        )
     else:
         reply = get_random_sentence(group_num)
     update_poke_cache(group_num, reply, event.time)
-    await say_cmd.send(reply)
+    sent = await say_cmd.send(reply)
+    feedback_log.bind_last(group_num, feedback_log.extract_message_id(sent))
 
 
 @say_reverse_cmd.handle()
@@ -466,6 +514,9 @@ async def record_message(event: MessageEvent):
     user_id = event.user_id
     bot_self_id = int(bot_id) if (bot_id := getattr(event, 'self_id', None)) else None
 
+    # 埋点反馈只观察窗口内的回复/复读/表情，不写任何记忆。
+    feedback_log.observe_message(event, bot_self_id)
+
     valid, msg, timestamp = is_valid_cache_message(event)
 
     # 拍一拍缓存更新
@@ -479,11 +530,19 @@ async def record_message(event: MessageEvent):
             group_buffers[group_num] = GroupChatBuffer()
         bot = get_bot()
         nickname = await get_group_member_nickname(bot, group_num, user_id)
-        group_buffers[group_num].add(nickname, msg, timestamp)
+        group_buffers[group_num].add(
+            user_id=user_id,
+            name=nickname,
+            content=msg,
+            timestamp=timestamp,
+            message_id=event.message_id,
+        )
 
         if group_num in auto_reply_groups and should_auto_reply(group_num):
             try:
-                reply = await pick_strange_word_by_context(group_num)
+                reply = await pick_strange_word_by_context(
+                    group_num, source='auto', current_user_id=user_id
+                )
                 if reply:
                     await send_auto_reply(bot, group_num, reply)
                     print(f'[怪话] 自动回复，群{group_num}: {reply[:30]}...')
@@ -608,6 +667,13 @@ if scheduler:
 
 
 poke_notice = on_notice(priority=5, block=False)
+emoji_like_notice = on_notice(priority=5, block=False)
+
+
+@emoji_like_notice.handle()
+async def handle_emoji_like(event):
+    """记录群友给 bot 消息贴的表情回应；非目标通知会在埋点模块内直接返回。"""
+    feedback_log.observe_emoji_like(event)
 
 
 @poke_notice.handle()
@@ -631,7 +697,9 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
             return
         poke_last_respond_time[group_num] = poke_time
         try:
-            reply = await pick_strange_word_by_context(group_num)
+            reply = await pick_strange_word_by_context(
+                group_num, source='poke', current_user_id=getattr(event, 'user_id', None)
+            )
             if not reply:
                 reply = get_random_sentence(group_num)
             await send_auto_reply(bot, group_num, reply, poke_time)
@@ -661,12 +729,16 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
     try:
         last_bot_reply = poke_last_reply.get(group_num, '')
         if allow_model and random.random() < 0.8:
-            reply = await get_sentence_advance(group_num, text, exclude=last_bot_reply)
+            reply = await get_sentence_advance(
+                group_num, text, exclude=last_bot_reply,
+                user_id=getattr(event, 'user_id', None), source='poke'
+            )
         else:
             reply = get_random_sentence(group_num)
         poke_last_reply[group_num] = reply
         update_poke_cache(group_num, reply, poke_time)
-        await bot.send_group_msg(group_id=group_num, message=reply)
+        sent = await bot.send_group_msg(group_id=group_num, message=reply)
+        feedback_log.bind_last(group_num, feedback_log.extract_message_id(sent))
     except Exception as e:
         print(f'[怪话] 拍一拍处理失败: {e}')
         traceback.print_exc()
