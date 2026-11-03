@@ -13,7 +13,7 @@ import json
 import os
 import random
 import re
-import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -22,14 +22,18 @@ from core.config import DATA_DIR
 
 FEEDBACK_DIR = os.path.join(DATA_DIR, "database", "strangeWord", "feedback")
 FEEDBACK_WINDOW_SECONDS = 120
-# 选句函数与真正发送之间通常只隔几毫秒；超过这个时间仍未绑定消息 ID，
-# 说明这条决策不是当前发送路径产生的（例如由 reply_commands 代发），直接丢弃。
-BIND_TTL_SECONDS = 15
 MAX_CONTEXT_CHARS = 200
 MAX_SELECTED_CHARS = 120
 
+@dataclass(frozen=True)
+class Decision:
+    """一次选句结果。event_id 为 None 表示没有成功写入决策日志。"""
+
+    text: str
+    event_id: Optional[str] = None
+
+
 _pending: Dict[str, Dict[str, Any]] = {}
-_last_decision_by_group: Dict[int, Dict[str, Any]] = {}
 _write_lock: Optional[asyncio.Lock] = None
 
 
@@ -145,8 +149,8 @@ async def log_decision(
     context: str,
     action: str,
     selected: str,
-) -> str:
-    """写一条决策日志；speak 决策会被暂存，等待发送后绑定 message_id。"""
+) -> Optional[str]:
+    """写一条决策日志，成功时返回 event_id，失败时返回 None。"""
     event_id = new_event_id()
     now = _now()
     record = {
@@ -164,35 +168,26 @@ async def log_decision(
     except Exception as exc:
         # 埋点失败不能影响怪话主流程。
         print(f"[怪话埋点] 决策日志写入失败: {exc}")
-        return event_id
-    if action == "speak" and selected:
-        _last_decision_by_group[int(group_id)] = {
-            "id": event_id,
-            "text": selected,
-            "ts": time.time(),
-            "day": now.strftime("%Y-%m-%d"),
-        }
+        return None
     return event_id
 
 
-def discard_last(group_id: int) -> None:
-    """丢弃尚未绑定的上一条决策，避免本轮回退到随机怪话时误绑旧事件。"""
-    _last_decision_by_group.pop(int(group_id), None)
+def _day_from_event_id(event_id: str) -> str:
+    raw = str(event_id).split("-", 1)[0]
+    if len(raw) == 8:
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+    return _now().strftime("%Y-%m-%d")
 
 
-def bind_last(group_id: int, message_id: Any) -> None:
-    """把最近一条 speak 决策绑定到实际发送的 bot 消息，并启动反馈窗口。"""
-    decision = _last_decision_by_group.pop(int(group_id), None)
-    if not decision or message_id is None:
-        return
-    if time.time() - float(decision["ts"]) > BIND_TTL_SECONDS:
+def bind_event(event_id: Optional[str], text: str, group_id: int, message_id: Any) -> None:
+    """把一次已写日志的选句绑定到实际发送的 bot 消息，并启动反馈窗口。"""
+    if not event_id or message_id is None:
         return
     key = str(message_id)
     _pending[key] = {
-        "id": decision["id"],
-        "text": decision["text"],
-        "ts": decision["ts"],
-        "day": decision["day"],
+        "id": event_id,
+        "text": text,
+        "day": _day_from_event_id(event_id),
         "group_id": int(group_id),
         "reply": 0,
         "repeat": 0,
