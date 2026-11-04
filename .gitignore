@@ -30,6 +30,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.dsh-ops-update-*.lock
 
 # IDE相关
 .vscode/
@@ -49,6 +50,8 @@ Thumbs.db
 
 # 工作文件
 /data/
+# 从生产拉取的排查样本
+downloads/
 # 怪话库旧路径残留（语料已迁至 data/database/strangeWord）
 bot/database/
 resources/font/
