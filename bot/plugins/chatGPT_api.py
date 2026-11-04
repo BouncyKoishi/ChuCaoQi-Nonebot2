@@ -7,12 +7,12 @@ import json
 from openai import BadRequestError
 
 import core.db.chat as db
-from kusa_base import is_super_admin, plugin_config, send_log
+from kusa_base import is_super_admin, send_log
 from reloader import db_command as on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from utils import nameDetailSplit, imgUrlTobase64, extractImgUrls
+from utils import nameDetailSplit, extractImgUrls
 from core.config import DATA_DIR
 from core.services.chat_service import ChatService, TextPart, ImagePart, ChatMessage
 from nonebot_plugin_apscheduler import scheduler
@@ -212,13 +212,18 @@ async def handle_chat_user_update(bot: Bot, event: Event, args: Message = Comman
     if not await permissionCheck(event, 'admin'):
         return
     strippedText = args.extract_plain_text().strip()
-    if strippedText is None or strippedText == "":
+    if not strippedText:
         await send_finish(chat_user_update_cmd, '需要指定用户标识！')
         return
-    
-    # 提取数字标识符
-    identifier = int(''.join([c for c in strippedText if c.isdigit()]))
-    params = strippedText.split('-')[1] if '-' in strippedText else ""
+
+    # 用户标识在第一个 '-' 之前，参数为后续所有段（支持 -p-r 连续写法）
+    parts = strippedText.split('-')
+    identifierText = ''.join(c for c in parts[0] if c.isdigit())
+    if not identifierText:
+        await send_finish(chat_user_update_cmd, '需要指定用户标识！')
+        return
+    identifier = int(identifierText)
+    params = ''.join(parts[1:])
     
     # 使用通用函数解析用户标识符
     from kusa_base import parse_user_identifier
@@ -340,7 +345,9 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
     else:
         newModel = "deepseek-flash"
     
-    await db.updateUsingModel(user_id, newModel)
+    if not await db.updateUsingModel(user_id, newModel):
+        await send_finish(model_change_cmd, "请先使用 !chat 激活大模型对话功能。")
+        return
     output = f"已切换到{newModel}模型"
     await send_finish(model_change_cmd, output)
 
@@ -493,7 +500,7 @@ def _buildContent(text: str, imgUrls: list):
     return content
 
 
-async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, retryCount=0):
+async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False):
     chatUser = await db.getChatUser(user_id)
     
     model = chatUser.chosenModel
@@ -527,12 +534,9 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False, 
         return reply + "\n" + roleSign + tokenSign
     except Exception as e:
         reason = str(e) if str(e) else "Timeout"
-        await send_log(f"user: {user_id} 的 {model} api调用出现异常，异常原因为：{reason}\nRetry次数：{retryCount}")
+        await send_log(f"user: {user_id} 的 {model} api调用出现异常，异常原因为：{reason}")
         print(f"Catch Time: {datetime.datetime.now().timestamp()}")
-        if retryCount < 1:
-            return await chat(user_id, content, isNewConversation, useDefaultRole, retryCount + 1)
-        else:
-            return "对话出错了，请稍后再试。"
+        return "对话出错了，请稍后再试。"
 
 
 async def _get_chat_reply_with_image_selfheal(model, history):

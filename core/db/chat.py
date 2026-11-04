@@ -1,5 +1,6 @@
 from .models import ChatUser, ChatRole
 from . import user as user_db
+from tortoise.expressions import F
 
 
 async def getChatUser(userId) -> ChatUser:
@@ -43,8 +44,11 @@ async def updateChatUser(userId, userMode: str):
 
 async def updateUsingModel(userId, newModel):
     chatUser = await getChatUser(userId)
+    if chatUser is None:
+        return False
     chatUser.chosenModel = newModel
     await chatUser.save()
+    return True
 
 
 async def changeUsingRole(userId, roleName):
@@ -77,9 +81,13 @@ async def deleteRole(role: ChatRole):
 
 
 async def addTokenUsage(chatUser: ChatUser, tokenUse: int):
-    chatUser.tokenUse += tokenUse
-    chatUser.todayTokenUse += tokenUse
-    await chatUser.save()
+    if not tokenUse:
+        return
+    # 单条 SQL 原子自增，避免并发读改写丢计数；内存对象不会自动更新，调用方勿复用
+    await ChatUser.filter(id=chatUser.id).update(
+        tokenUse=F('tokenUse') + tokenUse,
+        todayTokenUse=F('todayTokenUse') + tokenUse,
+    )
 
 
 async def resetTodayTokenUse():

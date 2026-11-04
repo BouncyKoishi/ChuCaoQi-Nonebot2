@@ -67,8 +67,6 @@ web:
     cookie: "" # 网易云音乐 Cookie
   saucenao:
     key: "" # Saucenao API Key
-  openai:
-    key: "" # OpenAI API Key
   deepseek:
     key: "" # Deepseek API Key
   lzusa:

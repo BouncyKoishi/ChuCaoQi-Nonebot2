@@ -4,18 +4,14 @@
 包含所有与大模型交互相关的业务逻辑
 """
 
-import sys
 import os
 import re
 import asyncio
 import datetime
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, Union
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, RateLimitError
 
-
-import core.db.kusa_system as baseDB
-import core.db.chat as chatDB
 from core.config import plugin_config
 
 
@@ -96,8 +92,9 @@ class ChatMessage:
 # DeepSeek 抓不到历史消息里的图片时会整请求 400，报错带坏图 URL
 # （形如 ".messages[0].image[0]: Failed to download image from <url>"，
 # Responses API 为 "input[0].image[0]: ..."），据此剔除该图后重试。
+# URL 以引号或空白为界：服务端 body 是整段 JSON，URL 后面通常跟着 "'"，而非字符串结尾。
 IMAGE_EXPIRED_PLACEHOLDER = '（图片已失效，已忽略）'
-_IMAGE_DOWNLOAD_FAIL_RE = re.compile(r'Failed to download image from (\S+?)(?:\s+\(request_id:|$)')
+_IMAGE_DOWNLOAD_FAIL_RE = re.compile(r"Failed to download image from (https?://[^\s'\"]+)")
 
 
 @dataclass
@@ -120,61 +117,62 @@ class ChatReply:
 class ChatService:
     """聊天和审核服务类"""
     
-    # 模型配置
-    _openai_client: Optional[OpenAI] = None
+    # 模型配置（仅保留可用的 deepseek / lzusa 两家）
     _deepseek_client: Optional[OpenAI] = None
     _lzusa_client: Optional[OpenAI] = None
-    
+
     @staticmethod
     def _init_clients():
-        """初始化模型客户端"""
-        if ChatService._openai_client is None:
-            web_config = plugin_config.get('web', {})
-            proxy = web_config.get('proxy', '')
-            
-            openai_key = web_config.get('openai', {}).get('key', '')
-            deepseek_key = web_config.get('deepseek', {}).get('key', '')
-            lzusa_key = web_config.get('lzusa', {}).get('key', '')
-            lzusa_base_url = web_config.get('lzusa', {}).get('base_url', '')
-            
-            deepseek_base_url = "https://api.deepseek.com"
-            
-            # 设置代理环境变量（所有模型统一使用代理）
-            if proxy:
-                os.environ["http_proxy"] = proxy
-                os.environ["https_proxy"] = proxy
-            
-            # 初始化所有客户端
-            ChatService._openai_client = OpenAI(api_key=openai_key)
-            ChatService._deepseek_client = OpenAI(api_key=deepseek_key, base_url=deepseek_base_url)
-            if lzusa_key and lzusa_base_url:
-                ChatService._lzusa_client = OpenAI(api_key=lzusa_key, base_url=lzusa_base_url)
+        """初始化模型客户端（以 deepseek 客户端作为初始化哨兵）"""
+        if ChatService._deepseek_client is not None:
+            return
+        web_config = plugin_config.get('web', {})
+        proxy = web_config.get('proxy', '')
+
+        deepseek_key = web_config.get('deepseek', {}).get('key', '')
+        lzusa_key = web_config.get('lzusa', {}).get('key', '')
+        lzusa_base_url = web_config.get('lzusa', {}).get('base_url', '')
+
+        deepseek_base_url = "https://api.deepseek.com"
+
+        # 设置代理环境变量（所有模型统一使用代理）
+        if proxy:
+            os.environ["http_proxy"] = proxy
+            os.environ["https_proxy"] = proxy
+
+        # 重试统一放在 get_chat_reply，避免 SDK 默认重试与业务重试叠加
+        ChatService._deepseek_client = OpenAI(
+            api_key=deepseek_key, base_url=deepseek_base_url, max_retries=0)
+        if lzusa_key and lzusa_base_url:
+            ChatService._lzusa_client = OpenAI(
+                api_key=lzusa_key, base_url=lzusa_base_url, max_retries=0)
     
     @staticmethod
     def _get_client(model: str) -> tuple[OpenAI, str]:
         """根据模型名称获取对应的客户端和实际模型名
 
-        Returns:
-            (client, actual_model_name)
+        只有 lzusa 走本地兼容端点，其余模型统一走 deepseek。
         """
         ChatService._init_clients()
-        if model == 'lzusa':
-            return ChatService._lzusa_client, 'qwen-35b'
-        if model.startswith('lzusa:'):
-            return ChatService._lzusa_client, model.split(':', 1)[1]
-        if 'deepseek' in model:
-            return ChatService._deepseek_client, model
-        else:
-            return ChatService._openai_client, model
-    
+        if model == 'lzusa' or model.startswith('lzusa:'):
+            if ChatService._lzusa_client is None:
+                raise ValueError("lzusa 客户端未配置（缺少 web.lzusa.key 或 base_url）")
+            actual_model = 'qwen-35b' if model == 'lzusa' else model.split(':', 1)[1]
+            if not actual_model:
+                raise ValueError("lzusa 模型名不能为空")
+            return ChatService._lzusa_client, actual_model
+        if ChatService._deepseek_client is None:
+            raise ValueError("deepseek 客户端未配置（缺少 web.deepseek.key）")
+        return ChatService._deepseek_client, model
+
     @staticmethod
     def _use_responses_api(model: str) -> bool:
         """判断模型是否走 Responses API 路由
 
-        deepseek / gpt 系列走 Responses API（支持联网搜索、思维链档位控制），
+        deepseek 走 Responses API（支持思维链档位控制）；
         lzusa 无 OpenAI 兼容的 /responses 端点，继续 Chat Completions。
         """
-        return 'deepseek' in model or 'gpt' in model
+        return not (model == 'lzusa' or model.startswith('lzusa:'))
 
     @staticmethod
     def _coerce_messages(messages: list) -> list[ChatMessage]:
@@ -186,9 +184,22 @@ class ChatService:
 
     @staticmethod
     def parse_expired_image_url(error) -> Optional[str]:
-        """从 400 报错里取出下载失败的图片 URL；其它错误返回 None（调用方原样抛出）"""
-        match = _IMAGE_DOWNLOAD_FAIL_RE.search(str(error or ''))
-        return match.group(1) if match else None
+        """从 400 报错里取出下载失败的图片 URL；其它错误返回 None（调用方原样抛出）
+
+        优先读 SDK 解析好的 body，避免依赖 str(error) 的 JSON repr 细节。
+        """
+        message = ''
+        body = getattr(error, 'body', None)
+        if isinstance(body, dict):
+            err = body.get('error')
+            if isinstance(err, dict):
+                message = str(err.get('message') or '')
+            elif body.get('message'):
+                message = str(body['message'])
+        if not message:
+            message = str(error or '')
+        match = _IMAGE_DOWNLOAD_FAIL_RE.search(message)
+        return match.group(1).replace('&amp;', '&') if match else None
 
     @staticmethod
     def drop_image_parts(messages: list[ChatMessage], url: str) -> int:
@@ -303,10 +314,17 @@ class ChatService:
         client, actual_model = ChatService._get_client(model)
         messages = ChatService._coerce_messages(messages)
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
+
+        def _is_retryable(error) -> bool:
+            """只重试限流、连接/超时和 5xx；400/401/403/404 等直接失败"""
+            status = getattr(error, 'status_code', None)
+            return (
+                isinstance(error, (RateLimitError, APIConnectionError))
+                or (isinstance(status, int) and (status in (408, 409, 429) or status >= 500))
+            )
 
         def _get_response():
-            # deepseek / gpt 走 Responses API，失败自动回退 Chat Completions
             if ChatService._use_responses_api(model):
                 kwargs = dict(
                     model=actual_model,
@@ -317,23 +335,35 @@ class ChatService:
                 try:
                     return client.responses.create(**kwargs), True
                 except Exception as e:
-                    # 图片抓取失败与 API 形态无关，回退到 Chat Completions 只会再失败一次，
-                    # 直接把错误抛给调用方做图片自愈。
+                    # 图片抓取失败与 API 形态无关，交给调用方做图片自愈
                     if ChatService.parse_expired_image_url(e):
                         raise
-                    print(f"[ChatService] {model} Responses API 调用失败，回退 Chat Completions: {e}")
-                    return client.chat.completions.create(
-                        messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
-                    ), False
+                    # 只有端点不存在时才回退；认证/限流/参数错误回退只会再失败一次
+                    if getattr(e, 'status_code', None) not in (404, 405):
+                        raise
+                    print(f"[ChatService] {model} 的 /responses 端点不可用，回退 Chat Completions: {e}")
 
             kwargs = dict(
                 messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
             )
-            if 'gpt-5' in model:
-                kwargs['reasoning_effort'] = reasoning_effort
             return client.chat.completions.create(**kwargs), False
 
-        response, used_responses = await loop.run_in_executor(None, _get_response)
+        response = None
+        used_responses = False
+        for attempt in range(2):
+            try:
+                response, used_responses = await loop.run_in_executor(None, _get_response)
+                break
+            except Exception as e:
+                if attempt == 0 and _is_retryable(e):
+                    print(f"[ChatService] {model} 调用失败"
+                          f"({getattr(e, 'status_code', None) or type(e).__name__})，1 秒后重试一次: {e}")
+                    await asyncio.sleep(1)
+                    continue
+                raise
+
+        if response is None:
+            raise RuntimeError("大模型调用未返回结果")
         response_dict = response.to_dict()
         if used_responses:
             result = ChatService._normalize_responses(response_dict)
