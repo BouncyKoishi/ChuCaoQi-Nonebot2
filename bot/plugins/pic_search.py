@@ -6,9 +6,8 @@ import PIL
 import httpx
 import urllib.parse
 import asyncio
-from lxml import etree
-from PicImageSearch import Network, SauceNAO, Ascii2D, Yandex
-from PIL import Image, ImageFont, ImageDraw, ImageFilter
+from PicImageSearch import Network, SauceNAO
+from PIL import Image, ImageFont, ImageDraw
 
 from utils import imgLocalPathToBase64, extractImgUrls
 from kusa_base import plugin_config
@@ -274,9 +273,6 @@ class ImgExploration:
 
                     thumbnail = thumbnail.resize(
                         (int((height - 2 * margin) * thumbnail.width / thumbnail.height), height - 2 * margin))
-                    if single["source"] == "ascii2d":
-                        thumbnail = thumbnail.filter(ImageFilter.GaussianBlur(radius=3))
-
                     if thumbnail.width > text_x - 2 * margin:
                         thumbnail = thumbnail.crop((0, 0, text_x - 2 * margin, thumbnail.height))
                         img.paste(im=thumbnail, box=(margin, vernier + margin))
@@ -373,93 +369,8 @@ class ImgExploration:
             print(f"saucenao result:{len(resList)}")
         return resList
 
-    async def __yandex_build_result(self, result_num=3) -> list:
-        resList = []
-        try:
-            async with Network(proxies=self.__proxy, timeout=60) as client:
-                yandex = Yandex(client=client)
-                yandex_result = await yandex.search(url=self.__pic_url)
-
-                for i, single in enumerate(yandex_result.raw[:result_num]):
-                    if not single.url or not single.thumbnail:
-                        continue
-
-                    resList.append({
-                        "title": single.title or "",
-                        "thumbnail": single.thumbnail,
-                        "url": urllib.parse.unquote(single.url),
-                        "source": "Yandex",
-                    })
-
-                if resList:
-                    thumbnail_urls = [r["thumbnail"] for r in resList]
-                    thumbnail_bytes = await self.ImageBatchDownload(thumbnail_urls, self.client)
-                    for i, r in enumerate(resList):
-                        r["thumbnail_bytes"] = thumbnail_bytes[i]
-
-        except Exception as e:
-            print(f"yandex error: {e}")
-            traceback.print_exc()
-        finally:
-            print(f"yandex result:{len(resList)}")
-        return resList
-
-    def __ascii2d_get_external_url(self, rawHtml):
-        rawHtml = str(rawHtml)
-        external_url_li = etree.HTML(rawHtml).xpath('//div[@class="external"]/a[1]/@href')
-        if external_url_li:
-            return external_url_li[0]
-        return None
-
-    async def __ascii2d_build_result(self, sh_num: int = 1, tz_num: int = 1) -> list:
-        result_li = []
-        try:
-            async with Network(proxies=self.__proxy, timeout=100) as client:
-                ascii2d_sh = Ascii2D(client=client, bovw=False)
-                ascii2d_tz = Ascii2D(client=client, bovw=True)
-
-                ascii2d_sh_result = await asyncio.create_task(ascii2d_sh.search(url=self.__pic_url))
-                ascii2d_tz_result = await asyncio.create_task(ascii2d_tz.search(url=self.__pic_url))
-
-                thumbnail_urls = []
-                for single in ascii2d_tz_result.raw[0:tz_num] + ascii2d_sh_result.raw[0:sh_num]:
-                    external_url_li = self.__ascii2d_get_external_url(single.origin)
-                    url = single.url or external_url_li
-                    if not url:
-                        continue
-                    sin_di = {
-                        "title": single.title,
-                        "thumbnail": single.thumbnail,
-                        "url": urllib.parse.unquote(url),
-                        "source": "Ascii2D",
-                    }
-                    thumbnail_urls.append(single.thumbnail)
-                    result_li.append(sin_di)
-                if thumbnail_urls:
-                    thumbnail_bytes = await self.ImageBatchDownload(thumbnail_urls, self.client)
-                    for i, single in enumerate(result_li):
-                        single["thumbnail_bytes"] = thumbnail_bytes[i]
-        except Exception as e:
-            print(f"ascii2d: {e}")
-            traceback.print_exc()
-        finally:
-            print(f"ascii2d result:{len(result_li)}")
-        return result_li
-
     async def doSearch(self):
-        task_saucenao = asyncio.create_task(self.__saucenao_build_result())
-        task_yandex = asyncio.create_task(self.__yandex_build_result())
-        task_ascii2d = asyncio.create_task(self.__ascii2d_build_result())
-
-        results = await asyncio.gather(
-            task_saucenao, task_yandex, task_ascii2d,
-            return_exceptions=True
-        )
-
-        self.__result_info = []
-        for result in results:
-            if isinstance(result, list):
-                self.__result_info.extend(result)
+        self.__result_info = await self.__saucenao_build_result()
 
         result_pic = await self.__draw()
 
