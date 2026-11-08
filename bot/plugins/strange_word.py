@@ -54,6 +54,14 @@ record_groups = []
 poke_trigger_groups = []
 default_group_num = 0
 
+# 怪话选句倾向 v0：只放当前选句器可执行的偏好，不承载身份记忆、运行时策略或反馈统计。
+STRANGE_WORD_TENDENCY = (
+    '选句倾向：\n'
+    '- 优先选择能直接回应当前上下文的具体内容、情绪或话头的候选；不要只靠词面重合、谐音或硬联想。\n'
+    '- 多个候选都能接时，优先具体、有指向、能自然延续当前话题的表达；避免空泛感叹、无指向吐槽。\n'
+    '- 怪异感服务于接话，不替代接话；不要为了使用某个梗而突然改变当前话题。'
+)
+
 try:
     not_record_words = plugin_config.get('guaihua', {}).get('notRecordWords', [])
     not_record_members = plugin_config.get('guaihua', {}).get('notRecordMembers', [])
@@ -221,7 +229,11 @@ async def get_sentence_advance(group_num: int, input_str: str, exclude: str = ''
     if len(available) < 10:
         available = model_sentence_list
 
-    system_prompt = '你需要从以下怪话中选择一句语义最适宜的话来回答用户说的内容。你的回答内容只能是怪话列表中的某一句话，不包括任何其它内容。\n'
+    system_prompt = (
+        '你需要从以下怪话中选择一句语义最适宜的话来回答用户说的内容。'
+        '你的回答内容只能是怪话列表中的某一句话，不包括任何其它内容。\n'
+        + STRANGE_WORD_TENDENCY
+    )
     user_prompt = f"用户发言：{input_str}\n\n怪话列表：\n"
     for _ in range(15):
         user_prompt += random.choice(available) + '\n'
@@ -255,7 +267,8 @@ async def get_sentence_list_advance(group_num: int, input_str: str, imgUrls: lis
 
     system_prompt = ('你需要从以下怪话中选择三句话，组成一个尽可能语义适宜且内容连贯的段落来回答用户说的内容。'
                     '你的回答内容按以下格式输出：["A", "B", "C"]'
-                    '其中A、B、C只能是怪话列表中的某一句话，不包括任何其它内容。')
+                    '其中A、B、C只能是怪话列表中的某一句话，不包括任何其它内容。\n'
+                    + STRANGE_WORD_TENDENCY)
     user_prompt = f"用户发言：{input_str}\n\n怪话列表：\n"
     for _ in range(40):
         user_prompt += random.choice(model_sentence_list) + '\n'
@@ -322,7 +335,8 @@ async def pick_strange_word_by_context(group_id: int, source: str = 'auto',
         '你是一个群聊观察者。根据最近的群聊内容，从候选怪话中选一句最合适接话的。'
         '你的回答只能是候选怪话中的某一句原话，不包括任何其它内容。'
         '你不能复读群友说过的话，必须从候选怪话中选择。'
-        '如果没有合适的怪话可以接，请回复"无"。'
+        '如果没有合适的怪话可以接，请回复"无"。\n'
+        + STRANGE_WORD_TENDENCY
     )
     prompt = [
         {"role": "system", "content": system_prompt},
