@@ -103,7 +103,7 @@ async def rollPic(event: Event, imageArchiveName: str):
 _ROLL_COMMANDS = [
     ('rolllj',       [],            'jun'),
     ('rollpurelj',   [],            'junOrigin'),
-    ('rollxhb',      ['rollzh5'],   'xhb'),
+    ('rollzh5',      ['rollxhb'],   'xhb'),
     ('rolltd',       [],            'tudou'),
     ('rolljdm',      ['rollzdm', 'rollmd'], 'zundamon'),
     ('rollpurejdm',  ['rollpurezdm', 'rollpuremd'], 'zundamon2'),
@@ -114,7 +114,7 @@ _ROLL_COMMANDS = [
     ('rollnczw',     ['rollhorou'], 'nczw'),
     ('rollfumo',     [],            'fumo'),
     ('rollds',       [],            'ds'),
-    ('rollbzq',      ['rollsuku'],  'bzq'),
+    ('rollsuku',     ['rollbzq'],   'bzq'),
 ]
 
 _roll_matchers = {}
@@ -128,6 +128,23 @@ for _cmd_name, _aliases, _archive_key in _ROLL_COMMANDS:
             await send_finish(_m, result)
 
     _roll_matchers[_cmd_name] = _matcher
+
+# 图库 key -> 对应 roll 指令名（rolllist 展示用）
+_ARCHIVE_CMD = {}
+for _cmd_name, _aliases, _archive_key in _ROLL_COMMANDS:
+    _ARCHIVE_CMD.setdefault(_archive_key, _cmd_name)
+
+rolllist_cmd = on_command("rolllist", priority=5, block=True)
+
+
+@rolllist_cmd.handle()
+async def handle_rolllist():
+    lines = [f'图库列表（共 {len(archiveInfo)} 个）：']
+    for key, info in archiveInfo.items():
+        cmd = _ARCHIVE_CMD.get(key)
+        suffix = f'（!{cmd}）' if cmd else ''
+        lines.append(f"{info['displayName']}{suffix}")
+    await send_finish(rolllist_cmd, '\n'.join(lines))
 
 
 commitpic_cmd = on_command("commitpic", aliases={'commitlj', 'commitpurelj', 'commitxhb'}, priority=5, block=True)

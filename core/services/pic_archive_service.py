@@ -44,7 +44,7 @@ def get_examine_path() -> str:
 ARCHIVE_INFO: Dict[str, Dict[str, str]] = {
     "jun": {"onlinePath": os.path.join(get_base_pic_path(), 'jun', 'online'), "displayName": "罗俊"},
     "junOrigin": {"onlinePath": os.path.join(get_base_pic_path(), 'jun', 'origin'), "displayName": "纯净罗俊"},
-    "xhb": {"onlinePath": os.path.join(get_base_pic_path(), 'xhb'), "displayName": "xhb"},
+    "xhb": {"onlinePath": os.path.join(get_base_pic_path(), 'xhb'), "displayName": "zh5"},
     "tudou": {"onlinePath": os.path.join(get_base_pic_path(), '土豆泥'), "displayName": "土豆"},
     "zundamon": {"onlinePath": os.path.join(get_base_pic_path(), '豆包2.0'), "displayName": "俊达萌"},
     "zundamon2": {"onlinePath": os.path.join(get_base_pic_path(), '豆包'), "displayName": "俊达萌美图"},
@@ -53,8 +53,8 @@ ARCHIVE_INFO: Dict[str, Dict[str, str]] = {
     "251": {"onlinePath": os.path.join(get_base_pic_path(), '251图库'), "displayName": "251"},
     "xiba": {"onlinePath": os.path.join(get_base_pic_path(), '西八兔子图库'), "displayName": "西八兔"},
     "nczw": {"onlinePath": os.path.join(get_base_pic_path(), '鸟澄珠乌'), "displayName": "鸟澄珠乌"},
-    "fumo": {"onlinePath": os.path.join(get_base_pic_path(), 'Fumo Emoji'), "displayName": "Fumo Emoji"},
-    "ds": {"onlinePath": os.path.join(get_base_pic_path(), 'deepseek'), "displayName": "deepseek"},
+    "fumo": {"onlinePath": os.path.join(get_base_pic_path(), 'Fumo Emoji'), "displayName": "Fumo"},
+    "ds": {"onlinePath": os.path.join(get_base_pic_path(), 'deepseek'), "displayName": "Deepseek"},
     "bzq": {"onlinePath": os.path.join(get_base_pic_path(), '白泽球'), "displayName": "白泽球"},
 }
 
