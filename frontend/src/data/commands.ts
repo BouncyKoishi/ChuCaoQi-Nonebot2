@@ -995,10 +995,18 @@ export const commands: Command[] = [
     subcategory: '图库'
   },
   {
-    name: 'rollbzq',
-    aliases: ['rollsuku'],
+    name: 'rollsuku',
+    aliases: ['rollbzq'],
     params: '',
     description: '从白泽球图库中随机获取一张图片。',
+    tags: [{ text: '群聊', type: 'warning' }],
+    category: '群聊互动',
+    subcategory: '图库'
+  },
+  {
+    name: 'rolllist',
+    params: '',
+    description: '查看所有图库列表及其对应的随机获取指令。',
     tags: [{ text: '群聊', type: 'warning' }],
     category: '群聊互动',
     subcategory: '图库'
