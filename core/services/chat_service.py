@@ -298,7 +298,9 @@ class ChatService:
     async def get_chat_reply(model: str, messages: list,
                              reasoning_effort: Optional[str] = "none",
                              source: str = "general",
-                             web_search: bool = False) -> ChatReply:
+                             web_search: bool = False,
+                             read_url: bool = False,
+                             max_output_tokens: Optional[int] = None) -> ChatReply:
         """获取大模型回复
 
         Args:
@@ -310,6 +312,9 @@ class ChatService:
             web_search: 是否声明 deepseek_web_search 服务端联网工具（仅 Responses API 路径生效）。
                 声明后由模型自行判断是否搜索；工具调用本身不计费，搜索结果按 input token 计费。
                 注意思考模式下该工具会变成深度思考搜索（多次工具调用），成本显著上升。
+            read_url: 是否声明 deepseek_read_url 工具，让模型读取用户消息中的链接。
+                仅识别最后一条用户消息里的链接，单页内容约 1 万 token 上限，多链接会进一步压缩。
+            max_output_tokens: 输出 token 上限，None 表示不限制。
 
         Returns:
             ChatReply: 回复内容 / token使用量 / 思维链文本 / 结束原因
@@ -335,8 +340,15 @@ class ChatService:
                     reasoning={"effort": reasoning_effort},
                     timeout=120,
                 )
+                tools = []
                 if web_search:
-                    kwargs['tools'] = [{"type": "deepseek_web_search"}]
+                    tools.append({"type": "deepseek_web_search"})
+                if read_url:
+                    tools.append({"type": "deepseek_read_url"})
+                if tools:
+                    kwargs['tools'] = tools
+                if max_output_tokens:
+                    kwargs['max_output_tokens'] = max_output_tokens
                 try:
                     return client.responses.create(**kwargs), True
                 except Exception as e:
@@ -351,6 +363,8 @@ class ChatService:
             kwargs = dict(
                 messages=[m.to_dict() for m in messages], model=actual_model, timeout=120
             )
+            if max_output_tokens:
+                kwargs['max_tokens'] = max_output_tokens
             return client.chat.completions.create(**kwargs), False
 
         response = None

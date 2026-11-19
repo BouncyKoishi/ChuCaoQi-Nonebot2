@@ -51,7 +51,8 @@ async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     
     content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=True, web_search=True)
+    reply = await chat(user_id, content, isNewConversation=True, web_search=True,
+                       read_url=True)
     if reply is None:
         return
     await send_finish(chat_cmd, await build_reply_message(event, reply))
@@ -66,7 +67,7 @@ async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True,
-                       web_search=True)
+                       web_search=True, read_url=True)
     if reply is None:
         return
     await send_finish(chatn_cmd, await build_reply_message(event, reply))
@@ -80,7 +81,8 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=False, web_search=True)
+    reply = await chat(user_id, content, isNewConversation=False, web_search=True,
+                       read_url=True)
     if reply is None:
         return
     await send_finish(chatc_cmd, await build_reply_message(event, reply))
@@ -160,7 +162,8 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
         return
     inputContent = content if args.extract_plain_text() else lastMessage.content
-    reply = await chat(user_id, inputContent, isNewConversation=False, web_search=True)
+    reply = await chat(user_id, inputContent, isNewConversation=False, web_search=True,
+                       read_url=True)
     if reply is None:
         return
     await send_finish(chatr_cmd, await build_reply_message(event, reply))
@@ -497,10 +500,10 @@ def _buildContent(text: str, imgUrls: list):
 
 
 async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False,
-               web_search: bool = False):
+               web_search: bool = False, read_url: bool = False):
     """执行一轮对话
 
-    web_search 仅 !chat 系指令传 True，声明服务端联网工具（模型自判是否搜索）；
+    web_search / read_url 仅 !chat 系指令传 True，声明服务端联网工具（模型自判是否使用）；
     #chat 回复触发、怪话、审核等其它路径保持 False，不产生搜索相关 token。
     """
     chatUser = await db.getChatUser(user_id)
@@ -511,7 +514,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False,
     history.append(ChatMessage(role="user", content=content))
 
     try:
-        result = await getChatReply(model, history, web_search)
+        result = await getChatReply(model, history, web_search, read_url)
         reply = result.reply
         if not reply or not reply.strip():
             # DeepSeek 服务方故障时，网关会在 ~900s 超时后返回 200 空响应
@@ -541,7 +544,8 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False,
         return "对话出错了，请稍后再试。"
 
 
-async def _get_chat_reply_with_image_selfheal(model, history, web_search=False):
+async def _get_chat_reply_with_image_selfheal(model, history, web_search=False,
+                                              read_url=False):
     """调用模型；历史图片失效时剔除该图后重试
 
     DeepSeek 抓不到历史图片会整请求 400（报错含坏图 URL），这里按 URL 剔除后重试，
@@ -553,7 +557,7 @@ async def _get_chat_reply_with_image_selfheal(model, history, web_search=False):
         try:
             return await ChatService.get_chat_reply(
                 model, history, reasoning_effort="none", source="chat",
-                web_search=web_search)
+                web_search=web_search, read_url=read_url, max_output_tokens=2048)
         except BadRequestError as e:
             url = ChatService.parse_expired_image_url(e)
             if not url or not ChatService.drop_image_parts(history, url):
@@ -562,7 +566,7 @@ async def _get_chat_reply_with_image_selfheal(model, history, web_search=False):
             print(f"[chat-selfheal] 历史图片已失效，剔除后重试: url={url} 累计剔除={dropped}")
 
 
-async def getChatReply(model, history, web_search=False):
+async def getChatReply(model, history, web_search=False, read_url=False):
     """调用大模型并返回 ChatReply
 
     空回复（模型方长时间未给出回复后的空响应）不写入 history，
@@ -570,7 +574,7 @@ async def getChatReply(model, history, web_search=False):
     """
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
-    result = await _get_chat_reply_with_image_selfheal(model, history, web_search)
+    result = await _get_chat_reply_with_image_selfheal(model, history, web_search, read_url)
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
     print(f"Response: {result.reply}")
