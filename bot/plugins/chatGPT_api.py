@@ -32,10 +32,6 @@ from sensitive_filter import get_sensitive_filter
 
 # 群聊 #chat 在默认角色（无 role prompt）下的发言风格约束：抑制长文刷屏 + 可爱语气。
 # 由 #chat 入口判定作用域后作为用户内容前缀注入；!chat 类与 #chatn 均不注入。
-# 生产实测（群 308554047 真实消息，deepseek-flash，70 次对照）：
-# 平均 21 字、20/20 条 ≤50 字、输出 token 与旧版同区间；
-# 「如果存在图片」的条件式写法可显著减少无图时的图片幻觉；
-# 「不要向用户提起这些要求」可消除把约束念给用户听的外泄。
 GROUP_CHAT_STYLE_CONSTRAINT = (
     "当前为QQ群聊，回复必须简短：不超过50字、不超过三句话。"
     "如果存在图片，描述图片时不要罗列细节，只概括主体。"
@@ -55,9 +51,9 @@ async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     
     content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=True)
+    reply = await chat(user_id, content, isNewConversation=True, web_search=True)
     if reply is None:
-        return  # 模型方未给出回复，静默终止
+        return
     await send_finish(chat_cmd, await build_reply_message(event, reply))
 
 
@@ -69,9 +65,10 @@ async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True)
+    reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True,
+                       web_search=True)
     if reply is None:
-        return  # 模型方未给出回复，静默终止
+        return
     await send_finish(chatn_cmd, await build_reply_message(event, reply))
 
 
@@ -83,9 +80,9 @@ async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     user_id = await get_user_id(event, auto_create=True)
     content = await getChatContent(event, args)
-    reply = await chat(user_id, content, isNewConversation=False)
+    reply = await chat(user_id, content, isNewConversation=False, web_search=True)
     if reply is None:
-        return  # 模型方未给出回复，静默终止
+        return
     await send_finish(chatc_cmd, await build_reply_message(event, reply))
 
 
@@ -163,9 +160,9 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
         return
     inputContent = content if args.extract_plain_text() else lastMessage.content
-    reply = await chat(user_id, inputContent, isNewConversation=False)
+    reply = await chat(user_id, inputContent, isNewConversation=False, web_search=True)
     if reply is None:
-        return  # 模型方未给出回复，静默终止
+        return
     await send_finish(chatr_cmd, await build_reply_message(event, reply))
 
 
@@ -225,7 +222,6 @@ async def handle_chat_user_update(bot: Bot, event: Event, args: Message = Comman
     identifier = int(identifierText)
     params = ''.join(parts[1:])
     
-    # 使用通用函数解析用户标识符
     from kusa_base import parse_user_identifier
     target_user_id = await parse_user_identifier(identifier)
     
@@ -500,7 +496,13 @@ def _buildContent(text: str, imgUrls: list):
     return content
 
 
-async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False):
+async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False,
+               web_search: bool = False):
+    """执行一轮对话
+
+    web_search 仅 !chat 系指令传 True，声明服务端联网工具（模型自判是否搜索）；
+    #chat 回复触发、怪话、审核等其它路径保持 False，不产生搜索相关 token。
+    """
     chatUser = await db.getChatUser(user_id)
     
     model = chatUser.chosenModel
@@ -509,7 +511,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False):
     history.append(ChatMessage(role="user", content=content))
 
     try:
-        result = await getChatReply(model, history)
+        result = await getChatReply(model, history, web_search)
         reply = result.reply
         if not reply or not reply.strip():
             # DeepSeek 服务方故障时，网关会在 ~900s 超时后返回 200 空响应
@@ -539,7 +541,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False):
         return "对话出错了，请稍后再试。"
 
 
-async def _get_chat_reply_with_image_selfheal(model, history):
+async def _get_chat_reply_with_image_selfheal(model, history, web_search=False):
     """调用模型；历史图片失效时剔除该图后重试
 
     DeepSeek 抓不到历史图片会整请求 400（报错含坏图 URL），这里按 URL 剔除后重试，
@@ -550,7 +552,8 @@ async def _get_chat_reply_with_image_selfheal(model, history):
     while True:
         try:
             return await ChatService.get_chat_reply(
-                model, history, reasoning_effort="none", source="chat")
+                model, history, reasoning_effort="none", source="chat",
+                web_search=web_search)
         except BadRequestError as e:
             url = ChatService.parse_expired_image_url(e)
             if not url or not ChatService.drop_image_parts(history, url):
@@ -559,7 +562,7 @@ async def _get_chat_reply_with_image_selfheal(model, history):
             print(f"[chat-selfheal] 历史图片已失效，剔除后重试: url={url} 累计剔除={dropped}")
 
 
-async def getChatReply(model, history):
+async def getChatReply(model, history, web_search=False):
     """调用大模型并返回 ChatReply
 
     空回复（模型方长时间未给出回复后的空响应）不写入 history，
@@ -567,7 +570,7 @@ async def getChatReply(model, history):
     """
     startTimeStamp = datetime.datetime.now().timestamp()
     print(f"Start Time: {startTimeStamp}")
-    result = await _get_chat_reply_with_image_selfheal(model, history)
+    result = await _get_chat_reply_with_image_selfheal(model, history, web_search)
     endTimeStamp = datetime.datetime.now().timestamp()
     print(f"Response Time: {endTimeStamp}, Used Time: {endTimeStamp - startTimeStamp}")
     print(f"Response: {result.reply}")

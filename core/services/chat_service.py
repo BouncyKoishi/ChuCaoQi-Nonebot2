@@ -297,16 +297,19 @@ class ChatService:
     @staticmethod
     async def get_chat_reply(model: str, messages: list,
                              reasoning_effort: Optional[str] = "none",
-                             source: str = "general") -> ChatReply:
+                             source: str = "general",
+                             web_search: bool = False) -> ChatReply:
         """获取大模型回复
 
         Args:
             model: 模型名称
             messages: 消息历史列表
-            reasoning_effort: 推理档位。deepseek-flash 为推理型模型，默认 none 关闭推理以免
-                每注都烧几百上千 token；``chat`` 等需要思考的场景显式传 ``low``。
+            reasoning_effort: 推理档位，默认 none 关闭推理以控制 token 消耗。
                 可选: none/minimal/low/medium/high/xhigh/max（注意没有 disabled）。
             source: 请求来源标识（chat/strange_word/trigrams/moderate_content 等），用于日志。
+            web_search: 是否声明 deepseek_web_search 服务端联网工具（仅 Responses API 路径生效）。
+                声明后由模型自行判断是否搜索；工具调用本身不计费，搜索结果按 input token 计费。
+                注意思考模式下该工具会变成深度思考搜索（多次工具调用），成本显著上升。
 
         Returns:
             ChatReply: 回复内容 / token使用量 / 思维链文本 / 结束原因
@@ -332,6 +335,8 @@ class ChatService:
                     reasoning={"effort": reasoning_effort},
                     timeout=120,
                 )
+                if web_search:
+                    kwargs['tools'] = [{"type": "deepseek_web_search"}]
                 try:
                     return client.responses.create(**kwargs), True
                 except Exception as e:
