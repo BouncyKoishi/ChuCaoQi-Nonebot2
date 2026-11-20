@@ -67,6 +67,12 @@ if QQ_ADAPTER_AVAILABLE:
         print(f"[WARN] QQ adapter registration failed: {e}")
         QQ_ADAPTER_AVAILABLE = False
 
+# QQ 官方新增事件类型的兼容处理（GROUP_MESSAGE_CREATE 等），详见 platform_compat
+if QQ_ADAPTER_AVAILABLE:
+    from platform_compat import install_qq_adapter_compat
+
+    install_qq_adapter_compat()
+
 # 在 NoneBot 启动时初始化数据库（在同一个事件循环中）
 @driver.on_startup
 async def init_database():

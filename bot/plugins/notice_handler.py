@@ -1,11 +1,8 @@
 import nonebot
 from nonebot import on_request, get_bot, on_notice
-from nonebot.adapters.onebot.v11 import (
-    FriendRequestEvent, GroupRequestEvent,
-    LifecycleMetaEvent, Bot
-)
+from nonebot.adapters.onebot.v11 import FriendRequestEvent, GroupRequestEvent, LifecycleMetaEvent, Bot
 from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
-from multi_platform import get_user_id
+from platform_context import get_context, Ctx
 from core.services import identity_service
 
 friendHandleTimestamp = 0
@@ -139,8 +136,8 @@ from typing import Union
 friend_code_cmd = on_command('friend_code', priority=5, block=True)
 
 @friend_code_cmd.handle()
-async def handle_friend_code(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event)
+async def handle_friend_code(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id()
     if not await is_super_admin(userId):
         return
     qq_num = args.extract_plain_text().strip()

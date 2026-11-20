@@ -23,13 +23,15 @@ import time
 import traceback
 from typing import Optional, Dict
 from collections import deque
-from nonebot import on_command, on_message, on_notice, get_bot
+from nonebot import on_command, on_message, on_notice
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PokeNotifyEvent, Bot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot import get_driver
 from nonebot_plugin_apscheduler import scheduler
 
+from multi_platform import get_napcat_bot, UnifiedMessageEvent
+from platform_context import get_context
 from kusa_base import plugin_config
 from core.config import DATA_DIR
 from .reply_commands import reply_text_command, extract_reply_content, ReplyCommandResult
@@ -388,6 +390,7 @@ auto_freeze_cmd = on_command("gh_auto_freeze", priority=5, block=True)
 
 @reply_text_command('怪话')
 async def 怪话_cmd(event, bot):
+    ctx = get_context(event, bot)
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
         return '请回复一条包含文字或图片的消息^ ^'
@@ -395,12 +398,12 @@ async def 怪话_cmd(event, bot):
     decision = None
     if allow_model and random.random() < 0.8:
         decision = await get_sentence_advance(
-            group_num, text, imgUrls=imgUrls, user_id=event.user_id
+            group_num, text, imgUrls=imgUrls, user_id=ctx.platform_user_id
         )
         reply = decision.text
     else:
         reply = get_random_sentence(group_num)
-    update_poke_cache(group_num, reply, event.time)
+    update_poke_cache(group_num, reply, ctx.timestamp or int(time.time()))
     event_id = decision.event_id if decision else None
     return ReplyCommandResult(
         message=reply,
@@ -412,9 +415,8 @@ async def 怪话_cmd(event, bot):
 
 @reply_text_command('remove')
 async def remove_cmd(event, bot):
-    from multi_platform import get_user_id
     from kusa_base import is_super_admin
-    user_id = await get_user_id(event)
+    user_id = await get_context(event, bot).get_user_id()
     if not user_id or not await is_super_admin(user_id):
         return
     # 取纯文本而非 str(Message)：str() 会做 CQ 转义（&→&amp; 等），与库内原文匹配不上
@@ -434,40 +436,43 @@ async def remove_cmd(event, bot):
 
 
 @freeze_cmd.handle()
-async def handle_freeze(event: MessageEvent):
+async def handle_freeze():
     global receive_freeze
     receive_freeze = not receive_freeze
     await freeze_cmd.send(f'怪话接收已{"冻结" if receive_freeze else "解冻"}')
 
 
 @model_freeze_cmd.handle()
-async def handle_model_freeze(event: MessageEvent):
+async def handle_model_freeze():
     global allow_model
     allow_model = not allow_model
     await model_freeze_cmd.send(f'大模型怪话已{"启用" if allow_model else "禁用"}')
 
 
 @auto_freeze_cmd.handle()
-async def handle_auto_freeze(event: MessageEvent):
+async def handle_auto_freeze():
     global auto_reply_enabled
     auto_reply_enabled = not auto_reply_enabled
     await auto_freeze_cmd.send(f'自动怪话已{"启用" if auto_reply_enabled else "禁用"}')
 
 
+# 以下说怪话指令按 group_id 取分群语料，属于平台群标识语义，
+# 待群映射（GroupMapping）阶段统一改用 ctx.group_key，暂保留 event。
 @say_cmd.handle()
-async def handle_say(event: MessageEvent, args: Message = CommandArg()):
+async def handle_say(event: UnifiedMessageEvent, args: Message = CommandArg()):
+    ctx = get_context(event)
     group_num = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
     imgUrls = extractImgUrls(args)
     decision = None
     if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
         decision = await get_sentence_advance(
-            group_num, stripped_text, imgUrls=imgUrls, user_id=event.user_id
+            group_num, stripped_text, imgUrls=imgUrls, user_id=ctx.platform_user_id
         )
         reply = decision.text
     else:
         reply = get_random_sentence(group_num)
-    update_poke_cache(group_num, reply, event.time)
+    update_poke_cache(group_num, reply, ctx.timestamp or int(time.time()))
     sent = await say_cmd.send(reply)
     feedback_log.bind_event(
         decision.event_id if decision else None, reply, group_num,
@@ -476,13 +481,13 @@ async def handle_say(event: MessageEvent, args: Message = CommandArg()):
 
 
 @say_reverse_cmd.handle()
-async def handle_say_reverse(event: MessageEvent):
+async def handle_say_reverse(event: UnifiedMessageEvent):
     msg = get_random_sentence(getattr(event, 'group_id', default_group_num))
     await say_reverse_cmd.send(msg[::-1])
 
 
 @say_shuffle_cmd.handle()
-async def handle_say_shuffle(event: MessageEvent):
+async def handle_say_shuffle(event: UnifiedMessageEvent):
     group_id = getattr(event, 'group_id', default_group_num)
     msg = get_random_sentence(group_id)
     msg_list = list(msg)
@@ -491,7 +496,7 @@ async def handle_say_shuffle(event: MessageEvent):
 
 
 @say_many_cmd.handle()
-async def handle_say_many(event: MessageEvent, args: Message = CommandArg()):
+async def handle_say_many(event: UnifiedMessageEvent, args: Message = CommandArg()):
     group_id = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
     imgUrls = extractImgUrls(args)
@@ -507,7 +512,7 @@ async def handle_say_many(event: MessageEvent, args: Message = CommandArg()):
         await say_many_cmd.send(msg)
         await asyncio.sleep(1)
     if reply_list:
-        update_poke_cache(group_id, reply_list[-1], event.time)
+        update_poke_cache(group_id, reply_list[-1], get_context(event).timestamp or int(time.time()))
 
 
 record_message_matcher = on_message(priority=5, block=False)
@@ -536,8 +541,8 @@ async def record_message(event: MessageEvent):
     if valid and user_id != bot_self_id and (group_num in auto_reply_groups or group_num in poke_trigger_groups):
         if group_num not in group_buffers:
             group_buffers[group_num] = GroupChatBuffer()
-        bot = get_bot()
-        nickname = await get_group_member_nickname(bot, group_num, user_id)
+        bot = get_napcat_bot()
+        nickname = await get_group_member_nickname(bot, group_num, user_id) if bot else ''
         group_buffers[group_num].add(
             user_id=user_id,
             name=nickname,
@@ -546,7 +551,7 @@ async def record_message(event: MessageEvent):
             message_id=event.message_id,
         )
 
-        if group_num in auto_reply_groups and should_auto_reply(group_num):
+        if bot and group_num in auto_reply_groups and should_auto_reply(group_num):
             try:
                 decision = await pick_strange_word_by_context(
                     group_num, source='auto', current_user_id=user_id

@@ -21,14 +21,8 @@ from kusa_base import send_private_msg
 import core.db.kusa_system as base_db
 import core.db.kusa_item as item_db
 from core.services import ItemService
-from multi_platform import (
-    get_user_id,
-    get_real_qq_by_event,
-    is_onebot_v11_event,
-    is_qq_event,
-    send_finish,
-    send_reply,
-)
+from multi_platform import send_finish, send_reply
+from platform_context import get_context, PlatformContext, Ctx
 
 
 # ==================== 商店命令 ====================
@@ -36,30 +30,30 @@ from multi_platform import (
 shop_cmd = on_command("商店", priority=5, block=True)
 
 @shop_cmd.handle()
-async def handle_shop(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_shop(ctx: Ctx, args: Message = CommandArg()):
     """处理商店命令"""
-    await handle_shop_internal(event, args, '草')
+    await handle_shop_internal(ctx, args, '草')
 
 
 adv_shop_cmd = on_command("进阶商店", priority=5, block=True)
 
 @adv_shop_cmd.handle()
-async def handle_adv_shop(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_adv_shop(ctx: Ctx, args: Message = CommandArg()):
     """处理进阶商店命令"""
-    await handle_shop_internal(event, args, '草之精华')
+    await handle_shop_internal(ctx, args, '草之精华')
 
 
 building_shop_cmd = on_command("建筑商店", aliases={"核心商店"}, priority=5, block=True)
 
 @building_shop_cmd.handle()
-async def handle_building_shop(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_building_shop(ctx: Ctx, args: Message = CommandArg()):
     """处理建筑商店命令"""
-    await handle_shop_internal(event, args, '自动化核心')
+    await handle_shop_internal(ctx, args, '自动化核心')
 
 
-async def handle_shop_internal(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, price_type: str):
+async def handle_shop_internal(ctx: PlatformContext, args: Message, price_type: str):
     """商店内部处理逻辑"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     arg_text = args.extract_plain_text().strip()
     show_all = '全部' in arg_text or 'all' in arg_text
     
@@ -104,7 +98,7 @@ async def handle_shop_internal(event: Union[OneBotV11MessageEvent, QQMessageEven
 shop_help_cmd = on_command("商店帮助", priority=5, block=True)
 
 @shop_help_cmd.handle()
-async def handle_shop_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_shop_help():
     """处理商店帮助命令"""
     try:
         with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-商店帮助.txt'), 'r', 'utf-8') as f:
@@ -116,9 +110,9 @@ async def handle_shop_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 query_cmd = on_command("查询", aliases={"道具详情"}, priority=5, block=True)
 
 @query_cmd.handle()
-async def handle_query(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_query(ctx: Ctx, args: Message = CommandArg()):
     """处理查询命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     item_name = args.extract_plain_text().strip()
     
     item = await item_db.getItem(item_name)
@@ -164,9 +158,9 @@ async def handle_query(event: Union[OneBotV11MessageEvent, QQMessageEvent], args
 buy_cmd = on_command("购买", priority=5, block=True)
 
 @buy_cmd.handle()
-async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State, args: Message = CommandArg()):
+async def handle_buy(ctx: Ctx, state: T_State, args: Message = CommandArg()):
     """处理购买命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     arg_text = args.extract_plain_text().strip()
     
     get_name_success, item_name, buying_amount = get_item_name_and_amount(arg_text)
@@ -175,10 +169,10 @@ async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state:
         return
     
     if item_name == '生草工厂':
-        await handle_buy_factory(event, state, user_id, buying_amount, '生草工厂')
+        await handle_buy_factory(state, user_id, buying_amount, '生草工厂')
         return
     if item_name == '草精炼厂':
-        await handle_buy_factory(event, state, user_id, buying_amount, '草精炼厂')
+        await handle_buy_factory(state, user_id, buying_amount, '草精炼厂')
         return
     
     item = await item_db.getItem(item_name)
@@ -244,7 +238,7 @@ async def handle_buy(event: Union[OneBotV11MessageEvent, QQMessageEvent], state:
             await send_finish(buy_cmd, f'购买{buying_amount}个{item_name}需要{total_price}{price_type}，你不够{price_type}^ ^')
 
 
-async def handle_buy_factory(event: Union[OneBotV11MessageEvent, QQMessageEvent], state: T_State, user_id: int, buying_amount: int, factory_type: str):
+async def handle_buy_factory(state: T_State, user_id: int, buying_amount: int, factory_type: str):
     """处理工厂购买"""
     from core.services import IndustrialService
     
@@ -308,7 +302,7 @@ async def handle_buy_confirm(event: Union[OneBotV11MessageEvent, QQMessageEvent]
         return
     
     try:
-        user_id = await get_user_id(event, auto_create=True)
+        user_id = await get_context(event).get_user_id(auto_create=True)
         message = event.get_message()
         confirm = message.extract_plain_text().strip().lower()
         
@@ -344,9 +338,9 @@ async def handle_buy_confirm(event: Union[OneBotV11MessageEvent, QQMessageEvent]
 sell_cmd = on_command("出售", priority=5, block=True)
 
 @sell_cmd.handle()
-async def handle_sell(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_sell(ctx: Ctx, args: Message = CommandArg()):
     """处理出售命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     arg_text = args.extract_plain_text().strip()
     
     get_name_success, item_name, selling_amount = get_item_name_and_amount(arg_text)
@@ -378,7 +372,7 @@ async def handle_sell(event: Union[OneBotV11MessageEvent, QQMessageEvent], args:
 transfer_cmd = on_command("转让", aliases={"道具转让"}, priority=5, block=True)
 
 @transfer_cmd.handle()
-async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_transfer(ctx: Ctx, args: Message = CommandArg()):
     """处理转让命令
     
     支持格式：
@@ -386,8 +380,8 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     - 转让 [物品名] [数量] id=227
     - 当qq和id同时传入时，以id为准
     """
-    user_id = await get_user_id(event, auto_create=True)
-    real_qq = await get_real_qq_by_event(event)
+    user_id = await ctx.get_user_id(auto_create=True)
+    real_qq = await ctx.get_real_qq()
     arg_text = args.extract_plain_text().strip()
     
     get_name_success, item_name, transfer_amount = get_item_name_and_amount(arg_text)
@@ -438,31 +432,28 @@ async def handle_transfer(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
     
     # 私聊通知
     if await base_db.getFlagValue(receiver_user.id, '物品转让提示'):
-        nickname = ""
-        if is_onebot_v11_event(event) and hasattr(event, 'sender') and event.sender:
-            nickname = event.sender.nickname or ""
-        await send_private_msg(receiver_user.id, f'{nickname}({real_qq})转让了{transfer_amount}个{item_name}给你！')
+        await send_private_msg(receiver_user.id, f'{ctx.nickname}({real_qq})转让了{transfer_amount}个{item_name}给你！')
 
 
 enable_cmd = on_command("启用", aliases={"道具启用"}, priority=5, block=True)
 
 @enable_cmd.handle()
-async def handle_enable(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_enable(ctx: Ctx, args: Message = CommandArg()):
     """处理启用命令"""
-    await handle_enable_or_disable(event, args, True)
+    await handle_enable_or_disable(ctx, args, True)
 
 
 disable_cmd = on_command("禁用", aliases={"道具禁用"}, priority=5, block=True)
 
 @disable_cmd.handle()
-async def handle_disable(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_disable(ctx: Ctx, args: Message = CommandArg()):
     """处理禁用命令"""
-    await handle_enable_or_disable(event, args, False)
+    await handle_enable_or_disable(ctx, args, False)
 
 
-async def handle_enable_or_disable(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, enable: bool):
+async def handle_enable_or_disable(ctx: PlatformContext, args: Message, enable: bool):
     """启用/禁用物品内部处理逻辑"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     arg_text = args.extract_plain_text().strip()
     
     get_name_success, item_name, _ = get_item_name_and_amount(arg_text)
@@ -490,9 +481,9 @@ async def handle_enable_or_disable(event: Union[OneBotV11MessageEvent, QQMessage
 compose_cmd = on_command("合成", priority=5, block=True)
 
 @compose_cmd.handle()
-async def handle_compose(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_compose(ctx: Ctx, args: Message = CommandArg()):
     """处理合成命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
 
     arg_text = args.extract_plain_text().strip()
     get_name_success, item_name, amount = get_item_name_and_amount(arg_text)

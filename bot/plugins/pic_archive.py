@@ -11,7 +11,8 @@ from nonebot.exception import FinishedException, PausedException, RejectedExcept
 from nonebot.typing import T_State
 
 from kusa_base import is_super_admin
-from multi_platform import send_reply, send_finish, get_user_id, is_group_message, is_onebot_v11_event
+from multi_platform import send_reply, send_finish
+from platform_context import get_context, PlatformContext, Ctx
 from utils import extractImgUrls, imgLocalPathToBase64
 from .reply_commands import reply_command, extract_reply_images
 from core.services import pic_archive_service as pic_service
@@ -80,11 +81,11 @@ def getExamineFiles():
     return []
 
 
-async def rollPic(event: Event, imageArchiveName: str):
-    if not is_group_message(event):
+async def rollPic(ctx: PlatformContext, imageArchiveName: str):
+    if not ctx.is_group:
         return None
 
-    if not is_onebot_v11_event(event):
+    if not ctx.capabilities.can_send_image:
         return "该功能目前仅支持OneBot平台"
 
     imageArchive = archiveInfo.get(imageArchiveName)
@@ -122,8 +123,8 @@ for _cmd_name, _aliases, _archive_key in _ROLL_COMMANDS:
     _matcher = on_command(_cmd_name, aliases=set(_aliases) if _aliases else None, priority=5, block=True)
 
     @_matcher.handle()
-    async def _roll_handler(bot: Bot, event: Event, _archive=_archive_key, _m=_matcher):
-        result = await rollPic(event, _archive)
+    async def _roll_handler(ctx: Ctx, _archive=_archive_key, _m=_matcher):
+        result = await rollPic(ctx, _archive)
         if result:
             await send_finish(_m, result)
 
@@ -151,27 +152,27 @@ commitpic_cmd = on_command("commitpic", aliases={'commitlj', 'commitpurelj', 'co
 
 
 @commitpic_cmd.handle()
-async def handle_commitpic(event: Event, args: Message = CommandArg()):
-    if not is_onebot_v11_event(event):
+async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
+    if not ctx.capabilities.can_receive_images:
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
 
     imgUrls = extractImgUrls(args)
     if imgUrls:
-        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, event.user_id)
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, int(ctx.platform_user_id))
         msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
 
 
 @commitpic_cmd.got("image", prompt="请上传图片")
-async def handle_commitpic_got(event: Event, image: Message = Arg()):
+async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
     try:
         imgUrls = extractImgUrls(image)
         if not imgUrls:
             await send_finish(commitpic_cmd, "非图片，取消本次上传")
             return
 
-        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, event.user_id)
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, int(ctx.platform_user_id))
         msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
     except (FinishedException, PausedException, RejectedException):
@@ -201,13 +202,13 @@ examinepic_cmd = on_command("examinepic", priority=5, block=True)
 @examinepic_cmd.handle()
 async def handle_examinepic(event: Event, state: T_State):
     if "examine_init" not in state:
-        user_id = await get_user_id(event)
+        user_id = await get_context(event).get_user_id()
 
         if not await is_super_admin(user_id):
             await send_finish(examinepic_cmd, '该账号没有对应权限')
             return
 
-        if not is_onebot_v11_event(event):
+        if not get_context(event).capabilities.can_send_image:
             await send_finish(examinepic_cmd, "该功能目前仅支持OneBot平台")
             return
 

@@ -14,13 +14,8 @@ import core.db.kusa_item as usefulItemDB
 import core.db.user as userDB
 from core.services import LotteryService
 from .pagination_helper import register_pagination_handler, set_pagination_state
-from multi_platform import (
-    get_user_id,
-    get_real_qq_by_event,
-    is_onebot_v11_bot,
-    get_group_id,
-    send_finish,
-)
+from multi_platform import send_finish
+from platform_context import get_context, PlatformContext, Ctx
 
 
 itemRareDescribe = ['Easy', 'Normal', 'Hard', 'Lunatic']
@@ -31,10 +26,10 @@ from sensitive_filter import get_sensitive_filter
 抽奖_cmd = on_command('抽奖', priority=5, block=True)
 
 @抽奖_cmd.handle()
-async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], bot: Bot, args: Message = CommandArg()):
-    groupId = get_group_id(event)
-    userId = await get_user_id(event, auto_create=True)
-    realQQ = await get_real_qq_by_event(event)
+async def handle_抽奖(ctx: Ctx, args: Message = CommandArg()):
+    groupId = ctx.group_id
+    userId = await ctx.get_user_id(auto_create=True)
+    realQQ = await ctx.get_real_qq()
     
     if not groupId:
         await send_finish(抽奖_cmd, '暂不支持私聊抽奖^ ^')
@@ -49,15 +44,15 @@ async def handle_抽奖(event: Union[OneBotV11MessageEvent, QQMessageEvent], bot
 
     banRisk = drawConfig['banRisk']
     strippedArg = args.extract_plain_text().strip()
-    await _getItem(抽奖_cmd, bot, groupId, userId, strippedArg, banRisk, realQQ)
+    await _getItem(抽奖_cmd, ctx, groupId, userId, strippedArg, banRisk, realQQ)
 
 
 十连抽_cmd = on_command('十连抽', priority=5, block=True)
 
 @十连抽_cmd.handle()
-async def handle_十连抽(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    groupId = get_group_id(event)
-    userId = await get_user_id(event, auto_create=True)
+async def handle_十连抽(ctx: Ctx, args: Message = CommandArg()):
+    groupId = ctx.group_id
+    userId = await ctx.get_user_id(auto_create=True)
 
     if not groupId:
         await send_finish(十连抽_cmd, '暂不支持私聊抽奖^ ^')
@@ -92,7 +87,7 @@ async def handle_十连抽(event: Union[OneBotV11MessageEvent, QQMessageEvent], 
     await send_finish(十连抽_cmd, output[:-1])
 
 
-async def _getItem(matcher, bot: Bot, groupNum, userId, strippedArg, banRisk=0, realQQ=None):
+async def _getItem(matcher, ctx, groupNum, userId, strippedArg, banRisk=0, realQQ=None):
     """获取抽奖物品（内部辅助函数）"""
     _, poolName = await _getLevelAndPoolName(strippedArg)
 
@@ -100,8 +95,8 @@ async def _getItem(matcher, bot: Bot, groupNum, userId, strippedArg, banRisk=0, 
     
     if result.get('banned', False):
         msg = f'获得了：口球({result["disabledSeconds"]}s)！'
-        if is_onebot_v11_bot(bot) and realQQ:
-            onebot_bot = cast(OneBotV11Bot, bot)
+        if ctx.capabilities.can_ban and realQQ:
+            onebot_bot = cast(OneBotV11Bot, ctx.bot)
             try:
                 await onebot_bot.set_group_ban(group_id=int(groupNum), user_id=int(realQQ), duration=result['disabledSeconds'])
             except Exception as e:
@@ -125,35 +120,35 @@ async def _getItem(matcher, bot: Bot, groupNum, userId, strippedArg, banRisk=0, 
 添加_easy_cmd = on_command('添加-Easy', aliases={'物品添加-Easy'}, priority=5, block=True)
 
 @添加_easy_cmd.handle()
-async def handle_add_easy(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 0, 添加_easy_cmd)
+async def handle_add_easy(ctx: Ctx, args: Message = CommandArg()):
+    await _addItem(ctx, args, 0, 添加_easy_cmd)
 
 
 添加_normal_cmd = on_command('添加-Normal', aliases={'物品添加-Normal'}, priority=5, block=True)
 
 @添加_normal_cmd.handle()
-async def handle_add_normal(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 1, 添加_normal_cmd)
+async def handle_add_normal(ctx: Ctx, args: Message = CommandArg()):
+    await _addItem(ctx, args, 1, 添加_normal_cmd)
 
 
 添加_hard_cmd = on_command('添加-Hard', aliases={'物品添加-Hard'}, priority=5, block=True)
 
 @添加_hard_cmd.handle()
-async def handle_add_hard(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 2, 添加_hard_cmd)
+async def handle_add_hard(ctx: Ctx, args: Message = CommandArg()):
+    await _addItem(ctx, args, 2, 添加_hard_cmd)
 
 
 添加_lunatic_cmd = on_command('添加-Lunatic', aliases={'物品添加-Lunatic'}, priority=5, block=True)
 
 @添加_lunatic_cmd.handle()
-async def handle_add_lunatic(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _addItem(event, args, 3, 添加_lunatic_cmd)
+async def handle_add_lunatic(ctx: Ctx, args: Message = CommandArg()):
+    await _addItem(ctx, args, 3, 添加_lunatic_cmd)
 
 
-async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, rare, matcher):
+async def _addItem(ctx: PlatformContext, args: Message, rare, matcher):
     """添加物品（内部辅助函数）"""
     stripped_arg = args.extract_plain_text().strip()
-    userId = await get_user_id(event, auto_create=True)
+    userId = await ctx.get_user_id(auto_create=True)
     itemName, itemDetail = nameDetailSplit(stripped_arg)
     if not itemName:
         await send_finish(matcher, '需要物品名!')
@@ -173,7 +168,7 @@ async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Me
         await send_finish(matcher, '物品名或简介中包含敏感词汇^_^')
         return
     
-    realQQ = await get_real_qq_by_event(event)
+    realQQ = await ctx.get_real_qq()
     userPool = drawConfig['userPool']
     poolName = userPool.get(str(realQQ), '默认')
     
@@ -205,8 +200,8 @@ async def _addItem(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Me
 物品仓库_cmd = on_command('物品仓库', priority=5, block=True)
 
 @物品仓库_cmd.handle()
-async def handle_物品仓库(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_物品仓库(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     arg = args.extract_plain_text().strip()
     level, poolName = await _getLevelAndPoolName(arg)
     itemStorageList = await drawItemDB.getItemsWithStorage(userId, rareRank=level, poolName=poolName)
@@ -263,14 +258,14 @@ async def handle_物品仓库(event: Union[OneBotV11MessageEvent, QQMessageEvent
 物品详情_cmd = on_command('物品详情', priority=5, block=True)
 
 @物品详情_cmd.handle()
-async def handle_物品详情(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_物品详情(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     if '祝福' in stripped_arg:
         return
     item = await drawItemDB.getItemByName(stripped_arg)
     if not item:
-        await _itemSearch(event, args, 物品详情_cmd)
+        await _itemSearch(ctx, args, 物品详情_cmd)
         return
     itemStorage = await drawItemDB.getSingleItemStorage(userId, item.id)
 
@@ -290,13 +285,13 @@ async def handle_物品详情(event: Union[OneBotV11MessageEvent, QQMessageEvent
 物品搜索_cmd = on_command('物品搜索', priority=5, block=True)
 
 @物品搜索_cmd.handle()
-async def handle_物品搜索(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    await _itemSearch(event, args, 物品搜索_cmd)
+async def handle_物品搜索(ctx: Ctx, args: Message = CommandArg()):
+    await _itemSearch(ctx, args, 物品搜索_cmd)
 
 
-async def _itemSearch(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message, matcher):
+async def _itemSearch(ctx: PlatformContext, args: Message, matcher):
     """搜索物品（内部辅助函数）"""
-    userId = await get_user_id(event, auto_create=True)
+    userId = await ctx.get_user_id(auto_create=True)
     strippedArg = args.extract_plain_text().strip()
     if not strippedArg:
         await send_finish(matcher, '没有搜索关键词呢^ ^')
@@ -405,8 +400,8 @@ register_pagination_handler('self_made_items', handle_self_made_items_next_page)
 物品修改_cmd = on_command('物品修改', priority=5, block=True)
 
 @物品修改_cmd.handle()
-async def handle_物品修改(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_物品修改(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     itemName, itemDetail = nameDetailSplit(stripped_arg)
     
@@ -434,8 +429,8 @@ async def handle_物品修改(event: Union[OneBotV11MessageEvent, QQMessageEvent
 物品删除_cmd = on_command('物品删除', priority=5, block=True)
 
 @物品删除_cmd.handle()
-async def handle_物品删除(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_物品删除(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     itemName = args.extract_plain_text().strip()
     item = await drawItemDB.getItemByName(itemName)
     if not item:
@@ -452,8 +447,8 @@ async def handle_物品删除(event: Union[OneBotV11MessageEvent, QQMessageEvent
 自制物品列表_cmd = on_command('自制物品列表', priority=5, block=True)
 
 @自制物品列表_cmd.handle()
-async def handle_自制物品列表(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_自制物品列表(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     strippedArg = args.extract_plain_text().strip()
     level, poolName = await _getLevelAndPoolName(strippedArg)
     itemList = await drawItemDB.getItemListByAuthorId(userId, level, poolName)
@@ -505,7 +500,7 @@ async def handle_自制物品列表(event: Union[OneBotV11MessageEvent, QQMessag
 奖池列表_cmd = on_command('奖池列表', aliases={'物品池列表'}, priority=5, block=True)
 
 @奖池列表_cmd.handle()
-async def handle_奖池列表(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_奖池列表():
     pools = await LotteryService.get_pool_list()
     
     if not pools:
@@ -521,8 +516,8 @@ async def handle_奖池列表(event: Union[OneBotV11MessageEvent, QQMessageEvent
 最新物品_cmd = on_command('最新物品', priority=5, block=True)
 
 @最新物品_cmd.handle()
-async def handle_最新物品(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_最新物品(ctx: Ctx):
+    userId = await ctx.get_user_id(auto_create=True)
     prescientAmount = await usefulItemDB.getItemAmount(userId, '侦察凭证')
     if not prescientAmount:
         await send_finish(最新物品_cmd, '你没有侦察凭证，无法查看最新物品^ ^')

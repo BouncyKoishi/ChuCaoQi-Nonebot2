@@ -25,10 +25,7 @@ class ReplyCommandResult:
     on_sent: Optional[Callable] = None
 
 
-def reply_command(
-    command: str,
-    preprocessor: Optional[Callable] = None
-):
+def reply_command(command: str, preprocessor: Optional[Callable] = None):
     def decorator(func: Callable):
         _reply_command_handlers[command] = (func, func.__name__)
         if preprocessor:

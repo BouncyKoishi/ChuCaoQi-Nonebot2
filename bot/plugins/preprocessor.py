@@ -14,11 +14,7 @@
 import time
 
 from nonebot import logger
-from nonebot.adapters.onebot.v11.event import (
-    GroupMessageEvent,
-    PokeNotifyEvent,
-    PrivateMessageEvent,
-)
+from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PokeNotifyEvent, PrivateMessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import IgnoredException
 

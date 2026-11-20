@@ -15,22 +15,14 @@ from kusa_base import plugin_config, is_super_admin, send_group_msg
 from core.config import RESOURCE_DIR
 from urllib import request
 from nonebot_plugin_apscheduler import scheduler
-from multi_platform import (
-    get_user_id,
-    get_real_qq_by_event,
-    get_group_id,
-    is_group_message,
-    is_onebot_v11_bot,
-    send_finish,
-    get_napcat_bot,
-    build_reply_message,
-)
+from multi_platform import send_finish, get_napcat_bot
+from platform_context import Ctx, get_context, PlatformContext
 
 
 help_cmd = on_command('help', priority=5, block=True)
 
 @help_cmd.handle()
-async def handle_help(bot: Bot, event: Event):
+async def handle_help():
     with codecs.open(os.path.join(RESOURCE_DIR, 'text', '指令帮助.txt'), 'r', 'utf-8') as f:
         await send_finish(help_cmd, f.read().strip())
 
@@ -38,7 +30,7 @@ async def handle_help(bot: Bot, event: Event):
 生草系统_cmd = on_command('生草系统', priority=5, block=True)
 
 @生草系统_cmd.handle()
-async def handle_生草系统(bot: Bot, event: Event):
+async def handle_生草系统():
     with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-指令帮助.txt'), 'r', 'utf-8') as f:
         await send_finish(生草系统_cmd, f.read().strip())
 
@@ -46,7 +38,7 @@ async def handle_生草系统(bot: Bot, event: Event):
 公告_cmd = on_command('公告', priority=5, block=True)
 
 @公告_cmd.handle()
-async def handle_公告(bot: Bot, event: Event):
+async def handle_公告():
     with codecs.open(os.path.join(RESOURCE_DIR, 'text', '公告.txt'), 'r', 'utf-8') as f:
         await send_finish(公告_cmd, f.read().strip())
 
@@ -54,43 +46,43 @@ async def handle_公告(bot: Bot, event: Event):
 晚安_cmd = on_command('晚安', priority=5, block=True)
 
 @晚安_cmd.handle()
-async def handle_晚安(bot: Bot, event: Event):
-    if not is_group_message(event):
+async def handle_晚安(bot: Bot, ctx: Ctx):
+    if not ctx.is_group:
         return
     msg = f'晚安，'
-    await sleep(晚安_cmd, bot, event, msg, 400, 50, 1)
+    await sleep(晚安_cmd, bot, ctx, msg, 400, 50, 1)
 
 
 午睡_cmd = on_command('午睡', priority=5, block=True)
 
 @午睡_cmd.handle()
-async def handle_午睡(bot: Bot, event: Event):
-    if not is_group_message(event):
+async def handle_午睡(bot: Bot, ctx: Ctx):
+    if not ctx.is_group:
         return
     msg = f'午安，'
-    await sleep(午睡_cmd, bot, event, msg, 60, 10, 1)
+    await sleep(午睡_cmd, bot, ctx, msg, 60, 10, 1)
 
 
 醒了_cmd = on_command('醒了', priority=5, block=True)
 
 @醒了_cmd.handle()
-async def handle_醒了(bot: Bot, event: Event):
-    if not is_group_message(event):
+async def handle_醒了(bot: Bot, ctx: Ctx):
+    if not ctx.is_group:
         return
     msg = f'你可以睡个回笼觉，'
-    await sleep(醒了_cmd, bot, event, msg, 60, 10, 1)
+    await sleep(醒了_cmd, bot, ctx, msg, 60, 10, 1)
 
 
-async def sleep(matcher, bot: Bot, event: Event, msg, base, summa, size):
+async def sleep(matcher, bot: Bot, ctx: PlatformContext, msg, base, summa, size):
     allow_list = plugin_config.get('group', {}).get('adminAuthGroup', [])
-    group_id = get_group_id(event)
-    user_qq = await get_real_qq_by_event(event)
+    group_id = ctx.group_id
+    user_qq = await ctx.get_real_qq()
     
     if not group_id or not user_qq:
         return
     
     group_id_int = int(group_id)
-    if is_onebot_v11_bot(bot) and group_id_int in allow_list:
+    if ctx.capabilities.can_ban and group_id_int in allow_list:
         durTime = sleepTimeCalculation(base, summa, size)
         now = datetime.datetime.now()
         wake_dt = now + datetime.timedelta(seconds=durTime)
@@ -103,8 +95,8 @@ async def sleep(matcher, bot: Bot, event: Event, msg, base, summa, size):
             await onebot_bot.set_group_ban(group_id=group_id_int, user_id=int(user_qq), duration=durTime)
         except Exception as e:
             print(f'禁言失败: {e}')
-        await send_finish(matcher, await build_reply_message(event, msg))
-    elif not is_onebot_v11_bot(bot):
+        await ctx.finish_quoted(matcher, msg)
+    elif not ctx.capabilities.can_ban:
         msg += '该功能仅在OneBot平台可用'
         await send_finish(matcher, msg)
 
@@ -120,8 +112,8 @@ def sleepTimeCalculation(base, summa, size):
 thanks_cmd = on_command('THANKS', priority=5, block=True)
 
 @thanks_cmd.handle()
-async def handle_thanks(bot: Bot, event: Event, args: Message = CommandArg()):
-    user_id = await get_user_id(event)
+async def handle_thanks(ctx: Ctx, args: Message = CommandArg()):
+    user_id = await ctx.get_user_id()
     if not user_id:
         return
     
@@ -165,8 +157,8 @@ async def handle_thanks(bot: Bot, event: Event, args: Message = CommandArg()):
 捐助记录_cmd = on_command('捐助记录', aliases={'捐赠记录'}, priority=5, block=True)
 
 @捐助记录_cmd.handle()
-async def handle_捐助记录(bot: Bot, event: Event):
-    user_id = await get_user_id(event)
+async def handle_捐助记录(ctx: Ctx):
+    user_id = await ctx.get_user_id()
     if not user_id:
         return
     
@@ -184,21 +176,21 @@ async def handle_捐助记录(bot: Bot, event: Event):
 爆柠檬_cmd = on_command('爆柠檬', priority=5, block=True)
 
 @爆柠檬_cmd.handle()
-async def handle_爆柠檬(bot: Bot, event: Event):
+async def handle_爆柠檬():
     await send_finish(爆柠檬_cmd, '🍋')
 
 
 timestamp_cmd = on_command('timestamp', priority=5, block=True)
 
 @timestamp_cmd.handle()
-async def handle_timestamp(bot: Bot, event: Event):
+async def handle_timestamp():
     await send_finish(timestamp_cmd, str(datetime.datetime.now().timestamp()))
 
 
 news_cmd = on_command('news', priority=5, block=True)
 
 @news_cmd.handle()
-async def handle_news(bot: Bot, event: Event):
+async def handle_news():
     msg = await get60sNewsPic()
     await send_finish(news_cmd, msg)
 
@@ -281,7 +273,7 @@ async def _push_timeout_cancel(session_id: str):
 async def handle_推送(bot: Bot, event: Event, state: T_State):
     # 首次发起推送
     if "push_state" not in state:
-        user_id = await get_user_id(event)
+        user_id = await get_context(event).get_user_id()
         if not user_id or not await is_super_admin(user_id):
             return  # 非超级管理员静默忽略
 

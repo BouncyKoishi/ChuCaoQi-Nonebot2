@@ -8,7 +8,8 @@ import core.db.kusa_system as kusaDB
 import core.db.work_order as orderDB
 import core.db.user as userDB
 from kusa_base import is_super_admin, send_private_msg
-from multi_platform import send_reply, send_finish, get_user_id
+from multi_platform import send_reply, send_finish
+from platform_context import get_context, Ctx
 from utils import nameDetailSplit
 
 
@@ -16,9 +17,9 @@ from utils import nameDetailSplit
 
 
 @提交工单_cmd.handle()
-async def handle_提交工单(bot: Bot, event: Event, args: Message = CommandArg()):
+async def handle_提交工单(ctx: Ctx, args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
-    user_id = await get_user_id(event)
+    user_id = await ctx.get_user_id()
     title, detail = nameDetailSplit(stripped_arg)
     
     if not title:
@@ -39,8 +40,8 @@ async def handle_提交工单(bot: Bot, event: Event, args: Message = CommandArg
 
 
 @查看工单_cmd.handle()
-async def handle_查看工单(bot: Bot, event: Event):
-    user_id = await get_user_id(event)
+async def handle_查看工单(ctx: Ctx):
+    user_id = await ctx.get_user_id()
     
     if not await is_super_admin(user_id):
         await send_finish(查看工单_cmd, '目前仅供开发者使用^ ^')
@@ -67,8 +68,8 @@ async def handle_查看工单(bot: Bot, event: Event):
 
 
 @回复工单_cmd.handle()
-async def handle_回复工单(bot: Bot, event: Event, args: Message = CommandArg()):
-    user_id = await get_user_id(event)
+async def handle_回复工单(ctx: Ctx, args: Message = CommandArg()):
+    user_id = await ctx.get_user_id()
     
     if not await is_super_admin(user_id):
         await send_finish(回复工单_cmd, '仅供开发者使用^ ^')
@@ -103,8 +104,8 @@ async def handle_回复工单(bot: Bot, event: Event, args: Message = CommandArg
 
 
 @删除所有工单_cmd.handle()
-async def handle_删除所有工单(bot: Bot, event: Event):
-    user_id = await get_user_id(event)
+async def handle_删除所有工单(ctx: Ctx):
+    user_id = await ctx.get_user_id()
     
     if not await is_super_admin(user_id):
         await send_finish(删除所有工单_cmd, '仅供开发者使用^ ^')

@@ -7,11 +7,11 @@ NoneBot2 的 Rule checker 在同一优先级内通过 anyio task group 并发执
 并发安全由数据库 UNIQUE 约束 + get_or_create 保证。
 """
 
-from typing import Union
 from nonebot import on_command as _on_command, on_message as _on_message, on_notice as _on_notice
+from nonebot.adapters import Event
 from nonebot.rule import Rule
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent, PrivateMessageEvent
-from nonebot.adapters.qq import GroupAtMessageCreateEvent
+
+from platform_context import get_platform_type, get_platform_user_id
 
 import core.db.user as user_db
 import core.db.kusa_system as kusa_db
@@ -21,14 +21,13 @@ _registered_db_events: set[int] = set()
 _MAX_CACHE_SIZE = 10000
 
 
-def _get_platform_info(event) -> tuple:
-    if isinstance(event, GroupMessageEvent):
-        return "onebot", str(event.user_id)
-    elif isinstance(event, PrivateMessageEvent):
-        return "onebot", str(event.user_id)
-    elif isinstance(event, GroupAtMessageCreateEvent):
-        return "qqbot", event.author.id
-    return None, None
+def _get_platform_info(event: Event) -> tuple:
+    """平台类型与平台用户标识，取值规则与 PlatformContext 保持一致
+
+    QQ 侧优先 union_openid（同 Bot 群聊/私聊一致），避免同一人在不同场景
+    被注册成多个统一用户。
+    """
+    return get_platform_type(event), get_platform_user_id(event)
 
 
 def _cleanup_cache(cache: set[int]):
@@ -36,7 +35,7 @@ def _cleanup_cache(cache: set[int]):
         cache.clear()
 
 
-async def _register_unified_user(event: Union[GroupMessageEvent, PrivateMessageEvent, GroupAtMessageCreateEvent]) -> bool:
+async def _register_unified_user(event: Event) -> bool:
     event_id = id(event)
 
     if event_id in _registered_db_events:
@@ -46,7 +45,7 @@ async def _register_unified_user(event: Union[GroupMessageEvent, PrivateMessageE
     _registered_db_events.add(event_id)
 
     platform, platform_id = _get_platform_info(event)
-    if not platform:
+    if not platform or not platform_id:
         return True
 
     unified_user = await user_db.getUnifiedUserByPlatform(platform, platform_id)
@@ -59,7 +58,7 @@ async def _register_unified_user(event: Union[GroupMessageEvent, PrivateMessageE
     return True
 
 
-async def _register_kusa_user(event: Union[GroupMessageEvent, PrivateMessageEvent, GroupAtMessageCreateEvent]) -> bool:
+async def _register_kusa_user(event: Event) -> bool:
     event_id = id(event)
 
     if event_id in _registered_kusa_events:
@@ -71,7 +70,7 @@ async def _register_kusa_user(event: Union[GroupMessageEvent, PrivateMessageEven
     await _register_unified_user(event)
 
     platform, platform_id = _get_platform_info(event)
-    if platform:
+    if platform and platform_id:
         unified_user = await user_db.getUnifiedUserByPlatform(platform, platform_id)
         if unified_user:
             await kusa_db.createKusaUser(unified_user.id)

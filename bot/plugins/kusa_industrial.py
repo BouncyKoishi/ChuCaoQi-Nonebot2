@@ -4,19 +4,14 @@
 定时批量结算由 scheduler/jobs/industrial.py 执行
 """
 
-from typing import Union
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
-from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 
 import core.db.kusa_system as base_db
 import core.db.user as user_db
 from kusa_base import send_log, is_super_admin
 from core.services import IndustrialService
-from multi_platform import (
-    get_user_id,
-    send_finish,
-)
+from multi_platform import send_finish
+from platform_context import Ctx
 
 
 # ==================== 命令处理器 ====================
@@ -24,9 +19,9 @@ from multi_platform import (
 daily_output_cmd = on_command("每日产量", priority=5, block=True)
 
 @daily_output_cmd.handle()
-async def handle_daily_output(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_daily_output(ctx: Ctx):
     """处理每日产量命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     user = await base_db.getKusaUser(user_id)
     user_qq = await user_db.getRealQQByUserId(user_id)
     user_name = user.name if user.name else (user_qq or str(user.user_id))
@@ -60,9 +55,9 @@ async def handle_daily_output(event: Union[OneBotV11MessageEvent, QQMessageEvent
 force_industrial_cmd = on_command("强制工业", priority=5, block=True)
 
 @force_industrial_cmd.handle()
-async def handle_force_industrial(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_force_industrial(ctx: Ctx):
     """处理强制工业命令（仅超级管理员可用）"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
     if not await is_super_admin(user_id):
         await send_finish(force_industrial_cmd, '你没有权限执行此命令！')

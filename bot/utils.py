@@ -8,6 +8,7 @@ try:
     from nonebot.adapters.onebot.v11 import MessageSegment as ms
     from nonebot.adapters.onebot.v11 import Message
     from nonebot.adapters.onebot.v11.exception import ActionFailed
+    from multi_platform import get_napcat_bot
     NONE_BOT_AVAILABLE = True
 except ImportError:
     NONE_BOT_AVAILABLE = False
@@ -15,6 +16,9 @@ except ImportError:
     Message = None
     ms = None
     ActionFailed = Exception
+
+    def get_napcat_bot():
+        return None
 
 groupMemberInfoCache = {}
 
@@ -61,7 +65,9 @@ def extractImgUrls(picInfo):
 async def getUserAndGroupMsg(userId, groupId):
     userMsg = userId
     groupMsg = groupId
-    bot = nonebot.get_bot()
+    bot = get_napcat_bot()
+    if not bot:
+        return userMsg, groupMsg
     try:
         qqInfo = await bot.get_stranger_info(user_id=userId)
         if qqInfo:
@@ -81,7 +87,9 @@ async def getUserAndGroupMsg(userId, groupId):
 
 # 综合bot权限和被禁言者权限判断禁言能否被执行
 async def checkBanAvailable(targetId, groupId):
-    bot = nonebot.get_bot()
+    bot = get_napcat_bot()
+    if not bot:
+        return False
     botBaseInfo = await bot.get_login_info()
     if botBaseInfo['user_id'] == targetId:
         return False

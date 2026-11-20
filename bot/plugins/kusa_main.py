@@ -25,18 +25,10 @@ import core.db.kusa_field as field_db
 import core.db.user as user_db
 from core.db.models import KusaBase
 from utils import convertNumStrToInt, parse_transfer_target_args
-from kusa_base import (
-    plugin_config, send_private_msg, send_group_msg, get_bot_qq
-)
+from kusa_base import plugin_config, send_private_msg, send_group_msg, get_bot_qq
 from core.services import WarehouseService
-from multi_platform import (
-    get_user_id,
-    is_onebot_v11_event,
-    send_finish,
-    build_at_message,
-    get_group_id,
-    get_nickname_from_event,
-)
+from multi_platform import send_finish
+from platform_context import get_context, Ctx
 from . import scheduler
 
 
@@ -142,10 +134,7 @@ async def stop_envelope_timer(duration: int, envelope_id: str):
 warehouse_cmd = on_command("仓库", priority=5, block=True)
 
 @warehouse_cmd.handle()
-async def handle_warehouse(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_warehouse(ctx: Ctx, args: Message = CommandArg()):
     """处理仓库命令
     
     支持格式：
@@ -154,7 +143,7 @@ async def handle_warehouse(
     - /仓库 id=227 - 通过用户ID查看他人仓库
     - 当qq和id同时传入时，以id为准
     """
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     
     target_qq, target_id = parse_transfer_target_args(stripped_arg)
@@ -194,7 +183,7 @@ async def handle_warehouse(
         output = f'感谢您，生草系统的捐助者!\n' if donate_amount else ''
         output += f"Lv{user['vipLevel']} " if user['vipLevel'] else ''
         output += f"{user['title']} " if user['title'] else f"{vip_title_names[user['vipLevel']]} "
-        user_name = user['name'] if user['name'] else get_nickname_from_event(event)
+        user_name = user['name'] if user['name'] else ctx.nickname
         user_qq = await user_db.getRealQQByUserId(user_id)
         output += f"{user_name}({user_qq or user_id})\n"
         output += await get_warehouse_info_str(result)
@@ -204,9 +193,9 @@ async def handle_warehouse(
 ability_cmd = on_command("能力", priority=5, block=True)
 
 @ability_cmd.handle()
-async def handle_ability(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_ability(ctx: Ctx):
     """处理能力命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     items_skill = await item_db.getItemsByType("能力")
     items_drawing = await item_db.getItemsByType("图纸")
 
@@ -245,12 +234,9 @@ async def handle_ability(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 change_name_cmd = on_command("改名", priority=5, block=True)
 
 @change_name_cmd.handle()
-async def handle_change_name(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_change_name(ctx: Ctx, args: Message = CommandArg()):
     """处理改名命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
     if stripped_arg:
@@ -267,9 +253,9 @@ async def handle_change_name(
 title_cmd = on_command("称号", priority=5, block=True)
 
 @title_cmd.handle()
-async def handle_title(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_title(ctx: Ctx):
     """处理称号命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     item_title = await item_db.getItemsByType("称号")
 
     if not item_title:
@@ -294,12 +280,9 @@ async def handle_title(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 change_title_cmd = on_command("修改称号", priority=5, block=True)
 
 @change_title_cmd.handle()
-async def handle_change_title(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_change_title(ctx: Ctx, args: Message = CommandArg()):
     """处理修改称号命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
     if not stripped_arg:
@@ -327,9 +310,9 @@ async def handle_change_title(
 flag_list_cmd = on_command("配置列表", priority=5, block=True)
 
 @flag_list_cmd.handle()
-async def handle_flag_list(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_flag_list(ctx: Ctx):
     """处理配置列表命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     flag_list = await base_db.getFlagList()
     output = ""
     for flag in flag_list:
@@ -342,12 +325,9 @@ async def handle_flag_list(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 flag_set_cmd = on_command("配置", priority=5, block=True)
 
 @flag_set_cmd.handle()
-async def handle_flag_set(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_flag_set(ctx: Ctx, args: Message = CommandArg()):
     """处理配置命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
     if not stripped_arg:
@@ -395,12 +375,12 @@ async def handle_kusa_ban(
     args: Message = CommandArg()
 ):
     """处理口球命令"""
-    if not is_onebot_v11_event(event):
+    if not get_context(event).capabilities.can_ban:
         await send_finish(kusa_ban_cmd, '该功能暂不支持 QQ 官方 Bot')
         return
 
     group_id = event.group_id
-    user_id = await get_user_id(event, auto_create=False)
+    user_id = await get_context(event).get_user_id(auto_create=False)
 
     if not user_id:
         await send_finish(kusa_ban_cmd, '获取用户信息失败')
@@ -434,10 +414,7 @@ async def handle_kusa_ban(
 transfer_kusa_cmd = on_command("草转让", priority=5, block=True)
 
 @transfer_kusa_cmd.handle()
-async def handle_transfer_kusa(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_transfer_kusa(ctx: Ctx, args: Message = CommandArg()):
     """处理草转让命令
     
     支持格式：
@@ -445,7 +422,7 @@ async def handle_transfer_kusa(
     - 草转让 id=227 kusa=1000
     - 当qq和id同时传入时，以id为准
     """
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
     receiver_qq, receiver_id = parse_transfer_target_args(stripped_arg)
@@ -481,9 +458,8 @@ async def handle_transfer_kusa(
             await send_finish(transfer_kusa_cmd, '转让失败')
         return
 
-    nickname = get_nickname_from_event(event)
     user_qq = await user_db.getRealQQByUserId(user_id)
-    announce = f'{nickname}({user_qq or user_id})转让了{transfer_kusa}个草给你！'
+    announce = f'{ctx.nickname}({user_qq or user_id})转让了{transfer_kusa}个草给你！'
     has_send_private = await send_private_msg(target_user.id, announce) if transfer_kusa >= 10000 else False
     status_msg = '转让成功！' if has_send_private else '转让成功！(未私聊通知被转让者)'
 
@@ -493,12 +469,9 @@ async def handle_transfer_kusa(
 compress_kusa_cmd = on_command("草压缩", priority=5, block=True)
 
 @compress_kusa_cmd.handle()
-async def handle_compress_kusa(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_compress_kusa(ctx: Ctx, args: Message = CommandArg()):
     """处理草压缩命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
 
     kusa_adv_gain = int(stripped_arg) if stripped_arg else 1
@@ -521,15 +494,12 @@ async def handle_compress_kusa(
 give_envelope_cmd = on_command("发草包", priority=5, block=True)
 
 @give_envelope_cmd.handle()
-async def handle_give_envelope(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_give_envelope(ctx: Ctx, args: Message = CommandArg()):
     """处理发草包命令"""
     global kusa_envelope_dict
 
-    user_id = await get_user_id(event, auto_create=True)
-    group_id = int(get_group_id(event)) if get_group_id(event) else None
+    user_id = await ctx.get_user_id(auto_create=True)
+    group_id = int(ctx.group_id) if ctx.group_id else None
     main_group = plugin_config.get('group', {}).get('main')
 
     if group_id != main_group:
@@ -580,12 +550,12 @@ async def handle_give_envelope(
 grab_envelope_cmd = on_command("抢草包", priority=5, block=True)
 
 @grab_envelope_cmd.handle()
-async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_grab_envelope(ctx: Ctx):
     """处理抢草包命令"""
     global kusa_envelope_dict
 
-    user_id = await get_user_id(event, auto_create=True)
-    group_id = int(get_group_id(event)) if get_group_id(event) else None
+    user_id = await ctx.get_user_id(auto_create=True)
+    group_id = int(ctx.group_id) if ctx.group_id else None
     main_group = plugin_config.get('group', {}).get('main')
 
     if group_id != main_group:
@@ -593,7 +563,7 @@ async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEven
         return
 
     if not kusa_envelope_dict:
-        await send_finish(grab_envelope_cmd, await build_at_message(event, user_id, '当前没有草包^ ^'))
+        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '当前没有草包^ ^'))
         return
 
     from core.db.user import getUnifiedUser
@@ -629,9 +599,9 @@ async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEven
             stop_ids.append(envelope_id)
 
     if output_strs:
-        await send_finish(grab_envelope_cmd, await build_at_message(event, user_id, '\n'.join(output_strs)))
+        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '\n'.join(output_strs)))
     elif has_got_flag:
-        await send_finish(grab_envelope_cmd, await build_at_message(event, user_id, '你已经抢过草包了^ ^'))
+        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '你已经抢过草包了^ ^'))
 
     for envelope_id in stop_ids:
         await stop_envelope(envelope_id)
@@ -640,9 +610,9 @@ async def handle_grab_envelope(event: Union[OneBotV11MessageEvent, QQMessageEven
 vip_upgrade_cmd = on_command("信息员升级", priority=5, block=True)
 
 @vip_upgrade_cmd.handle()
-async def handle_vip_upgrade(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_vip_upgrade(ctx: Ctx):
     """处理信息员升级命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     user = await base_db.getKusaUser(user_id)
 
     if user.vipLevel >= 4:
@@ -673,9 +643,9 @@ async def handle_vip_upgrade(event: Union[OneBotV11MessageEvent, QQMessageEvent]
 vip_upgrade_2_cmd = on_command("进阶信息员升级", priority=5, block=True)
 
 @vip_upgrade_2_cmd.handle()
-async def handle_vip_upgrade_2(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_vip_upgrade_2(ctx: Ctx):
     """处理进阶信息员升级命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     user = await base_db.getKusaUser(user_id)
 
     if user.vipLevel < 4:

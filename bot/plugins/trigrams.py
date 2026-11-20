@@ -5,7 +5,8 @@ from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot_plugin_apscheduler import scheduler
-from multi_platform import send_reply, send_finish, get_user_id, get_real_qq_by_event
+from multi_platform import send_reply, send_finish
+from platform_context import get_context, Ctx
 
 from core.services.chat_service import ChatService
 
@@ -18,9 +19,9 @@ trigramResults = {}
 
 
 @起卦_cmd.handle()
-async def handle_起卦(bot: Bot, event: Event, args: Message = CommandArg()):
+async def handle_起卦(ctx: Ctx, args: Message = CommandArg()):
     global gptUseRecord, trigramResults
-    user_id = await get_user_id(event)
+    user_id = await ctx.get_user_id()
     stripped_arg = args.extract_plain_text().strip()
     
     if len(stripped_arg) > 100:
@@ -76,9 +77,9 @@ async def handle_起卦(bot: Bot, event: Event, args: Message = CommandArg()):
 
 
 @解卦_cmd.handle()
-async def handle_解卦(bot: Bot, event: Event, args: Message = CommandArg()):
+async def handle_解卦(ctx: Ctx, args: Message = CommandArg()):
     global gptUseRecord, trigramResults
-    user_id = await get_user_id(event)
+    user_id = await ctx.get_user_id()
     
     if user_id not in trigramResults:
         await send_finish(解卦_cmd, '请先使用"起卦"命令进行占卜。')

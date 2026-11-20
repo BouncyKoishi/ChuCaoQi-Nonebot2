@@ -7,16 +7,9 @@ from typing import Union, List, Dict, Any, Optional
 import os
 
 from core.config import plugin_config
+from multi_platform import is_onebot_v11_bot, is_qq_bot
 
 friend_list: List[str] = []
-
-
-def _is_onebot_v11_bot(bot) -> bool:
-    try:
-        from nonebot.adapters.onebot.v11 import Bot as OneBotV11
-        return isinstance(bot, OneBotV11)
-    except Exception:
-        return False
 
 
 async def send_group_msg(group_id: Union[int, str], message: Union[str, object], 
@@ -40,7 +33,7 @@ async def send_group_msg(group_id: Union[int, str], message: Union[str, object],
             return False
         
         for bot in bots.values():
-            if _is_onebot_v11_bot(bot):
+            if is_onebot_v11_bot(bot):
                 await bot.send_group_msg(group_id=int(group_id), message=message)
                 return True
         
@@ -78,7 +71,7 @@ async def send_private_msg(user_id: Union[int, str], message: Union[str, object]
             return False
         
         for bot in bots.values():
-            if _is_onebot_v11_bot(bot):
+            if is_onebot_v11_bot(bot):
                 if not unified_user.realQQ:
                     return False
                 
@@ -110,7 +103,7 @@ async def send_log(message: str) -> bool:
         bots = get_bots()
         if bots:
             for bot in bots.values():
-                if _is_qq_bot(bot):
+                if is_qq_bot(bot):
                     return False
                 break
     except Exception:

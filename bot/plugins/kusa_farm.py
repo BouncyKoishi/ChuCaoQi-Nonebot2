@@ -24,15 +24,8 @@ import core.db.kusa_item as item_db
 from core.db.user import getUnifiedUser
 from kusa_base import plugin_config, send_private_msg, send_group_msg
 from core.services import FarmService
-from multi_platform import (
-    get_user_id,
-    get_group_id,
-    is_onebot_v11_event,
-    is_group_message,
-    send_reply,
-    send_finish,
-    build_at_message,
-)
+from multi_platform import send_reply, send_finish
+from platform_context import get_context, Ctx
 
 import aiohttp
 
@@ -134,12 +127,9 @@ def format_plant_result(data: dict, prefix: str = "开始") -> str:
 plant_kusa_cmd = on_command("生草", priority=5, block=True)
 
 @plant_kusa_cmd.handle()
-async def handle_plant_kusa(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_plant_kusa(ctx: Ctx, args: Message = CommandArg()):
     """处理生草命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     kusa_type = args.extract_plain_text().strip() or None
     
     if kusa_type == '神灵草':
@@ -181,12 +171,9 @@ async def handle_plant_kusa(
 overload_plant_cmd = on_command("过载生草", priority=5, block=True)
 
 @overload_plant_cmd.handle()
-async def handle_overload_plant(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_overload_plant(ctx: Ctx, args: Message = CommandArg()):
     """处理过载生草命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     overload_magic = await item_db.getItemAmount(user_id, '奈奈的过载魔法')
     
     if not overload_magic:
@@ -208,9 +195,9 @@ async def handle_overload_plant(
 weed_cmd = on_command("除草", priority=5, block=True)
 
 @weed_cmd.handle()
-async def handle_weed(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_weed(ctx: Ctx):
     """处理除草命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     result = await FarmService.weed(userId=user_id)
 
     if not result['success']:
@@ -238,9 +225,9 @@ async def handle_weed(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
 bai_cao_yuan_cmd = on_command("百草园", priority=5, block=True)
 
 @bai_cao_yuan_cmd.handle()
-async def handle_bai_cao_yuan(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_bai_cao_yuan(ctx: Ctx):
     """处理百草园命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     result = await FarmService.get_status(userId=user_id)
     
     if 'error' in result:
@@ -344,12 +331,9 @@ async def handle_bai_cao_yuan(event: Union[OneBotV11MessageEvent, QQMessageEvent
 default_kusa_type_cmd = on_command("默认草种", priority=5, block=True)
 
 @default_kusa_type_cmd.handle()
-async def handle_default_kusa_type(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_default_kusa_type(ctx: Ctx, args: Message = CommandArg()):
     """处理默认草种命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     kusa_type = args.extract_plain_text().strip()
     if not kusa_type:
         kusa_type = "草"
@@ -366,12 +350,9 @@ async def handle_default_kusa_type(
 recover_capacity_cmd = on_command("承载力补充", aliases={"补充承载力"}, priority=5, block=True)
 
 @recover_capacity_cmd.handle()
-async def handle_recover_capacity(
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
-    args: Message = CommandArg()
-):
+async def handle_recover_capacity(ctx: Ctx, args: Message = CommandArg()):
     """处理承载力补充命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stripped_arg = args.extract_plain_text().strip()
     
     amount = int(stripped_arg) if stripped_arg and stripped_arg.isdigit() else None
@@ -395,9 +376,9 @@ async def handle_recover_capacity(
 kusa_brief_cmd = on_command("生草简报", priority=5, block=True)
 
 @kusa_brief_cmd.handle()
-async def handle_kusa_brief(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_kusa_brief(ctx: Ctx):
     """处理生草简报命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stats = await FarmService.get_grass_stats(userId=user_id, period='24小时')
     p = stats['personal']
 
@@ -415,9 +396,9 @@ async def handle_kusa_brief(event: Union[OneBotV11MessageEvent, QQMessageEvent])
 kusa_daily_cmd = on_command("生草日报", priority=5, block=True)
 
 @kusa_daily_cmd.handle()
-async def handle_kusa_daily(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_kusa_daily(ctx: Ctx):
     """处理生草日报命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stats = await FarmService.get_grass_stats(userId=user_id, period='昨日')
     p = stats['personal']
 
@@ -435,9 +416,9 @@ async def handle_kusa_daily(event: Union[OneBotV11MessageEvent, QQMessageEvent])
 kusa_weekly_cmd = on_command("生草周报", priority=5, block=True)
 
 @kusa_weekly_cmd.handle()
-async def handle_kusa_weekly(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_kusa_weekly(ctx: Ctx):
     """处理生草周报命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stats = await FarmService.get_grass_stats(userId=user_id, period='上周')
     p = stats['personal']
 
@@ -455,9 +436,9 @@ async def handle_kusa_weekly(event: Union[OneBotV11MessageEvent, QQMessageEvent]
 kusa_total_cmd = on_command("生草总计", priority=5, block=True)
 
 @kusa_total_cmd.handle()
-async def handle_kusa_total(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_kusa_total(ctx: Ctx):
     """处理生草总计命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     stats = await FarmService.get_grass_stats(userId=user_id, period='总计')
     p = stats['personal']
 
@@ -475,23 +456,23 @@ async def handle_kusa_total(event: Union[OneBotV11MessageEvent, QQMessageEvent])
 rob_cmd = on_command("围殴", priority=5, block=True)
 
 @rob_cmd.handle()
-async def handle_rob(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_rob(ctx: Ctx):
     """处理围殴命令"""
     global rob_dict
     
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
-    if not is_group_message(event):
+    if not ctx.is_group:
         await send_finish(rob_cmd, '只能在群聊中进行围殴^ ^')
         return
     
     if not rob_dict:
-        await send_finish(rob_cmd, await build_at_message(event, user_id, '当前没有可围殴对象^ ^'))
+        await send_finish(rob_cmd, await ctx.at(user_id, '当前没有可围殴对象^ ^'))
         return
     
     unified_user = await getUnifiedUser(user_id)
     if unified_user and unified_user.isRobot:
-        await send_finish(rob_cmd, await build_at_message(event, user_id, '机械臂不能围殴^ ^'))
+        await send_finish(rob_cmd, await ctx.at(user_id, '机械臂不能围殴^ ^'))
         return
     
     self_rob_flag, has_robbed_flag, rob_records, stop_robbing_ids = False, False, [], []
@@ -518,7 +499,7 @@ async def handle_rob(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
         await base_db.changeKusaAndAdvKusa(user_id, kusa_robbed, adv_bonus)
         if adv_bonus:
             record += '额外获得了1草之精华！'
-        rob_records.append(await build_at_message(event, user_id, record))
+        rob_records.append(await ctx.at(user_id, record))
         
         if rob_info.robCount > rob_info.robLimit:
             stop_robbing_ids.append(rob_id)
@@ -528,9 +509,9 @@ async def handle_rob(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
             await send_finish(rob_cmd, record)
             await asyncio.sleep(0.3)
     elif has_robbed_flag:
-        await send_finish(rob_cmd, await build_at_message(event, user_id, '你已经围殴过了^ ^'))
+        await send_finish(rob_cmd, await ctx.at(user_id, '你已经围殴过了^ ^'))
     elif self_rob_flag:
-        await send_finish(rob_cmd, await build_at_message(event, user_id, '不能围殴自己^ ^'))
+        await send_finish(rob_cmd, await ctx.at(user_id, '不能围殴自己^ ^'))
     
     for rob_id in stop_robbing_ids:
         await stop_robbing(rob_id)

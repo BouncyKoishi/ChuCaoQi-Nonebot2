@@ -12,7 +12,8 @@ from PIL import Image, ImageFont, ImageDraw
 from utils import imgLocalPathToBase64, extractImgUrls
 from kusa_base import plugin_config
 from core.config import DATA_DIR, RESOURCE_DIR
-from multi_platform import send_finish, get_user_id, is_onebot_v11_event
+from multi_platform import send_finish
+from platform_context import get_context, Ctx
 from nonebot import on_command, on_message
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
@@ -36,14 +37,14 @@ searchWaitingUsers = {}
 
 
 @搜图_cmd.handle()
-async def handle_搜图(bot: Bot, event: Event, args: Message = CommandArg()):
+async def handle_搜图(ctx: Ctx, args: Message = CommandArg()):
     global searchWaitingUsers
 
-    if not is_onebot_v11_event(event):
+    if not ctx.capabilities.can_receive_images:
         await send_finish(搜图_cmd, "该功能目前仅支持OneBot平台")
         return
 
-    user_id = await get_user_id(event)
+    user_id = await ctx.get_user_id()
     imgUrls = extractImgUrls(args)
 
     if imgUrls:
@@ -67,13 +68,13 @@ async def handle_搜图(bot: Bot, event: Event, args: Message = CommandArg()):
 async def handle_搜图等待(bot: Bot, event: Event):
     global searchWaitingUsers
 
-    if not is_onebot_v11_event(event):
+    if not get_context(event).capabilities.can_receive_images:
         return
 
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return
 
-    user_id = await get_user_id(event)
+    user_id = await get_context(event).get_user_id()
 
     if user_id not in searchWaitingUsers:
         return
@@ -107,7 +108,7 @@ async def handle_搜图等待(bot: Bot, event: Event):
 
 @提取url_handler.handle()
 async def handle_提取url(bot: Bot, event: Event):
-    if not is_onebot_v11_event(event):
+    if not get_context(event).capabilities.can_quote:
         return
 
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):

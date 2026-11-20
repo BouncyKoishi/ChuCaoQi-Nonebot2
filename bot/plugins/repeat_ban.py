@@ -9,10 +9,10 @@
 """
 
 from kusa_base import is_super_admin, plugin_config
-from multi_platform import get_user_id, is_onebot_v11_event
+from platform_context import get_context, Ctx
 from nonebot import on_command, on_message
 from nonebot.adapters import Bot, Event
-from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
 from typing import cast
 from collections import deque
 
@@ -131,8 +131,8 @@ ban_mode_change_cmd = on_command('ban_mode_change', priority=5, block=True)
 
 
 @ban_mode_change_cmd.handle()
-async def handle_ban_mode_change(bot: Bot, event: Event):
-    user_id = await get_user_id(event)
+async def handle_ban_mode_change(ctx: Ctx):
+    user_id = await ctx.get_user_id()
     
     if not await is_super_admin(user_id):
         await ban_mode_change_cmd.finish('权限不足')
@@ -147,10 +147,11 @@ repeat_ban_handler = on_message(priority=10, block=False)
 
 @repeat_ban_handler.handle()
 async def handle_repeat_ban(bot: Bot, event: Event):
-    if not is_onebot_v11_event(event):
+    ctx = get_context(event)
+    if not ctx.capabilities.can_ban:
         return
     
-    if not isinstance(event, GroupMessageEvent):
+    if not ctx.is_group:
         return
     
     if not ban_manager.is_enabled():

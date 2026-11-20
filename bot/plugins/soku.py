@@ -13,6 +13,8 @@ from nonebot import logger, on_command
 from nonebot.adapters import Event, Message
 from nonebot.params import CommandArg
 
+from platform_context import Ctx
+
 from core.config import plugin_config
 
 
@@ -49,8 +51,8 @@ def _parse_game_address(text: str) -> Optional[Tuple[str, int]]:
 
 
 @putgame.handle()
-async def handle_putgame(event: Event, args: Message = CommandArg()):
-    user_id = event.get_user_id()
+async def handle_putgame(ctx: Ctx, args: Message = CommandArg()):
+    user_id = ctx.platform_user_id
     if user_id not in _allowed_users:
         # 内部指令，非白名单用户静默忽略，只留日志
         logger.info(f"soku: 非白名单用户 {user_id} 尝试使用 /putgame，已忽略")

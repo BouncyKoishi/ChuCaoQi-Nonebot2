@@ -592,7 +592,7 @@ async def _get_precipitation_forecast(lat: float, lon: float) -> Optional[dict]:
 # ==================== 降雨预报模块 ====================
 
 @precip_cmd.handle()
-async def handle_precipitation(event, args: Message = CommandArg()):
+async def handle_precipitation(args: Message = CommandArg()):
     now = datetime.now()
     cache_hour_key = now.strftime("%Y%m%d%H")
 

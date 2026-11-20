@@ -8,7 +8,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import IgnoredException
-from multi_platform import get_user_id
+from platform_context import get_context, Ctx
 
 from reloader import db_command
 
@@ -71,7 +71,7 @@ async def pagination_preprocessor(event: OneBotV11MessageEvent):
             if cmd_text == pg_cmd or cmd_text.startswith(pg_cmd + ' '):
                 return
         
-        user_id = await get_user_id(event, auto_create=False)
+        user_id = await get_context(event).get_user_id(auto_create=False)
         if user_id:
             user_id_str = str(user_id)
             if user_id_str in pagination_state:
@@ -82,9 +82,9 @@ async def pagination_preprocessor(event: OneBotV11MessageEvent):
 下一页_cmd = on_command('下一页', aliases={'next'}, priority=5, block=True)
 
 @下一页_cmd.handle()
-async def handle_下一页(event: OneBotV11MessageEvent):
+async def handle_下一页(ctx: Ctx):
     """处理全局下一页命令"""
-    user_id = await get_user_id(event, auto_create=False)
+    user_id = await ctx.get_user_id(auto_create=False)
     if not user_id:
         await 下一页_cmd.finish('获取用户信息失败')
         return
@@ -125,9 +125,9 @@ async def handle_下一页(event: OneBotV11MessageEvent):
 上一页_cmd = on_command('上一页', aliases={'prev', 'previous'}, priority=5, block=True)
 
 @上一页_cmd.handle()
-async def handle_上一页(event: OneBotV11MessageEvent):
+async def handle_上一页(ctx: Ctx):
     """处理全局上一页命令"""
-    user_id = await get_user_id(event, auto_create=False)
+    user_id = await ctx.get_user_id(auto_create=False)
     if not user_id:
         await 上一页_cmd.finish('获取用户信息失败')
         return

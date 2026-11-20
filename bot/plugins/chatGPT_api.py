@@ -16,13 +16,8 @@ from utils import nameDetailSplit, extractImgUrls
 from core.config import DATA_DIR
 from core.services.chat_service import ChatService, TextPart, ImagePart, ChatMessage
 from nonebot_plugin_apscheduler import scheduler
-from multi_platform import (
-    get_user_id,
-    is_group_message,
-    build_reply_message,
-    send_reply,
-    send_finish,
-)
+from multi_platform import send_reply, send_finish
+from platform_context import get_context, PlatformContext, Ctx
 from .reply_commands import reply_text_command, extract_reply_content
 
 HISTORY_PATH = os.path.join(DATA_DIR, 'chatHistory') + os.sep
@@ -44,48 +39,48 @@ GROUP_CHAT_STYLE_CONSTRAINT = (
 chat_cmd = on_command('chat', priority=5, block=True)
 
 @chat_cmd.handle()
-async def handle_chat(bot: Bot, event: Event, args: Message = CommandArg()):
-    user_id = await get_user_id(event, auto_create=True)
+async def handle_chat(ctx: Ctx, args: Message = CommandArg()):
+    user_id = await ctx.get_user_id(auto_create=True)
     
-    if not await permissionCheck(event, 'chat'):
+    if not await permissionCheck(ctx, 'chat'):
         return
     
-    content = await getChatContent(event, args)
+    content = await getChatContent(args)
     reply = await chat(user_id, content, isNewConversation=True, web_search=True,
                        read_url=True)
     if reply is None:
         return
-    await send_finish(chat_cmd, await build_reply_message(event, reply))
+    await ctx.finish_quoted(chat_cmd, reply)
 
 
 chatn_cmd = on_command('chatn', priority=5, block=True)
 
 @chatn_cmd.handle()
-async def handle_chatn(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chatn(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
+    user_id = await ctx.get_user_id(auto_create=True)
+    content = await getChatContent(args)
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True,
                        web_search=True, read_url=True)
     if reply is None:
         return
-    await send_finish(chatn_cmd, await build_reply_message(event, reply))
+    await ctx.finish_quoted(chatn_cmd, reply)
 
 
 chatc_cmd = on_command('chatc', priority=5, block=True)
 
 @chatc_cmd.handle()
-async def handle_chatc(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chatc(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
+    user_id = await ctx.get_user_id(auto_create=True)
+    content = await getChatContent(args)
     reply = await chat(user_id, content, isNewConversation=False, web_search=True,
                        read_url=True)
     if reply is None:
         return
-    await send_finish(chatc_cmd, await build_reply_message(event, reply))
+    await ctx.finish_quoted(chatc_cmd, reply)
 
 
 # ---- #指令：chat / chatn（回复触发式，处理所回复消息的内容）----
@@ -100,21 +95,21 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     styleConstraint: 附加到用户内容前的风格约束文本，仅由 #chat 入口按作用域传入。
     appendText: 指令后附带的文字，接在被回复内容之后；被回复消息无可提取内容时仍不触发。
     """
-    if not await permissionCheck(event, 'chat'):
+    if not await permissionCheck(get_context(event), 'chat'):
         return None
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
         return None
     if appendText:
         text = f'{text}\n{appendText}' if text else appendText
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await get_context(event).get_user_id(auto_create=True)
     content = _buildContent(text, imgUrls)
     if styleConstraint:
         content.insert(0, TextPart(text=styleConstraint))
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
     if reply is None:
         return None  # 模型方未给出回复，静默终止（reply_commands 对 None 不发送）
-    return await build_reply_message(event, reply)
+    return await get_context(event).build_quoted(reply)
 
 
 @reply_text_command('chat', with_args=True)
@@ -122,8 +117,8 @@ async def chat_reply_cmd(event, bot, arg_text: str = ''):
     # 群聊 + 默认角色（无 role prompt）时附加风格约束：#chat 是群内长文刷屏的主要来源，
     # 用户已自设角色的对话不注入，避免覆盖其人设。
     styleConstraint = ''
-    if is_group_message(event):
-        chatUser = await db.getChatUser(await get_user_id(event, auto_create=True))
+    if get_context(event).is_group:
+        chatUser = await db.getChatUser(await get_context(event).get_user_id(auto_create=True))
         if chatUser is not None and chatUser.chosenRoleId == 0:
             styleConstraint = GROUP_CHAT_STYLE_CONSTRAINT
     return await _handle_reply_chat(bot, event, useDefaultRole=False,
@@ -138,10 +133,10 @@ async def chatn_reply_cmd(event, bot, arg_text: str = ''):
 chatb_cmd = on_command('chatb', priority=5, block=True)
 
 @chatb_cmd.handle()
-async def handle_chatb(bot: Bot, event: Event):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chatb(ctx: Ctx):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     lastMessage = await undo(user_id)
     if lastMessage is None:
         await send_finish(chatb_cmd, "没有可撤回的对话。")
@@ -152,11 +147,11 @@ async def handle_chatb(bot: Bot, event: Event):
 chatr_cmd = on_command('chatr', priority=5, block=True)
 
 @chatr_cmd.handle()
-async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chatr(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
-    content = await getChatContent(event, args)
+    user_id = await ctx.get_user_id(auto_create=True)
+    content = await getChatContent(args)
     lastMessage = await undo(user_id)
     if lastMessage is None:
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
@@ -166,14 +161,14 @@ async def handle_chatr(bot: Bot, event: Event, args: Message = CommandArg()):
                        read_url=True)
     if reply is None:
         return
-    await send_finish(chatr_cmd, await build_reply_message(event, reply))
+    await ctx.finish_quoted(chatr_cmd, reply)
 
 
 chat_user_cmd = on_command('chat_user', priority=5, block=True)
 
 @chat_user_cmd.handle()
-async def handle_chat_user(bot: Bot, event: Event):
-    user_id = await get_user_id(event, auto_create=True)
+async def handle_chat_user(ctx: Ctx):
+    user_id = await ctx.get_user_id(auto_create=True)
     chatUser = await db.getChatUser(user_id)
     if chatUser is None:
         await send_finish(chat_user_cmd, "你尚未激活大模型对话功能。")
@@ -208,8 +203,8 @@ async def handle_chat_user(bot: Bot, event: Event):
 chat_user_update_cmd = on_command('chat_user_update', priority=5, block=True)
 
 @chat_user_update_cmd.handle()
-async def handle_chat_user_update(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'admin'):
+async def handle_chat_user_update(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'admin'):
         return
     strippedText = args.extract_plain_text().strip()
     if not strippedText:
@@ -238,10 +233,10 @@ async def handle_chat_user_update(bot: Bot, event: Event, args: Message = Comman
 role_detail_cmd = on_command('role_detail', priority=5, block=True)
 
 @role_detail_cmd.handle()
-async def handle_role_detail(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, "role"):
+async def handle_role_detail(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, "role"):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedText = args.extract_plain_text().strip()
     
     role = await db.getChatRole(user_id, strippedText, True)
@@ -254,10 +249,10 @@ async def handle_role_detail(bot: Bot, event: Event, args: Message = CommandArg(
 role_change_cmd = on_command('role_change', priority=5, block=True)
 
 @role_change_cmd.handle()
-async def handle_role_change(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, "role"):
+async def handle_role_change(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, "role"):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedText = args.extract_plain_text().strip()
     
     success = await db.changeUsingRole(user_id, strippedText)
@@ -271,10 +266,10 @@ async def handle_role_change(bot: Bot, event: Event, args: Message = CommandArg(
 role_update_cmd = on_command('role_update', priority=5, block=True)
 
 @role_update_cmd.handle()
-async def handle_role_update(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, "role"):
+async def handle_role_update(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, "role"):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedText = args.extract_plain_text().strip()
     
     isPublicRole = strippedText.startswith("-p ") or strippedText.startswith("-public ")
@@ -296,10 +291,10 @@ async def handle_role_update(bot: Bot, event: Event, args: Message = CommandArg(
 role_delete_cmd = on_command('role_delete', priority=5, block=True)
 
 @role_delete_cmd.handle()
-async def handle_role_delete(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, "role"):
+async def handle_role_delete(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, "role"):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedText = args.extract_plain_text().strip()
     
     if not strippedText:
@@ -320,8 +315,8 @@ async def handle_role_delete(bot: Bot, event: Event, args: Message = CommandArg(
 model_change_cmd = on_command('model_change', priority=5, block=True)
 
 @model_change_cmd.handle()
-async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg()):
-    user_id = await get_user_id(event, auto_create=True)
+async def handle_model_change(ctx: Ctx, args: Message = CommandArg()):
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedText = args.extract_plain_text().strip()
     
     if strippedText:
@@ -329,7 +324,7 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
             # 所有 deepseek 系（含 deepseek/deepseek-pro/vision 等）统一路由到 deepseek-flash
             newModel = "deepseek-flash"
         elif strippedText == "lzusa" or strippedText.startswith("lzusa ") or strippedText.startswith("lzusa:"):
-            if not await permissionCheck(event, "model"):
+            if not await permissionCheck(ctx, "model"):
                 await send_finish(model_change_cmd, "需要高级模型权限！")
                 return
             if strippedText == "lzusa":
@@ -354,10 +349,10 @@ async def handle_model_change(bot: Bot, event: Event, args: Message = CommandArg
 chat_save_cmd = on_command('chat_save', aliases={'save_conversation'}, priority=5, block=True)
 
 @chat_save_cmd.handle()
-async def handle_chat_save(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chat_save(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     strippedArg = args.extract_plain_text().strip()
     history = await readDefaultConversation(user_id)
     fileName = re.sub(r'[\\/:*?"<>|]', '', strippedArg)
@@ -373,10 +368,10 @@ async def handle_chat_save(bot: Bot, event: Event, args: Message = CommandArg())
 chat_load_cmd = on_command('chat_load', aliases={'load_conversation'}, priority=5, block=True)
 
 @chat_load_cmd.handle()
-async def handle_chat_load(bot: Bot, event: Event, args: Message = CommandArg()):
-    if not await permissionCheck(event, 'chat'):
+async def handle_chat_load(ctx: Ctx, args: Message = CommandArg()):
+    if not await permissionCheck(ctx, 'chat'):
         return
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     arg_text = args.extract_plain_text().strip()
 
     loadableFiles = []
@@ -445,8 +440,8 @@ async def handle_chat_load(bot: Bot, event: Event, args: Message = CommandArg())
 chat_help_cmd = on_command('chat_help', priority=5, block=True)
 
 @chat_help_cmd.handle()
-async def handle_chat_help(bot: Bot, event: Event):
-    user_id = await get_user_id(event, auto_create=True)
+async def handle_chat_help(ctx: Ctx):
+    user_id = await ctx.get_user_id(auto_create=True)
     chatUser = await db.getChatUser(user_id)
     if chatUser is None:
         await send_finish(chat_help_cmd, "你尚未激活大模型对话功能。可使用!chat开启一个对话以激活。")
@@ -482,7 +477,7 @@ def contentToText(content) -> str:
     return text
 
 
-async def getChatContent(event: Event, args: Message):
+async def getChatContent(args: Message):
     inputText = args.extract_plain_text()
     userContent = [TextPart(text=inputText)]
     imgUrls = extractImgUrls(args)
@@ -544,8 +539,7 @@ async def chat(user_id, content, isNewConversation: bool, useDefaultRole=False,
         return "对话出错了，请稍后再试。"
 
 
-async def _get_chat_reply_with_image_selfheal(model, history, web_search=False,
-                                              read_url=False):
+async def _get_chat_reply_with_image_selfheal(model, history, web_search=False, read_url=False):
     """调用模型；历史图片失效时剔除该图后重试
 
     DeepSeek 抓不到历史图片会整请求 400（报错含坏图 URL），这里按 URL 剔除后重试，
@@ -642,13 +636,12 @@ def saveConversation(user_id, fileName, history):
         json.dump([msg.to_dict() for msg in history], f, ensure_ascii=False, indent=4)
 
 
-async def permissionCheck(event: Event, checker: str):
-    user_id = await get_user_id(event, auto_create=True)
+async def permissionCheck(ctx: PlatformContext, checker: str):
+    user_id = await ctx.get_user_id(auto_create=True)
     
     if checker == 'admin':
         return await is_super_admin(user_id)
 
-    isGroupCall = is_group_message(event)
     chatUser = await db.getChatUser(user_id)
     
     if chatUser is None:
@@ -658,7 +651,7 @@ async def permissionCheck(event: Event, checker: str):
     if checker == 'chat':
         if 0 < chatUser.dailyTokenLimit <= chatUser.todayTokenUse:
             return False
-        if not isGroupCall:
+        if not ctx.is_group:
             return chatUser.allowPrivate
         return True
     if checker == 'role':

@@ -1,11 +1,11 @@
 import typing
 import httpx
 from datetime import datetime
-from nonebot import on_command, get_bot
+from nonebot import on_command
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_apscheduler import scheduler
 from kusa_base import plugin_config
-from multi_platform import send_finish, is_onebot_v11_bot
+from multi_platform import send_finish, get_napcat_bot
 
 
 class SysuNetworkReport(typing.NamedTuple):
@@ -46,9 +46,9 @@ if scheduler:
                     for x in r.json()
                 )
 
-                bot = get_bot()
+                bot = get_napcat_bot()
                 # 仅在OneBot端进行主动推送
-                if is_onebot_v11_bot(bot) and latestReport is not None:
+                if bot and latestReport is not None:
                     for x in filter(lambda x: x.time > latestReport.time, d):
                         await send_group_msg_to_sysu(str(x))
                 latestReport = max(d, key=lambda x: x.time)
@@ -60,14 +60,16 @@ if scheduler:
     async def vacationMentionRunner():
         if not ENV_PROD:
             return
-        bot = get_bot()
+        bot = get_napcat_bot()
         # 仅在OneBot端进行主动推送
-        if is_onebot_v11_bot(bot):
+        if bot:
             await send_group_msg_to_sysu('给网费按个暂停键！\n寒暑假将至，可以前往 https://netpay.sysu.edu.cn/ 自助办理个人网络服务的暂停和恢复。')
 
 
 async def send_group_msg_to_sysu(message: str):
-    bot = get_bot()
+    bot = get_napcat_bot()
+    if not bot:
+        return
     sysu_group = plugin_config.get('group', {}).get('sysu')
     if not sysu_group:
         return
@@ -79,7 +81,7 @@ async def send_group_msg_to_sysu(message: str):
 
 
 @校园网_cmd.handle()
-async def handle_校园网(bot: Bot, event: Event):
+async def handle_校园网():
     if not ENV_PROD:
         await send_finish(校园网_cmd, '校园网公告同步功能在测试环境未开启。')
         return

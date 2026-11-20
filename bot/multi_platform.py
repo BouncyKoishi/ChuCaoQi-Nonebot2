@@ -6,17 +6,6 @@
 
 from typing import Union, Optional, Any
 from nonebot.adapters import Bot, Event, Message
-from nonebot.params import Event as EventParam
-
-try:
-    from core.services.identity_service import (
-        get_unified_user_by_platform,
-        get_or_create_unified_user,
-        get_real_qq
-    )
-    IDENTITY_SERVICE_AVAILABLE = True
-except ImportError:
-    IDENTITY_SERVICE_AVAILABLE = False
 
 # 尝试导入QQ适配器的事件类型
 try:
@@ -48,15 +37,15 @@ UnifiedMessageEvent = Union[OneBotV11MessageEvent, QQEvent] if QQ_AVAILABLE else
 
 
 def is_onebot_v11_event(event: Event) -> bool:
-    """判断是否为 OneBot V11 事件"""
-    return isinstance(event, OneBotV11Event)
+    """判断是否为 OneBot V11 事件（转发 platform_context）"""
+    from platform_context import is_onebot_v11_event as _impl
+    return _impl(event)
 
 
 def is_qq_event(event: Event) -> bool:
-    """判断是否为 QQ 官方 Bot 事件"""
-    if not QQ_AVAILABLE:
-        return False
-    return isinstance(event, QQEvent)
+    """判断是否为 QQ 官方 Bot 事件（转发 platform_context）"""
+    from platform_context import is_qq_event as _impl
+    return _impl(event)
 
 
 def is_onebot_v11_bot(bot: Bot) -> bool:
@@ -72,104 +61,39 @@ def is_qq_bot(bot: Bot) -> bool:
 
 
 def get_platform_user_id(event: Event) -> Optional[str]:
-    """获取平台用户ID（统一格式）"""
-    if is_onebot_v11_event(event):
-        # OneBot V11 使用 user_id
-        return str(getattr(event, 'user_id', None))
-    elif is_qq_event(event):
-        # QQ 官方 Bot
-        if hasattr(event, 'author') and event.author:
-            # GroupAtMessageCreateEvent 使用 author.member_openid
-            if hasattr(event.author, 'member_openid'):
-                return str(event.author.member_openid)
-            # C2CMessageCreateEvent 使用 author.user_openid
-            if hasattr(event.author, 'user_openid'):
-                return str(event.author.user_openid)
-            # 其他情况使用 author.id
-            return str(event.author.id)
-        if hasattr(event, 'user') and event.user:
-            return str(event.user.id)
-    return None
+    """获取平台用户ID（统一格式，转发 platform_context）"""
+    from platform_context import get_platform_user_id as _impl
+    return _impl(event)
 
 
 def get_nickname_from_event(event: Event) -> str:
-    """从事件中获取用户昵称"""
-    if is_onebot_v11_event(event):
-        return event.sender.nickname if event.sender else ""
-    elif is_qq_event(event):
-        # QQ官方Bot部分未验证可用性
-        if hasattr(event, 'author') and event.author:
-            if hasattr(event.author, 'member_openid'):
-                return ""
-            if hasattr(event.author, 'user_openid'):
-                return ""
-        return ""
-    return ""
+    """从事件中获取用户昵称（转发 platform_context）"""
+    from platform_context import get_nickname_from_event as _impl
+    return _impl(event)
 
 
 def get_group_id(event: Event) -> Optional[str]:
-    """获取群ID（统一格式）"""
-    if is_onebot_v11_event(event):
-        group_id = getattr(event, 'group_id', None)
-        return str(group_id) if group_id is not None else None
-    elif is_qq_event(event):
-        # QQ 官方 Bot
-        # GroupAtMessageCreateEvent 使用 group_openid 或 group_id
-        if hasattr(event, 'group_openid') and event.group_openid:
-            return str(event.group_openid)
-        if hasattr(event, 'group_id') and event.group_id:
-            return str(event.group_id)
-        # 频道相关使用 guild_id 或 channel_id
-        if hasattr(event, 'guild_id') and event.guild_id:
-            return str(event.guild_id)
-        if hasattr(event, 'channel_id') and event.channel_id:
-            return str(event.channel_id)
-    return None
+    """获取群ID（统一格式，转发 platform_context）"""
+    from platform_context import get_group_id as _impl
+    return _impl(event)
 
 
 def is_group_message(event: Event) -> bool:
-    """判断是否为群聊消息"""
-    if is_onebot_v11_event(event):
-        if hasattr(event, 'message_type') and getattr(event, 'message_type') == 'private':
-            return False
-        return hasattr(event, 'group_id') and getattr(event, 'group_id') is not None
-    elif is_qq_event(event):
-        if QQ_AVAILABLE:
-            if GroupAtMessageCreateEvent and isinstance(event, GroupAtMessageCreateEvent):
-                return True
-        return hasattr(event, 'group_openid') or hasattr(event, 'group_id') or hasattr(event, 'guild_id')
-    return False
+    """判断是否为群聊消息（转发 platform_context）"""
+    from platform_context import is_group_message as _impl
+    return _impl(event)
 
 
 def get_message_id(event: Event) -> Optional[str]:
-    """获取消息ID（用于被动回复）"""
-    if is_onebot_v11_event(event):
-        # OneBot V11 使用 message_id
-        return str(getattr(event, 'message_id', None))
-    elif is_qq_event(event):
-        # QQ 官方 Bot 使用 id
-        if hasattr(event, 'id') and event.id:
-            return str(event.id)
-    return None
+    """获取消息ID（用于被动回复，转发 platform_context）"""
+    from platform_context import get_message_id as _impl
+    return _impl(event)
 
 
 def get_message_timestamp(event: Event) -> Optional[int]:
-    """获取消息时间戳（秒）"""
-    if is_onebot_v11_event(event):
-        # OneBot V11
-        import time
-        return int(time.time())
-    elif is_qq_event(event):
-        # QQ 官方 Bot
-        if hasattr(event, 'timestamp') and event.timestamp:
-            # 解析 ISO 格式时间
-            from datetime import datetime
-            try:
-                dt = datetime.fromisoformat(event.timestamp.replace('Z', '+00:00'))
-                return int(dt.timestamp())
-            except:
-                pass
-    return None
+    """获取消息时间戳（秒，转发 platform_context）"""
+    from platform_context import get_message_timestamp as _impl
+    return _impl(event)
 
 
 async def send_reply(
@@ -204,181 +128,40 @@ async def send_finish(
 MessageEvent = UnifiedMessageEvent
 
 
-def build_message(event: Event, *segments) -> Union[Message, str]:
-    """
-    构建兼容双平台的消息
-    
-    Args:
-        event: 事件对象
-        *segments: 消息段列表，可以是 MessageSegment 或字符串
-        
-    Returns:
-        OneBot V11: Message 对象
-        QQ Bot: 字符串
-    """
-    if is_onebot_v11_event(event):
-        from nonebot.adapters.onebot.v11 import Message as OBMessage
-        return OBMessage(list(segments))
-    else:
-        parts = []
-        for seg in segments:
-            if isinstance(seg, str):
-                parts.append(seg)
-            else:
-                parts.append(str(seg))
-        return ''.join(parts)
-
-
 async def build_reply_message(event: Event, message: Union[str, Message]) -> Union[Message, str]:
-    """
-    构建"回复/引用"消息：群聊时引用原消息，私聊时返回原样
-    """
-    if not is_group_message(event):
-        return message
-    mid = get_message_id(event)
-    if not mid:
-        return message
-    if is_onebot_v11_event(event):
-        from nonebot.adapters.onebot.v11 import Message as OBReplyMessage
-        from nonebot.adapters.onebot.v11 import MessageSegment as OBReplyMS
-        return OBReplyMessage([OBReplyMS.reply(int(mid)), message])
-    if is_qq_event(event):
-        from nonebot.adapters.qq import Message as QQReplyMessage
-        from nonebot.adapters.qq import MessageSegment as QQReplyMS
-        return QQReplyMessage([QQReplyMS.reference(mid), message])
-    return message
+    """构建"回复/引用"消息（转发 platform_context）"""
+    from platform_context import build_reply_message as _impl
+    return await _impl(event, message)
 
 
 async def build_at_message(event: Event, user_id: int, text: str) -> Union[Message, str]:
-    """
-    构建包含艾特的消息，兼容双平台
-    内部自动将统一用户ID转换为真实QQ号用于艾特
-    
-    Args:
-        event: 事件对象
-        user_id: 统一用户ID
-        text: 附加文本
-        
-    Returns:
-        OneBot V11: Message([at, text])
-        QQ Bot: "@real_qq text"
-    """
-    from nonebot.adapters.onebot.v11 import MessageSegment as OBMS
-    from nonebot.adapters.onebot.v11 import Message as OBMessage
-    real_qq = await get_real_qq_by_event(event)
-    if is_onebot_v11_event(event) and real_qq:
-        return OBMessage([OBMS.at(int(real_qq)), ' ' + text])
-    else:
-        return f"@{real_qq or user_id} {text}"
+    """构建包含艾特的消息（转发 platform_context）"""
+    from platform_context import build_at_message as _impl
+    return await _impl(event, user_id, text)
 
 
 def build_image_message(event: Event, image_data: Any, text: str = '') -> Union[Message, str]:
-    """
-    构建包含图片的消息，兼容双平台
-    
-    Args:
-        event: 事件对象
-        image_data: 图片数据（URL、文件路径或 bytes）
-        text: 附加文本
-        
-    Returns:
-        OneBot V11: Message([image, text])
-        QQ Bot: "@user_id text"
-    """
-    from nonebot.adapters.onebot.v11 import MessageSegment as OBMS
-    from nonebot.adapters.onebot.v11 import Message as OBMessage
-    if is_onebot_v11_event(event):
-        segments = [OBMS.image(image_data)]
-        if text:
-            segments.append(text)
-        return OBMessage(segments)
-    else:
-        return f'[图片] {text}' if text else '[图片]'
+    """构建包含图片的消息（转发 platform_context）"""
+    from platform_context import build_image_message as _impl
+    return _impl(event, image_data, text)
 
 
 async def get_user_id(event: Event, auto_create: bool = True) -> Optional[int]:
-    """
-    通过event获取user_id
-    
-    Args:
-        event: 事件对象
-        auto_create: 如果用户不存在是否自动创建
-        
-    Returns:
-        user_id或None
-    """
-    if not IDENTITY_SERVICE_AVAILABLE:
-        return None
-    
-    platform = get_platform_type(event)
-    platform_id = get_platform_user_id(event)
-    
-    if not platform or not platform_id:
-        return None
-    
-    try:
-        if auto_create:
-            unified_user = await get_or_create_unified_user(platform, platform_id)
-        else:
-            unified_user = await get_unified_user_by_platform(platform, platform_id)
-        
-        if unified_user:
-            return unified_user.id
-    except Exception as e:
-        print(f'获取user_id失败：{e}')
-    
-    return None
+    """通过event获取统一用户ID（转发 platform_context）"""
+    from platform_context import get_user_id as _impl
+    return await _impl(event, auto_create=auto_create)
 
 
 async def get_real_qq_by_event(event: Event) -> Optional[str]:
-    """
-    通过event获取真实QQ号
-    
-    Args:
-        event: 事件对象
-        
-    Returns:
-        真实QQ号或None
-    """
-    # OneBot V11 的 user_id 就是真实QQ号，直接返回
-    if is_onebot_v11_event(event):
-        return str(getattr(event, 'user_id', None))
-    
-    # QQ官方Bot需要通过身份服务获取绑定的QQ号
-    if not IDENTITY_SERVICE_AVAILABLE:
-        return None
-    
-    platform = get_platform_type(event)
-    platform_id = get_platform_user_id(event)
-    
-    if not platform or not platform_id:
-        return None
-    
-    try:
-        unified_user = await get_unified_user_by_platform(platform, platform_id)
-        if unified_user:
-            return await get_real_qq(unified_user)
-    except Exception as e:
-        print(f'获取real_qq失败：{e}')
-    
-    return None
+    """通过event获取真实QQ号（转发 platform_context）"""
+    from platform_context import get_real_qq_by_event as _impl
+    return await _impl(event)
 
 
 def get_platform_type(event: Event) -> Optional[str]:
-    """
-    获取平台类型
-    
-    Args:
-        event: 事件对象
-        
-    Returns:
-        "onebot"、"qqbot"或None
-    """
-    if is_onebot_v11_event(event):
-        return "onebot"
-    elif is_qq_event(event):
-        return "qqbot"
-    return None
+    """获取平台类型：'onebot' / 'qqbot' / None（转发 platform_context）"""
+    from platform_context import get_platform_type as _impl
+    return _impl(event)
 
 
 # ============================================================

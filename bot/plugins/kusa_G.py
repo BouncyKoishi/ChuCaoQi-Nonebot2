@@ -22,10 +22,8 @@ from utils import imgBytesToBase64
 import core.db.g_value as g_value_db
 from core.services import GMarketService
 from .pagination_helper import register_pagination_handler, set_pagination_state
-from multi_platform import (
-    get_user_id,
-    send_finish,
-)
+from multi_platform import send_finish
+from platform_context import get_context, Ctx
 
 import matplotlib
 matplotlib.use('Agg')
@@ -49,9 +47,9 @@ g_pic_cache_version: Optional[tuple] = None
 check_g_cmd = on_command("测G", priority=5, block=True)
 
 @check_g_cmd.handle()
-async def handle_check_g(event: OneBotV11MessageEvent):
+async def handle_check_g(ctx: Ctx):
     """处理测G命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
     status = await GMarketService.get_status()
     holdings = await GMarketService.get_all_holdings(user_id)
@@ -92,7 +90,7 @@ async def handle_check_g(event: OneBotV11MessageEvent):
 g_help_cmd = on_command("G市帮助", priority=5, block=True)
 
 @g_help_cmd.handle()
-async def handle_g_help(event: OneBotV11MessageEvent):
+async def handle_g_help():
     """处理G市帮助命令"""
     try:
         with codecs.open(os.path.join(RESOURCE_DIR, 'text', '生草系统-G市帮助.txt'), 'r', 'utf-8') as f:
@@ -104,7 +102,7 @@ async def handle_g_help(event: OneBotV11MessageEvent):
 check_f_cmd = on_command("测F", priority=5, block=True)
 
 @check_f_cmd.handle()
-async def handle_check_f(event: OneBotV11MessageEvent):
+async def handle_check_f():
     """处理测F命令"""
     await send_finish(check_f_cmd, '啊，这……')
 
@@ -112,7 +110,7 @@ async def handle_check_f(event: OneBotV11MessageEvent):
 check_h_cmd = on_command("测H", priority=5, block=True)
 
 @check_h_cmd.handle()
-async def handle_check_h(event: OneBotV11MessageEvent):
+async def handle_check_h():
     """处理测H命令"""
     await send_finish(check_h_cmd, '您不够H^ ^')
 
@@ -120,7 +118,7 @@ async def handle_check_h(event: OneBotV11MessageEvent):
 check_star_cmd = on_command("测*", priority=5, block=True)
 
 @check_star_cmd.handle()
-async def handle_check_star(event: OneBotV11MessageEvent):
+async def handle_check_star():
     """处理测*命令"""
     await send_finish(check_star_cmd, '*^ ^*')
 
@@ -128,13 +126,13 @@ async def handle_check_star(event: OneBotV11MessageEvent):
 trade_summary_cmd = on_command("交易总结", priority=5, block=True)
 
 @trade_summary_cmd.handle()
-async def handle_trade_summary(event: OneBotV11MessageEvent):
+async def handle_trade_summary(ctx: Ctx):
     """处理交易总结命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(trade_summary_cmd, '请在G市结算完成后再查询交易总结^ ^')
         return
     
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
     summary = await GMarketService.get_trade_summary(user_id)
     
@@ -158,13 +156,13 @@ async def handle_trade_summary(event: OneBotV11MessageEvent):
 last_trade_summary_cmd = on_command("上期交易总结", priority=5, block=True)
 
 @last_trade_summary_cmd.handle()
-async def handle_last_trade_summary(event: OneBotV11MessageEvent):
+async def handle_last_trade_summary(ctx: Ctx):
     """处理上期交易总结命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(last_trade_summary_cmd, '请在G市结算完成后再查询上期交易总结^ ^')
         return
     
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
     summary = await GMarketService.get_last_cycle_summary(user_id)
     
@@ -199,7 +197,7 @@ last_g_pic_cache: Dict[str, Optional[bytes]] = {
 }
 
 @last_g_pic_cmd.handle()
-async def handle_last_g_pic(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+async def handle_last_g_pic(args: Message = CommandArg()):
     """处理上期G线图命令"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)
@@ -233,9 +231,9 @@ async def create_last_g_pic():
 trade_record_cmd = on_command("交易记录", priority=5, block=True)
 
 @trade_record_cmd.handle()
-async def handle_trade_record(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+async def handle_trade_record(ctx: Ctx, args: Message = CommandArg()):
     """处理交易记录命令"""
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     
     records_result = await GMarketService.get_trade_records(user_id, page=1, page_size=10)
     
@@ -276,13 +274,13 @@ async def format_trade_records(records: list, current_page: int, total_pages: in
 g_buy_cmd = on_command("G买入", priority=5, block=True)
 
 @g_buy_cmd.handle()
-async def handle_g_buy(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+async def handle_g_buy(ctx: Ctx, args: Message = CommandArg()):
     """处理G买入命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(g_buy_cmd, '当前是结算时间，无法进行G交易^ ^')
         return
 
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     st = ''
     stripped_arg = args.extract_plain_text().strip()
     buying_amount = re.findall(r'\d+', stripped_arg)
@@ -316,13 +314,13 @@ async def handle_g_buy(event: OneBotV11MessageEvent, args: Message = CommandArg(
 g_sell_cmd = on_command("G卖出", priority=5, block=True)
 
 @g_sell_cmd.handle()
-async def handle_g_sell(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+async def handle_g_sell(ctx: Ctx, args: Message = CommandArg()):
     """处理G卖出命令"""
     if not await GMarketService.check_trading_time():
         await send_finish(g_sell_cmd, '当前是结算时间，无法进行G交易^ ^')
         return
 
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     st = ''
     stripped_arg = args.extract_plain_text().strip()
     selling_amount = re.findall(r'\d+', stripped_arg)
@@ -357,7 +355,7 @@ async def handle_g_sell(event: OneBotV11MessageEvent, args: Message = CommandArg
 g_pic_cmd = on_command("G线图", priority=5, block=True)
 
 @g_pic_cmd.handle()
-async def handle_g_pic(event: OneBotV11MessageEvent, args: Message = CommandArg()):
+async def handle_g_pic(args: Message = CommandArg()):
     """处理G线图命令（G值由 scheduler 进程更新，图按需现算保证最新）"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)

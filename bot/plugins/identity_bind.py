@@ -6,18 +6,13 @@
 import random
 import string
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Tuple
+from typing import Dict
 from reloader import db_command as on_command
-from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
-from multi_platform import (
-    get_user_id,
-    get_platform_type,
-    is_group_message,
-    send_finish,
-)
+from platform_context import Ctx
+from multi_platform import send_finish
 from core.services.identity_service import (
     get_unified_user_by_id,
     get_unified_user_by_real_qq,
@@ -33,12 +28,12 @@ bind_codes: Dict[str, Dict] = {}
 获取绑定码_cmd = on_command('获取绑定码', priority=5, block=True)
 
 @获取绑定码_cmd.handle()
-async def handle_获取绑定码(bot: Bot, event: Event):
-    if is_group_message(event):
+async def handle_获取绑定码(ctx: Ctx):
+    if ctx.is_group:
         await send_finish(获取绑定码_cmd, '该指令只能在私聊中使用^ ^')
         return
     
-    user_id = await get_user_id(event, auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     if not user_id:
         await send_finish(获取绑定码_cmd, '获取用户信息失败，请稍后重试')
         return
@@ -57,16 +52,16 @@ async def handle_获取绑定码(bot: Bot, event: Event):
     
     bind_codes[bind_code] = {
         'user_id': user_id,
-        'platform': get_platform_type(event),
-        'platform_id': get_user_id(event),
+        'platform': ctx.platform,
+        'platform_id': ctx.platform_user_id,
         'expire_time': expire_time
     }
     
-    platform_name = 'NapCat端' if get_platform_type(event) == 'onebot' else '官方Bot端'
+    platform_name = 'NapCat端' if ctx.platform == 'onebot' else '官方Bot端'
     await send_finish(获取绑定码_cmd, 
         f'您的绑定码为：{bind_code}\n'
         f'有效期：5分钟\n\n'
-        f'请在另一个平台（{"官方Bot端" if get_platform_type(event) == "onebot" else "NapCat端"}）'
+        f'请在另一个平台（{"官方Bot端" if ctx.platform == "onebot" else "NapCat端"}）'
         f'使用 `/绑定 {bind_code}` 来完成身份绑定'
     )
 
@@ -74,8 +69,8 @@ async def handle_获取绑定码(bot: Bot, event: Event):
 绑定_cmd = on_command('绑定', priority=5, block=True)
 
 @绑定_cmd.handle()
-async def handle_绑定(bot: Bot, event: Event, args: Message = CommandArg()):
-    if is_group_message(event):
+async def handle_绑定(ctx: Ctx, args: Message = CommandArg()):
+    if ctx.is_group:
         await send_finish(绑定_cmd, '该指令只能在私聊中使用^ ^')
         return
     
@@ -94,10 +89,11 @@ async def handle_绑定(bot: Bot, event: Event, args: Message = CommandArg()):
         await send_finish(绑定_cmd, '绑定码已过期，请重新获取')
         return
     
-    current_platform = get_platform_type(event)
-    current_platform_id = get_user_id(event)
-    
-    if current_platform == bind_info['platform']:
+    if not ctx.platform_user_id:
+        await send_finish(绑定_cmd, '获取当前平台身份失败，请稍后重试')
+        return
+
+    if ctx.platform == bind_info['platform']:
         await send_finish(绑定_cmd, '不能在同一平台进行绑定操作')
         return
     
@@ -112,9 +108,9 @@ async def handle_绑定(bot: Bot, event: Event, args: Message = CommandArg()):
         return
     
     if bind_info['platform'] == 'onebot':
-        source_unified_user.qqbotOpenid = current_platform_id
+        source_unified_user.qqbotOpenid = ctx.platform_user_id
     else:
-        source_unified_user.realQQ = current_platform_id
+        source_unified_user.realQQ = ctx.platform_user_id
 
     await saveUnifiedUser(source_unified_user)
     del bind_codes[bind_code]
@@ -125,8 +121,8 @@ async def handle_绑定(bot: Bot, event: Event, args: Message = CommandArg()):
 我的身份_cmd = on_command('我的身份', priority=5, block=True)
 
 @我的身份_cmd.handle()
-async def handle_我的身份(bot: Bot, event: Event):
-    user_id = await get_user_id(event, auto_create=False)
+async def handle_我的身份(ctx: Ctx):
+    user_id = await ctx.get_user_id(auto_create=False)
     if not user_id:
         await send_finish(我的身份_cmd, '您还没有创建账号，请先使用其他功能创建账号')
         return
@@ -160,8 +156,8 @@ async def handle_我的身份(bot: Bot, event: Event):
 生成token_cmd = on_command('生成token', priority=5, block=True)
 
 @生成token_cmd.handle()
-async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg()):
-    if is_group_message(event):
+async def handle_生成token(ctx: Ctx, args: Message = CommandArg()):
+    if ctx.is_group:
         await send_finish(生成token_cmd, '该指令只能在私聊中使用^ ^')
         return
     
@@ -170,7 +166,7 @@ async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg(
     target_qq = None
     
     if arg_text:
-        if not await is_super_admin(await get_user_id(event)):
+        if not await is_super_admin(await ctx.get_user_id()):
             await send_finish(生成token_cmd, '只有管理员才能代他人生成token')
             return
         
@@ -198,7 +194,7 @@ async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg(
             return
     
     if not target_user_id:
-        target_user_id = await get_user_id(event, auto_create=True)
+        target_user_id = await ctx.get_user_id(auto_create=True)
         if not target_user_id:
             await send_finish(生成token_cmd, '获取用户信息失败，请稍后重试')
             return
@@ -219,7 +215,7 @@ async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg(
             f'{"（已覆盖旧token）" if old_token_exists else ""}'
             f'请通知用户妥善保管此token，不要泄露给他人'
         )
-    elif target_user_id != await get_user_id(event):
+    elif target_user_id != await ctx.get_user_id():
         await send_finish(生成token_cmd,
             f'✅ 已为用户ID {target_user_id} 生成Web端token！\n\n'
             f'Token：{token}\n\n'
@@ -239,12 +235,12 @@ async def handle_生成token(bot: Bot, event: Event, args: Message = CommandArg(
 查看token_cmd = on_command('查看token', priority=5, block=True, aliases={'查询token'})
 
 @查看token_cmd.handle()
-async def handle_查看token(bot: Bot, event: Event):
-    if is_group_message(event):
+async def handle_查看token(ctx: Ctx):
+    if ctx.is_group:
         await send_finish(查看token_cmd, '该指令只能在私聊中使用^ ^')
         return
     
-    user_id = await get_user_id(event, auto_create=False)
+    user_id = await ctx.get_user_id(auto_create=False)
     if not user_id:
         await send_finish(查看token_cmd, '您还没有创建账号')
         return

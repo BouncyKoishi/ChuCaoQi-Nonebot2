@@ -11,24 +11,25 @@ from nonebot.adapters import Message
 from kusa_base import is_super_admin, parse_user_identifier
 from functools import wraps
 from core.services import WarehouseService, StatisticService, admin_service
-from multi_platform import get_user_id,  send_finish
+from multi_platform import send_finish
+from platform_context import get_context, Ctx
 from typing import Union
 
 
 def permissionCheck(onlyAdmin=False, costCredentials=0):
     def decorator(func):
         @wraps(func)
-        async def wrapper(event: Union[OneBotV11MessageEvent, QQMessageEvent], *args, **kwargs):
-            userId = await get_user_id(event, auto_create=True)
+        async def wrapper(ctx: Ctx, *args, **kwargs):
+            userId = await ctx.get_user_id(auto_create=True)
             superAdmin = await is_super_admin(userId)
             if superAdmin:
-                return await func(event, *args, **kwargs)
+                return await func(ctx, *args, **kwargs)
             if onlyAdmin and not superAdmin:
                 return
             amount = await itemDB.getItemAmount(userId, "侦察凭证")
             if amount >= costCredentials:
                 await itemDB.changeItemAmount(userId, '侦察凭证', -costCredentials)
-                return await func(event, *args, **kwargs)
+                return await func(ctx, *args, **kwargs)
             else:
                 await send_finish(admin_help_cmd, f'查看该信息需要消耗{costCredentials}个侦察凭证，你的侦察凭证不足^ ^')
                 return
@@ -40,7 +41,7 @@ admin_help_cmd = on_command("admin_help", priority=5, block=True)
 
 @admin_help_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_admin_help(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_admin_help(ctx: Ctx):
     outputStr = "管理员命令列表：\n"
     outputStr += "TOTAL_KUSA 系统总草数\n"
     outputStr += "KUSA_RANK 草排行榜\n"
@@ -103,7 +104,7 @@ async def handle_factory_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent
 # @permissionCheck(onlyAdmin=False, costCredentials=1)
 async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
     userId_str = args.extract_plain_text().strip()
-    self_userId = await get_user_id(event, auto_create=True)
+    self_userId = await get_context(event).get_user_id(auto_create=True)
 
     if not userId_str:
         userId = self_userId
@@ -132,7 +133,7 @@ async def handle_kusa_adv(event: Union[OneBotV11MessageEvent, QQMessageEvent], a
 # @草精排行榜_cmd.handle()
 # @permissionCheck(onlyAdmin=False, costCredentials=10)
 async def handle_草精排行榜(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    userId = await get_user_id(event, auto_create=True)
+    userId = await get_context(event).get_user_id(auto_create=True)
     outputStr = '总草精排行榜：' + await getKusaAdvRank(userId=userId)
     await send_finish(草精排行榜_cmd, outputStr)
 
@@ -141,7 +142,7 @@ async def handle_草精排行榜(event: Union[OneBotV11MessageEvent, QQMessageEv
 # @草精新星榜_cmd.handle()
 # @permissionCheck(onlyAdmin=False, costCredentials=10)
 async def handle_草精新星榜(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
-    userId = await get_user_id(event, auto_create=True)
+    userId = await get_context(event).get_user_id(auto_create=True)
     outputStr = '草精新星排行榜：' + await getKusaAdvRank(userId=userId, levelMax=6)
     await send_finish(草精新星榜_cmd, outputStr)
 
@@ -150,8 +151,8 @@ kusa_adv_rank_cmd = on_command('KUSA_ADV_RANK', priority=5, block=True)
 
 @kusa_adv_rank_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_kusa_adv_rank(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+async def handle_kusa_adv_rank(ctx: Ctx, args: Message = CommandArg()):
+    userId = await ctx.get_user_id(auto_create=True)
     strippedArg = args.extract_plain_text().strip()
     showInactiveUsers = True if '-i' in strippedArg else False
     showSubAccount = True if '-s' in strippedArg else False
@@ -225,7 +226,7 @@ async def getKusaAdv(user):
 # @生草打分榜_cmd.handle()
 # @permissionCheck(onlyAdmin=False, costCredentials=5)
 async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+    userId = await get_context(event).get_user_id(auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
 
     if self_mode:
@@ -254,7 +255,7 @@ async def handle_生草打分榜(event: Union[OneBotV11MessageEvent, QQMessageEv
 # @草精打分榜_cmd.handle()
 # @permissionCheck(onlyAdmin=False, costCredentials=5)
 async def handle_草精打分榜(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
-    userId = await get_user_id(event, auto_create=True)
+    userId = await get_context(event).get_user_id(auto_create=True)
     self_mode = '-self' in args.extract_plain_text()
 
     if self_mode:
@@ -283,7 +284,7 @@ title_list_cmd = on_command('TITLE_LIST', priority=5, block=True)
 
 @title_list_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_title_list(event: Union[OneBotV11MessageEvent, QQMessageEvent]):
+async def handle_title_list(ctx: Ctx):
     item_titles = await itemDB.getItemsByType("称号")
     
     output = "系统称号列表：\n"
@@ -296,7 +297,7 @@ give_title_cmd = on_command('GIVE_TITLE', priority=5, block=True)
 
 @give_title_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_give_title(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_give_title(ctx: Ctx, args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     userId_str, title = stripped_arg.split(" ")
 
@@ -320,7 +321,7 @@ set_donation_cmd = on_command('SET_DONATION', priority=5, block=True)
 
 @set_donation_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_set_donation(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_set_donation(ctx: Ctx, args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     parts = stripped_arg.split(" ")
     userId_str = parts[0]
@@ -345,7 +346,7 @@ set_name_cmd = on_command('SET_NAME', priority=5, block=True)
 
 @set_name_cmd.handle()
 @permissionCheck(onlyAdmin=True)
-async def handle_set_name(event: Union[OneBotV11MessageEvent, QQMessageEvent], args: Message = CommandArg()):
+async def handle_set_name(ctx: Ctx, args: Message = CommandArg()):
     stripped_arg = args.extract_plain_text().strip()
     userId_str, name = stripped_arg.split(" ") if " " in stripped_arg else (stripped_arg, None)
 
