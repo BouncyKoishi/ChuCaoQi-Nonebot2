@@ -3,17 +3,16 @@ import glob
 import random
 
 from nonebot import on_command, logger
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Event
 from nonebot.params import CommandArg, Arg
 from nonebot.adapters import Message
-from nonebot.adapters.onebot.v11 import MessageSegment as ms
 from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.typing import T_State
 
 from kusa_base import is_super_admin
 from multi_platform import send_reply, send_finish
 from platform_context import get_context, PlatformContext, Ctx
-from utils import extractImgUrls, imgLocalPathToBase64
+from utils import extractImgUrls
 from .reply_commands import reply_command, extract_reply_images
 from core.services import pic_archive_service as pic_service
 from core.services.pic_archive_service import ARCHIVE_INFO as archiveInfo
@@ -48,11 +47,24 @@ def _add_to_archive_paths(archive_key: str, file_path: str):
         archiveInfo[archive_key]['onlineFilePaths'].sort()
 
 
-async def _download_and_check_dup(imgUrls: list[str], user_id) -> tuple[int, int, int]:
+async def _resolve_uploader(ctx: PlatformContext) -> str:
+    """上传者前缀：真实 QQ 优先，未绑定的官机用户回退 u<统一ID>
+
+    文件名规则为 {uploader}-{timestamp}-...，前端按“上传者QQ”解析数字前缀；
+    u 前缀不会被误认为是 QQ 号，归入“未知来源”但保留追溯线索。
+    """
+    real_qq = await ctx.get_real_qq()
+    if real_qq:
+        return real_qq
+    user_id = await ctx.get_user_id(auto_create=True)
+    return f'u{user_id}' if user_id is not None else 'unknown'
+
+
+async def _download_and_check_dup(imgUrls: list[str], uploader: str) -> tuple[int, int, int]:
     """下载图片并查重（复用 service 层，传入 bot 维护的 md5_set）"""
     global _pic_md5_set
     success_count, duplicate_count, oversized_count, _pic_md5_set = await pic_service.download_and_check_dup(
-        imgUrls, user_id, _pic_md5_set
+        imgUrls, uploader, _pic_md5_set
     )
     if duplicate_count > 0:
         logger.info(f'本次上传拦截 {duplicate_count} 张重复图片')
@@ -98,7 +110,12 @@ async def rollPic(ctx: PlatformContext, imageArchiveName: str):
 
     picPath = random.choice(paths)
     print(f'本次发送的图片：{picPath}')
-    return imgLocalPathToBase64(picPath)
+    try:
+        with open(picPath, 'rb') as f:
+            return ctx.build_image(f.read())
+    except OSError as e:
+        logger.error(f'rollPic 读取图片失败: {e}')
+        return None
 
 
 _ROLL_COMMANDS = [
@@ -157,9 +174,9 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
 
-    imgUrls = extractImgUrls(args)
+    imgUrls = extractImgUrls(args) or ctx.images
     if imgUrls:
-        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, int(ctx.platform_user_id))
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, await _resolve_uploader(ctx))
         msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
 
@@ -167,12 +184,12 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
 @commitpic_cmd.got("image", prompt="请上传图片")
 async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
     try:
-        imgUrls = extractImgUrls(image)
+        imgUrls = extractImgUrls(image) or ctx.images
         if not imgUrls:
             await send_finish(commitpic_cmd, "非图片，取消本次上传")
             return
 
-        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, int(ctx.platform_user_id))
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(imgUrls, await _resolve_uploader(ctx))
         msg = _format_upload_msg(success_count, duplicate_count, oversized_count)
         await send_finish(commitpic_cmd, msg)
     except (FinishedException, PausedException, RejectedException):
@@ -189,7 +206,8 @@ async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
 async def commitpic_reply(event, img_url, bot):
     try:
         urls = extract_reply_images(event) or [img_url]
-        success_count, duplicate_count, oversized_count = await _download_and_check_dup(urls, event.user_id)
+        uploader = await _resolve_uploader(get_context(event))
+        success_count, duplicate_count, oversized_count = await _download_and_check_dup(urls, uploader)
         return _format_upload_msg(success_count, duplicate_count, oversized_count)
     except Exception as e:
         logger.error(f'#commitpic error: {e}')
@@ -282,7 +300,9 @@ async def handle_examinepic(event: Event, state: T_State):
             await send_finish(examinepic_cmd, f'审核结束，剩余 {remainingCount} 张待审核图片')
             return
 
-        await send_reply(examinepic_cmd, imgLocalPathToBase64(examineFiles[index]))
+        with open(examineFiles[index], 'rb') as f:
+            pic_data = f.read()
+        await send_reply(examinepic_cmd, get_context(event).build_image(pic_data))
         fileName = os.path.basename(examineFiles[index])
         fileSize = os.path.getsize(examineFiles[index])
         fileSizeStr = f'{fileSize / 1024:.1f}KB' if fileSize < 1024 * 1024 else f'{fileSize / 1024 / 1024:.1f}MB'

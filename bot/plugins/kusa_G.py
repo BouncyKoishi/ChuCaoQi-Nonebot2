@@ -13,17 +13,15 @@ from datetime import datetime
 from collections import Counter
 
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
 from core.config import RESOURCE_DIR
-from utils import imgBytesToBase64
 import core.db.g_value as g_value_db
 from core.services import GMarketService
 from .pagination_helper import register_pagination_handler, set_pagination_state
 from multi_platform import send_finish
-from platform_context import get_context, Ctx
+from platform_context import Ctx
 
 import matplotlib
 matplotlib.use('Agg')
@@ -197,7 +195,7 @@ last_g_pic_cache: Dict[str, Optional[bytes]] = {
 }
 
 @last_g_pic_cmd.handle()
-async def handle_last_g_pic(args: Message = CommandArg()):
+async def handle_last_g_pic(ctx: Ctx, args: Message = CommandArg()):
     """处理上期G线图命令"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)
@@ -206,8 +204,7 @@ async def handle_last_g_pic(args: Message = CommandArg()):
     if last_g_pic_cache[school] is None:
         await create_last_g_pic()
 
-    pic = imgBytesToBase64(last_g_pic_cache[school])
-    await send_finish(last_g_pic_cmd, pic)
+    await send_finish(last_g_pic_cmd, ctx.build_image(last_g_pic_cache[school]))
 
 
 async def create_last_g_pic():
@@ -355,15 +352,14 @@ async def handle_g_sell(ctx: Ctx, args: Message = CommandArg()):
 g_pic_cmd = on_command("G线图", priority=5, block=True)
 
 @g_pic_cmd.handle()
-async def handle_g_pic(args: Message = CommandArg()):
+async def handle_g_pic(ctx: Ctx, args: Message = CommandArg()):
     """处理G线图命令（G值由 scheduler 进程更新，图按需现算保证最新）"""
     stripped_arg = args.extract_plain_text().strip()
     school = re.findall(r'[东南北珠深]', stripped_arg)
     school = school[0] if school and school[0] in '东南北珠深' else 'all'
 
     pic_data = await create_g_pic(school)
-    pic = imgBytesToBase64(pic_data)
-    await send_finish(g_pic_cmd, pic)
+    await send_finish(g_pic_cmd, ctx.build_image(pic_data))
 
 
 def get_g_values_col_map(g_values_list):

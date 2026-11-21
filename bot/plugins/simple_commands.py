@@ -3,7 +3,6 @@ import codecs
 import os
 import datetime
 import numpy as np
-from typing import cast
 import core.db.kusa_system as db
 from nonebot import on_command, get_bot
 from nonebot.adapters import Bot, Event
@@ -46,59 +45,58 @@ async def handle_公告():
 晚安_cmd = on_command('晚安', priority=5, block=True)
 
 @晚安_cmd.handle()
-async def handle_晚安(bot: Bot, ctx: Ctx):
+async def handle_晚安(ctx: Ctx):
     if not ctx.is_group:
         return
     msg = f'晚安，'
-    await sleep(晚安_cmd, bot, ctx, msg, 400, 50, 1)
+    await sleep(晚安_cmd, ctx, msg, 400, 50, 1)
 
 
 午睡_cmd = on_command('午睡', priority=5, block=True)
 
 @午睡_cmd.handle()
-async def handle_午睡(bot: Bot, ctx: Ctx):
+async def handle_午睡(ctx: Ctx):
     if not ctx.is_group:
         return
     msg = f'午安，'
-    await sleep(午睡_cmd, bot, ctx, msg, 60, 10, 1)
+    await sleep(午睡_cmd, ctx, msg, 60, 10, 1)
 
 
 醒了_cmd = on_command('醒了', priority=5, block=True)
 
 @醒了_cmd.handle()
-async def handle_醒了(bot: Bot, ctx: Ctx):
+async def handle_醒了(ctx: Ctx):
     if not ctx.is_group:
         return
     msg = f'你可以睡个回笼觉，'
-    await sleep(醒了_cmd, bot, ctx, msg, 60, 10, 1)
+    await sleep(醒了_cmd, ctx, msg, 60, 10, 1)
 
 
-async def sleep(matcher, bot: Bot, ctx: PlatformContext, msg, base, summa, size):
+async def sleep(matcher, ctx: PlatformContext, msg, base, summa, size):
     allow_list = plugin_config.get('group', {}).get('adminAuthGroup', [])
     group_id = ctx.group_id
     user_qq = await ctx.get_real_qq()
     
     if not group_id or not user_qq:
         return
-    
-    group_id_int = int(group_id)
-    if ctx.capabilities.can_ban and group_id_int in allow_list:
+
+    if not ctx.capabilities.can_ban:
+        msg += '该功能仅在OneBot平台可用'
+        await send_finish(matcher, msg)
+        return
+
+    # 配置项为 QQ 群号；官bot 的 group_openid 暂无法匹配，待群映射后按统一群标识处理
+    if group_id in {str(g) for g in allow_list}:
         durTime = sleepTimeCalculation(base, summa, size)
         now = datetime.datetime.now()
         wake_dt = now + datetime.timedelta(seconds=durTime)
         day_tag = '今天' if wake_dt.date() == now.date() else '明天'
         wake_time = wake_dt.strftime('%H:%M')
         msg += f'{day_tag}{wake_time}后见！'
-        from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
-        onebot_bot = cast(OneBotV11Bot, bot)
-        try:
-            await onebot_bot.set_group_ban(group_id=group_id_int, user_id=int(user_qq), duration=durTime)
-        except Exception as e:
-            print(f'禁言失败: {e}')
+        ban_result = await ctx.ban(durTime)
+        if not ban_result.ok:
+            print(f'禁言失败: {ban_result.reason}')
         await ctx.finish_quoted(matcher, msg)
-    elif not ctx.capabilities.can_ban:
-        msg += '该功能仅在OneBot平台可用'
-        await send_finish(matcher, msg)
 
 
 def sleepTimeCalculation(base, summa, size):
@@ -190,12 +188,12 @@ async def handle_timestamp():
 news_cmd = on_command('news', priority=5, block=True)
 
 @news_cmd.handle()
-async def handle_news():
-    msg = await get60sNewsPic()
+async def handle_news(ctx: Ctx):
+    msg = await get60sNewsPic(ctx)
     await send_finish(news_cmd, msg)
 
 
-async def get60sNewsPic():
+async def get60sNewsPic(ctx: Ctx):
     url = "https://api.2xb.cn/zaob"
     http_req = request.Request(url)
     http_req.add_header('User-Agent', plugin_config.get('web', {}).get('userAgent', ''))
@@ -204,13 +202,7 @@ async def get60sNewsPic():
         data = ''.join(x for x in data if x.isprintable())
         retData = json.loads(data)
         lst = retData['imageUrl']
-        try:
-            # 尝试导入 OneBot 的 MessageSegment
-            from nonebot.adapters.onebot.v11 import MessageSegment as MS
-            return MS.image(lst)
-        except ImportError:
-            # QQ 官方平台暂时不支持图片
-            return lst
+        return ctx.build_image(lst)
 
 
 # ============================================================
@@ -271,9 +263,14 @@ async def _push_timeout_cancel(session_id: str):
 
 @推送_cmd.handle()
 async def handle_推送(bot: Bot, event: Event, state: T_State):
+    ctx = get_context(event)
+    # 推送最终经 NapCat 发往指定 QQ 群，官bot 无法复用
+    if ctx.platform != 'onebot':
+        await send_finish(推送_cmd, '该功能暂不支持 QQ 官方 Bot')
+        return
     # 首次发起推送
     if "push_state" not in state:
-        user_id = await get_context(event).get_user_id()
+        user_id = await ctx.get_user_id()
         if not user_id or not await is_super_admin(user_id):
             return  # 非超级管理员静默忽略
 

@@ -6,9 +6,11 @@ from io import BytesIO
 from PIL import Image
 from typing import Optional
 from nonebot import on_message
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 
 from kusa_base import plugin_config
+from platform_context import get_context
 from utils import checkBanAvailable
 from .reply_commands import (
     reply_command, set_duel_confirmations,
@@ -86,7 +88,13 @@ def time_updater(command: str, group_id: int, user_id: int):
     lastUsedTime[key] = int(time.time())
 
 
-async def nsfw_preprocessor(event: GroupMessageEvent, img_url: str):
+async def nsfw_preprocessor(event: Event, img_url: str):
+    # 决斗与表情表态依赖 OneBot 的消息/成员语义，官bot 暂不接入
+    ctx = get_context(event)
+    if ctx.platform != 'onebot':
+        return False, '该功能目前仅支持OneBot平台'
+    if not ctx.is_group:
+        return False, '该功能目前仅支持群聊'
     user_id = event.user_id
     reply_user_id = event.reply.sender.user_id if event.reply else user_id
 
@@ -108,7 +116,13 @@ async def nsfw_preprocessor(event: GroupMessageEvent, img_url: str):
     return True, None
 
 
-async def nailong_preprocessor(event: GroupMessageEvent, img_url: str):
+async def nailong_preprocessor(event: Event, img_url: str):
+    # 决斗与表情表态依赖 OneBot 的消息/成员语义，官bot 暂不接入
+    ctx = get_context(event)
+    if ctx.platform != 'onebot':
+        return False, '该功能目前仅支持OneBot平台'
+    if not ctx.is_group:
+        return False, '该功能目前仅支持群聊'
     user_id = event.user_id
     reply_user_id = event.reply.sender.user_id if event.reply else user_id
 

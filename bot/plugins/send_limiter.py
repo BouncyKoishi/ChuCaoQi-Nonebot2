@@ -17,13 +17,20 @@ from nonebot import logger
 from nonebot.adapters import Bot
 from nonebot.exception import MockApiException
 
-# 需要计数的发送类 API（send_msg 是 bot.send 的底层调用，群/私聊方法各有独立 API）
+# 需要计数的发送类 API
+# OneBot V11：send_msg 是 bot.send 的底层调用，群/私聊方法各有独立 API
+# QQ 官方：post_*_messages 为消息发送；post_*_files 是富媒体上传，不参与限流
+# （上传结果的 ID 会被后续 post_*_messages 使用，mock 丢弃会破坏发送链路）
 SEND_APIS = {
     "send_msg",
     "send_group_msg",
     "send_private_msg",
     "send_group_forward_msg",
     "send_private_forward_msg",
+    "post_group_messages",
+    "post_c2c_messages",
+    "post_dms_messages",
+    "post_messages",
 }
 
 # 全局令牌桶：允许 12 条瞬时突发，之后每秒恢复 3 条
@@ -37,22 +44,23 @@ GROUP_RATE = 2.0
 _global_tokens = float(BURST)
 _global_last = time.monotonic()
 
-# group_id -> [tokens, last_refill_monotonic]
-_group_tokens: dict[int, list] = {}
+# group_key -> [tokens, last_refill_monotonic]
+# 键统一为字符串：OneBot 为群号，QQ 官方为 group_openid
+_group_tokens: dict[str, list] = {}
 
 # 日志节流：循环刷屏时不要一条一条打日志
 _dropped = 0
 _last_log = 0.0
 
 
-def _take_group(group_id: int) -> bool:
+def _take_group(group_key: str) -> bool:
     now = time.monotonic()
-    tokens, last = _group_tokens.get(group_id, (float(GROUP_BURST), now))
+    tokens, last = _group_tokens.get(group_key, (float(GROUP_BURST), now))
     tokens = min(float(GROUP_BURST), tokens + (now - last) * GROUP_RATE)
     if tokens < 1:
-        _group_tokens[group_id] = [tokens, now]
+        _group_tokens[group_key] = [tokens, now]
         return False
-    _group_tokens[group_id] = [tokens - 1, now]
+    _group_tokens[group_key] = [tokens - 1, now]
     return True
 
 
@@ -73,16 +81,12 @@ async def limit_outbound_messages(bot: Bot, api: str, data: dict) -> None:
     if api not in SEND_APIS:
         return
 
-    group_id = data.get("group_id")
-    if group_id is not None:
-        try:
-            group_id = int(group_id)
-        except (TypeError, ValueError):
-            group_id = None
+    group_key = data.get("group_id") or data.get("group_openid")
+    group_key = str(group_key) if group_key is not None else None
 
     allowed = True
-    if group_id is not None:
-        allowed = _take_group(group_id)
+    if group_key is not None:
+        allowed = _take_group(group_key)
     if allowed:
         allowed = _take_global()
 
@@ -95,7 +99,7 @@ async def limit_outbound_messages(bot: Bot, api: str, data: dict) -> None:
     if now - _last_log >= 10:
         logger.warning(
             f"出站消息限流：丢弃 {_dropped} 条消息（最近一次 api={api}, "
-            f"group_id={group_id}），已触发账号保护"
+            f"group={group_key}），已触发账号保护"
         )
         _last_log = now
         _dropped = 0

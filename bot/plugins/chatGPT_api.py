@@ -45,7 +45,7 @@ async def handle_chat(ctx: Ctx, args: Message = CommandArg()):
     if not await permissionCheck(ctx, 'chat'):
         return
     
-    content = await getChatContent(args)
+    content = await getChatContent(ctx, args)
     reply = await chat(user_id, content, isNewConversation=True, web_search=True,
                        read_url=True)
     if reply is None:
@@ -60,7 +60,7 @@ async def handle_chatn(ctx: Ctx, args: Message = CommandArg()):
     if not await permissionCheck(ctx, 'chat'):
         return
     user_id = await ctx.get_user_id(auto_create=True)
-    content = await getChatContent(args)
+    content = await getChatContent(ctx, args)
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=True,
                        web_search=True, read_url=True)
     if reply is None:
@@ -75,7 +75,7 @@ async def handle_chatc(ctx: Ctx, args: Message = CommandArg()):
     if not await permissionCheck(ctx, 'chat'):
         return
     user_id = await ctx.get_user_id(auto_create=True)
-    content = await getChatContent(args)
+    content = await getChatContent(ctx, args)
     reply = await chat(user_id, content, isNewConversation=False, web_search=True,
                        read_url=True)
     if reply is None:
@@ -151,7 +151,7 @@ async def handle_chatr(ctx: Ctx, args: Message = CommandArg()):
     if not await permissionCheck(ctx, 'chat'):
         return
     user_id = await ctx.get_user_id(auto_create=True)
-    content = await getChatContent(args)
+    content = await getChatContent(ctx, args)
     lastMessage = await undo(user_id)
     if lastMessage is None:
         await send_finish(chatr_cmd, "没有可撤回的对话，无法重新生成。")
@@ -477,10 +477,10 @@ def contentToText(content) -> str:
     return text
 
 
-async def getChatContent(args: Message):
+async def getChatContent(ctx: Ctx, args: Message):
     inputText = args.extract_plain_text()
     userContent = [TextPart(text=inputText)]
-    imgUrls = extractImgUrls(args)
+    imgUrls = extractImgUrls(args) or ctx.images
     for url in imgUrls:
         userContent.append(ImagePart(url=url))
     return userContent

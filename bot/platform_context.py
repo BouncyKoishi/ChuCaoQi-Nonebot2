@@ -10,13 +10,16 @@
 事件工具已降级为对本模块的转发，供尚未迁移的旧调用方使用。
 """
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, List, Optional, Union
 
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
 from nonebot.adapters.onebot.v11 import Message as OneBotV11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OneBotV11MessageSegment
+from nonebot.drivers import Request
 from nonebot.params import Depends
 
 try:
@@ -48,17 +51,37 @@ class Quote:
     """被引用的消息（双端统一视图）
 
     OneBot：event.reply（Reply 模型，含完整被引用消息）
-    QQ 官方：msg_elements[0]（适配器只给出被引用消息的文本与 msg_idx）
+    QQ 官方：msg_elements（文本 + msg_idx + attachments，附件含图片 URL）
     """
 
     text: str = ''
     message_id: Optional[str] = None
     sender_name: Optional[str] = None
+    images: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    """双端动作（目前仅禁言）的执行结果
+
+    reason 取值：not_group / unsupported / invalid_target / no_permission /
+    rate_limited / failed / network
+    """
+
+    ok: bool
+    reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class PlatformCapabilities:
-    """当前平台可用的能力声明，供插件在入口处做功能开关"""
+    """协议层能力声明，供插件在入口处做功能开关
+
+    这里只表示“该平台协议本身是否支持”，不代表当前群已获得授权：
+    - 官bot 主动推送需要群主开启开关，禁言需要机器人是群管理员；
+      这类运行时授权由具体调用的返回值判断，不在此静态声明。
+    - 群成员信息/列表、群基本信息、踢人在官bot 侧属于平台白名单接口，
+      默认拿不到，因此声明为 False，对应能力保留为 OneBot 专属实现。
+    """
 
     can_reply: bool = True
     can_quote: bool = False
@@ -66,6 +89,8 @@ class PlatformCapabilities:
     can_receive_images: bool = False
     can_active_push: bool = False
     can_ban: bool = False
+    # 支持按 QQ 号指定禁言对象（依赖 QQ 号可解析为平台成员，仅 OneBot）
+    can_ban_by_qq: bool = False
     can_member_list: bool = False
     can_recall: bool = False
 
@@ -80,12 +105,24 @@ class PlatformCapabilities:
                 can_receive_images=True,
                 can_active_push=True,
                 can_ban=True,
+                can_ban_by_qq=True,
                 can_member_list=True,
                 can_recall=True,
             )
         if platform == 'qqbot':
-            # 官方 Bot 只保证被动回复；主动推送需单独申请权限
-            return cls(can_reply=True)
+            # 协议支持：被动/主动消息、引用、图片、撤回、禁言；
+            # 主动推送与禁言的实际可用性由群授权决定（群主开关 / 机器人管理员）
+            # 群成员信息、群成员列表、群基本信息、踢人仅平台白名单可用，默认关闭
+            return cls(
+                can_reply=True,
+                can_quote=True,
+                can_send_image=True,
+                can_receive_images=True,
+                can_active_push=True,
+                can_ban=True,
+                can_member_list=False,
+                can_recall=True,
+            )
         return cls()
 
 
@@ -250,9 +287,9 @@ async def build_reply_message(event: Event, message: Union[str, Message]) -> Uni
     if not message_id:
         return message
     if is_onebot_v11_event(event):
-        return OneBotV11Message([OneBotV11MessageSegment.reply(int(message_id)), message])
+        return OneBotV11Message([OneBotV11MessageSegment.reply(int(message_id))]) + message
     if is_qq_event(event):
-        return QQMessage([QQMessageSegment.reference(message_id), message])
+        return QQMessage([QQMessageSegment.reference(message_id)]) + message
     return message
 
 
@@ -265,12 +302,30 @@ async def build_at_message(event: Event, user_id: int, text: str) -> Union[Messa
 
 
 def build_image_message(event: Event, image_data: Any, text: str = '') -> Union[Message, str]:
-    """构建图片消息；QQ 官方退化为文本占位"""
+    """构建图片消息：url 或本地字节均可，两端协议都支持发图
+
+    OneBot 直接构造图片段；QQ 官方用 file_image 上传本地字节、image 传 URL，
+    实际上传由适配器在发送时完成。
+    """
     if is_onebot_v11_event(event):
         segments = [OneBotV11MessageSegment.image(image_data)]
         if text:
             segments.append(text)
         return OneBotV11Message(segments)
+    if is_qq_event(event) and QQMessageSegment is not None:
+        try:
+            if isinstance(image_data, (bytes, bytearray)):
+                segment = QQMessageSegment.file_image(bytes(image_data))
+            elif hasattr(image_data, 'read'):
+                segment = QQMessageSegment.file_image(image_data)
+            else:
+                segment = QQMessageSegment.image(str(image_data))
+        except Exception:
+            return f'[图片] {text}' if text else '[图片]'
+        segments = [segment]
+        if text:
+            segments.append(QQMessageSegment.text(' ' + text))
+        return QQMessage(segments)
     return f'[图片] {text}' if text else '[图片]'
 
 
@@ -296,6 +351,18 @@ class PlatformContext:
     @property
     def platform_user_id(self) -> Optional[str]:
         return get_platform_user_id(self.event)
+
+    @property
+    def platform_member_id(self) -> Optional[str]:
+        """平台内的成员标识：OneBot 为 QQ 号，QQ 官方为 member_openid
+
+        官bot 的成员管理接口使用 member_openid，而不是身份标识 union_openid；
+        群事件里只有当前消息发送者的 member_openid 可得。
+        """
+        if self.platform == 'qqbot':
+            author = getattr(self.event, 'author', None)
+            return getattr(author, 'member_openid', None) if author else None
+        return self.platform_user_id
 
     @property
     def message_id(self) -> Optional[str]:
@@ -327,7 +394,7 @@ class PlatformContext:
                 return urls
             for seg in segments:
                 if seg.type == 'image':
-                    url = seg.data.get('url') or seg.data.get('file')
+                    url = seg.data.get('url')
                     if url:
                         urls.append(url)
             return urls
@@ -340,17 +407,50 @@ class PlatformContext:
         if self.platform == 'onebot':
             reply = getattr(self.event, 'reply', None)
             if not reply:
+                # 部分实现只在消息里带 reply 段而不填 event.reply，至少保留消息 ID
+                try:
+                    for seg in self.event.get_message():
+                        if seg.type == 'reply':
+                            return Quote(message_id=str(seg.data.get('id') or '') or None)
+                except Exception:
+                    pass
                 return None
             try:
                 text = reply.message.extract_plain_text().strip()
             except Exception:
                 text = ''
+            images: List[str] = []
+            try:
+                images = [
+                    seg.data.get('url')
+                    for seg in reply.message
+                    if seg.type in ('image', 'mface') and seg.data.get('url')
+                ]
+            except Exception:
+                images = []
             sender = getattr(reply, 'sender', None)
             return Quote(
                 text=text,
                 message_id=str(getattr(reply, 'message_id', '') or '') or None,
                 sender_name=getattr(sender, 'nickname', None),
+                images=images,
             )
+
+        def collect_images(node) -> List[str]:
+            urls: List[str] = []
+            if isinstance(node, dict):
+                attachments = node.get('attachments') or []
+                nested = node.get('msg_elements') or []
+            else:
+                attachments = getattr(node, 'attachments', None) or []
+                nested = getattr(node, 'msg_elements', None) or []
+            for attachment in attachments:
+                url = attachment.get('url') if isinstance(attachment, dict) else getattr(attachment, 'url', None)
+                if url:
+                    urls.append(url)
+            for child in nested:
+                urls.extend(collect_images(child))
+            return urls
 
         elements = getattr(self.event, 'msg_elements', None) or []
         if not elements:
@@ -364,7 +464,10 @@ class PlatformContext:
             message_id = getattr(element, 'msg_idx', None)
         if not text and not message_id:
             return None
-        return Quote(text=text.strip(), message_id=message_id)
+        images: List[str] = []
+        for item in elements:
+            images.extend(collect_images(item))
+        return Quote(text=text.strip(), message_id=message_id, images=images)
 
     # ---------- 身份 ----------
 
@@ -387,6 +490,84 @@ class PlatformContext:
     async def at(self, user_id: int, text: str) -> Union[Message, str]:
         """构造艾特消息：OneBot 使用真实 at 段，QQ 官方退化为文本前缀"""
         return await build_at_message(self.event, user_id, text)
+
+    def build_image(self, image_data: Any, text: str = '') -> Union[Message, str]:
+        """构造图片消息，image_data 可为 URL 或本地字节"""
+        return build_image_message(self.event, image_data, text)
+
+    # ---------- 双端动作 ----------
+
+    async def ban(self, duration: int = 60, target: Optional[str] = None) -> ActionResult:
+        """禁言群成员
+
+        target 为平台成员标识（OneBot 为 QQ 号，官bot 为 member_openid），
+        缺省为当前消息发送者。官bot 没有成员信息接口，无法把 QQ 号解析成
+        member_openid，只能直接传入事件中出现过的 member_openid；最长 30 天。
+        """
+        if not self.is_group:
+            return ActionResult(False, 'not_group')
+        if not self.capabilities.can_ban or self.bot is None:
+            return ActionResult(False, 'unsupported')
+
+        if self.platform == 'onebot':
+            group_id = self.group_id
+            target = target or self.platform_user_id
+            if not group_id or not target:
+                return ActionResult(False, 'invalid_target')
+            try:
+                await self.bot.set_group_ban(
+                    group_id=int(group_id),
+                    user_id=int(target),
+                    duration=max(duration, 0),
+                )
+            except Exception as e:
+                return ActionResult(False, f'failed: {e}')
+            return ActionResult(True)
+
+        if self.platform == 'qqbot':
+            return await self._ban_qqbot(duration, target)
+
+        return ActionResult(False, 'unsupported')
+
+    async def _ban_qqbot(self, duration: int, target: Optional[str]) -> ActionResult:
+        # 官bot 成员管理接口只认 member_openid；未指定时使用当前发言人
+        member_openid = target or self.platform_member_id
+        if not self.group_id or not member_openid:
+            return ActionResult(False, 'invalid_target')
+
+        duration = min(max(duration, 0), 30 * 24 * 3600)
+        member: dict = {'op': 'add' if duration else 'del', 'member_openid': member_openid}
+        if duration:
+            expire_at = datetime.now(timezone.utc) + timedelta(seconds=duration)
+            member['mute_expire_at'] = expire_at.astimezone().isoformat(timespec='seconds')
+
+        request = Request(
+            'POST',
+            self.bot.adapter.get_api_base().joinpath(
+                'v2', 'groups', self.group_id, 'restrict_chat_setting'
+            ),
+            json={'members': [member]},
+        )
+        try:
+            request.headers.update(await self.bot.get_authorization_header())
+            response = await self.bot.adapter.request(request)
+        except Exception as e:
+            return ActionResult(False, f'network: {e}')
+
+        if 200 <= response.status_code < 300:
+            return ActionResult(True)
+        if response.status_code == 429:
+            return ActionResult(False, 'rate_limited')
+        payload: Any = {}
+        try:
+            payload = json.loads(response.content) if response.content else {}
+        except Exception:
+            pass
+        code = payload.get('code') if isinstance(payload, dict) else None
+        if response.status_code == 403 or code == 11253:
+            return ActionResult(False, 'no_permission')
+        message = payload.get('message') if isinstance(payload, dict) else None
+        return ActionResult(False, f'failed: {code or response.status_code} {message or ""}'.strip())
 
 
 def get_context(event: Event, bot: Optional[Bot] = None) -> PlatformContext:

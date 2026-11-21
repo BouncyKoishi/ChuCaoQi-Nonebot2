@@ -1,10 +1,6 @@
-import random
-from typing import Dict, Any, Optional, Union, cast
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
-from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg
-from nonebot.adapters import Message, Bot
+from nonebot.adapters import Message
 from kusa_base import plugin_config
 from utils import nameDetailSplit
 from itertools import groupby
@@ -15,7 +11,7 @@ import core.db.user as userDB
 from core.services import LotteryService
 from .pagination_helper import register_pagination_handler, set_pagination_state
 from multi_platform import send_finish
-from platform_context import get_context, PlatformContext, Ctx
+from platform_context import PlatformContext, Ctx
 
 
 itemRareDescribe = ['Easy', 'Normal', 'Hard', 'Lunatic']
@@ -34,7 +30,10 @@ async def handle_抽奖(ctx: Ctx, args: Message = CommandArg()):
     if not groupId:
         await send_finish(抽奖_cmd, '暂不支持私聊抽奖^ ^')
         return
-    groupIdInt = int(groupId) if groupId else None
+    try:
+        groupIdInt = int(groupId)
+    except (TypeError, ValueError):
+        groupIdInt = None
     if groupIdInt not in drawConfig['groupAllowDraw']:
         await send_finish(抽奖_cmd, '本群暂不支持抽奖^ ^')
         return
@@ -44,7 +43,7 @@ async def handle_抽奖(ctx: Ctx, args: Message = CommandArg()):
 
     banRisk = drawConfig['banRisk']
     strippedArg = args.extract_plain_text().strip()
-    await _getItem(抽奖_cmd, ctx, groupId, userId, strippedArg, banRisk, realQQ)
+    await _getItem(抽奖_cmd, ctx, userId, strippedArg, banRisk, realQQ)
 
 
 十连抽_cmd = on_command('十连抽', priority=5, block=True)
@@ -57,7 +56,10 @@ async def handle_十连抽(ctx: Ctx, args: Message = CommandArg()):
     if not groupId:
         await send_finish(十连抽_cmd, '暂不支持私聊抽奖^ ^')
         return
-    groupIdInt = int(groupId) if groupId else None
+    try:
+        groupIdInt = int(groupId)
+    except (TypeError, ValueError):
+        groupIdInt = None
     if groupIdInt not in drawConfig['groupAllowItem']:
         await send_finish(十连抽_cmd, '本群暂不支持十连抽^ ^')
         return
@@ -87,7 +89,7 @@ async def handle_十连抽(ctx: Ctx, args: Message = CommandArg()):
     await send_finish(十连抽_cmd, output[:-1])
 
 
-async def _getItem(matcher, ctx, groupNum, userId, strippedArg, banRisk=0, realQQ=None):
+async def _getItem(matcher, ctx, userId, strippedArg, banRisk=0, realQQ=None):
     """获取抽奖物品（内部辅助函数）"""
     _, poolName = await _getLevelAndPoolName(strippedArg)
 
@@ -96,11 +98,9 @@ async def _getItem(matcher, ctx, groupNum, userId, strippedArg, banRisk=0, realQ
     if result.get('banned', False):
         msg = f'获得了：口球({result["disabledSeconds"]}s)！'
         if ctx.capabilities.can_ban and realQQ:
-            onebot_bot = cast(OneBotV11Bot, ctx.bot)
-            try:
-                await onebot_bot.set_group_ban(group_id=int(groupNum), user_id=int(realQQ), duration=result['disabledSeconds'])
-            except Exception as e:
-                print(f'禁言失败: {e}')
+            ban_result = await ctx.ban(result['disabledSeconds'])
+            if not ban_result.ok:
+                print(f'禁言失败: {ban_result.reason}')
         await send_finish(matcher, msg)
     
     msg = ''

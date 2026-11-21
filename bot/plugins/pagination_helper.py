@@ -5,7 +5,7 @@
 
 from typing import Dict, Any, Optional, Callable
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
+from nonebot.adapters import Event
 from nonebot.message import event_preprocessor
 from nonebot.exception import IgnoredException
 from platform_context import get_context, Ctx
@@ -58,14 +58,11 @@ def clear_pagination_state(user_id: str):
 
 
 @event_preprocessor
-async def pagination_preprocessor(event: OneBotV11MessageEvent):
-    """消息预处理：当用户发送非翻页命令时清除翻页状态"""
-    if not isinstance(event, OneBotV11MessageEvent):
-        return
-    
-    raw_message = event.raw_message if hasattr(event, 'raw_message') else str(event.message)
-    if raw_message.startswith('!') or raw_message.startswith('/'):
-        cmd_text = raw_message[1:].strip().lower()
+async def pagination_preprocessor(event: Event):
+    """消息预处理：当用户发送非翻页命令时清除翻页状态（OneBot / QQ 官方通用）"""
+    text = get_context(event).text
+    if text.startswith('!') or text.startswith('/'):
+        cmd_text = text[1:].strip().lower()
         pagination_cmds = ['下一页', 'next',  '上一页', 'prev', 'previous']
         for pg_cmd in pagination_cmds:
             if cmd_text == pg_cmd or cmd_text.startswith(pg_cmd + ' '):

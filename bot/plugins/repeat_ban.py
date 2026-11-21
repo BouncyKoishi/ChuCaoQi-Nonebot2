@@ -5,15 +5,13 @@
 1. 群体复读检测：连续超过四句话内容相同 → 在复读被打断时禁言倒数第二个复读者
 2. 个人复读检测：同一个人连续发相同的一句话两次以上 → 直接禁言此人
 
-仅支持 OneBot V11 协议，仅对特定群生效
+禁言能力双端可用；群配置当前为 QQ 群号，官bot 需等群映射后按统一群标识生效
 """
 
 from kusa_base import is_super_admin, plugin_config
 from platform_context import get_context, Ctx
 from nonebot import on_command, on_message
-from nonebot.adapters import Bot, Event
-from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
-from typing import cast
+from nonebot.adapters import Event
 from collections import deque
 
 
@@ -146,7 +144,7 @@ repeat_ban_handler = on_message(priority=10, block=False)
 
 
 @repeat_ban_handler.handle()
-async def handle_repeat_ban(bot: Bot, event: Event):
+async def handle_repeat_ban(event: Event):
     ctx = get_context(event)
     if not ctx.capabilities.can_ban:
         return
@@ -157,28 +155,24 @@ async def handle_repeat_ban(bot: Bot, event: Event):
     if not ban_manager.is_enabled():
         return
     
-    group_id = event.group_id
+    group_id = ctx.group_id
     sysu_group = plugin_config.get('group', {}).get('sysu')
     
-    if group_id != sysu_group:
+    # 配置项为 QQ 群号；官bot 的 group_openid 暂无法匹配，待群映射后按统一群标识处理
+    if str(group_id) != str(sysu_group):
         return
     
-    user_qq = event.user_id
-    message = event.get_plaintext()
+    user_id = ctx.platform_member_id
+    message = ctx.text
     
-    if not message.strip():
+    if not user_id or not message.strip():
         return
     
-    result = ban_manager.add_message(group_id, user_qq, message)
+    result = ban_manager.add_message(group_id, user_id, message)
     
     if result['action'] != 'none':
-        onebot_bot = cast(OneBotV11Bot, bot)
-        try:
-            await onebot_bot.set_group_ban(
-                group_id=group_id,
-                user_id=result['target_user'],
-                duration=result['duration']
-            )
+        ban_result = await ctx.ban(result['duration'], target=result['target_user'])
+        if ban_result.ok:
             print(f"[repeat_ban] 已禁言用户 {result['target_user']} {result['duration']}秒，原因：{result['reason']}")
-        except Exception as e:
-            print(f"[repeat_ban] 禁言失败: {e}")
+        else:
+            print(f"[repeat_ban] 禁言失败: {ban_result.reason}")

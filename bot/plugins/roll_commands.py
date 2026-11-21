@@ -120,7 +120,8 @@ async def handle_judge(state: T_State, args: Message = CommandArg()):
     await judge_cmd.finish(f'{stripped_arg}\n判断：{result}')
 
 
-# rollwife 指令
+# rollwife 依赖群成员列表接口（get_group_member_list），官机 can_member_list=False，
+# 故保留 OneBot 事件注解，作为 OneBot 专属指令；官机事件会被 TypeMisMatch 跳过。
 rollwife_cmd = on_command("rollwife", priority=5, block=True)
 
 

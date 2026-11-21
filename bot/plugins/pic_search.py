@@ -9,17 +9,15 @@ import asyncio
 from PicImageSearch import Network, SauceNAO
 from PIL import Image, ImageFont, ImageDraw
 
-from utils import imgLocalPathToBase64, extractImgUrls
+from utils import extractImgUrls
 from kusa_base import plugin_config
 from core.config import DATA_DIR, RESOURCE_DIR
-from multi_platform import send_finish
-from platform_context import get_context, Ctx
+from platform_context import Ctx
 from nonebot import on_command, on_message
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Bot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message as OneBotMessage, PrivateMessageEvent
-from .reply_commands import reply_command, ReplyCommandResult, store_result, get_stored_result
+from .reply_commands import reply_command, ReplyCommandResult, store_result, get_stored_result, get_sent_message_id
 
 proxy = plugin_config.get('web', {}).get('proxy', None)
 saucenaoApiKey = plugin_config.get('web', {}).get('saucenao', {}).get('key', '')
@@ -40,12 +38,8 @@ searchWaitingUsers = {}
 async def handle_搜图(ctx: Ctx, args: Message = CommandArg()):
     global searchWaitingUsers
 
-    if not ctx.capabilities.can_receive_images:
-        await send_finish(搜图_cmd, "该功能目前仅支持OneBot平台")
-        return
-
     user_id = await ctx.get_user_id()
-    imgUrls = extractImgUrls(args)
+    imgUrls = extractImgUrls(args) or ctx.images
 
     if imgUrls:
         await 搜图_cmd.send("正在搜索……")
@@ -54,8 +48,10 @@ async def handle_搜图(ctx: Ctx, args: Message = CommandArg()):
             await 搜图_cmd.finish('没有搜索到结果^ ^')
             return
 
-        sendMsgInfo = await 搜图_cmd.send(imgLocalPathToBase64(os.path.join(CACHE_DIR, 'picsearch.jpg')))
-        store_result(sendMsgInfo['message_id'], {'info': resultDict['info']})
+        with open(os.path.join(CACHE_DIR, 'picsearch.jpg'), 'rb') as f:
+            pic_data = f.read()
+        sendMsgInfo = await 搜图_cmd.send(ctx.build_image(pic_data))
+        store_result(get_sent_message_id(sendMsgInfo), {'info': resultDict['info']})
     else:
         searchWaitingUsers[user_id] = True
         await 搜图_cmd.send('已启用图片搜索，请发送图片')
@@ -65,66 +61,46 @@ async def handle_搜图(ctx: Ctx, args: Message = CommandArg()):
 
 
 @搜图等待_handler.handle()
-async def handle_搜图等待(bot: Bot, event: Event):
+async def handle_搜图等待(ctx: Ctx):
     global searchWaitingUsers
 
-    if not get_context(event).capabilities.can_receive_images:
-        return
-
-    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
-        return
-
-    user_id = await get_context(event).get_user_id()
+    user_id = await ctx.get_user_id()
 
     if user_id not in searchWaitingUsers:
         return
 
     del searchWaitingUsers[user_id]
 
-    message = event.get_message()
-    plain_text = message.extract_plain_text().strip()
-
-    if plain_text:
+    if ctx.text:
         await 搜图等待_handler.send("搜图已取消")
         return
 
-    imgUrls = extractImgUrls(message)
-    if not imgUrls:
+    if not ctx.images:
         await 搜图等待_handler.send("非图片，搜图已取消")
         return
 
     await 搜图等待_handler.send("正在搜索……")
-    resultDict = await getSearchResult(imgUrls[0])
+    resultDict = await getSearchResult(ctx.images[0])
     if not resultDict or not resultDict["info"]:
         await 搜图等待_handler.finish('没有搜索到结果^ ^')
         return
 
-    sendMsgInfo = await 搜图等待_handler.send(imgLocalPathToBase64(os.path.join(CACHE_DIR, 'picsearch.jpg')))
-    store_result(sendMsgInfo['message_id'], {'info': resultDict['info']})
+    with open(os.path.join(CACHE_DIR, 'picsearch.jpg'), 'rb') as f:
+        pic_data = f.read()
+    sendMsgInfo = await 搜图等待_handler.send(ctx.build_image(pic_data))
+    store_result(get_sent_message_id(sendMsgInfo), {'info': resultDict['info']})
 
 
 提取url_handler = on_message(priority=14, block=False)
 
 
 @提取url_handler.handle()
-async def handle_提取url(bot: Bot, event: Event):
-    if not get_context(event).capabilities.can_quote:
+async def handle_提取url(ctx: Ctx):
+    if not ctx.capabilities.can_quote:
         return
 
-    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
-        return
-
-    message = event.get_message()
-    reply_msg_id = None
-
-    if hasattr(event, 'reply') and event.reply:
-        reply_msg_id = str(event.reply.message_id)
-
-    if not reply_msg_id:
-        for seg in message:
-            if seg.type == 'reply':
-                reply_msg_id = str(seg.data.get('id'))
-                break
+    quote = ctx.quote
+    reply_msg_id = quote.message_id if quote else None
 
     if not reply_msg_id:
         return
@@ -134,7 +110,7 @@ async def handle_提取url(bot: Bot, event: Event):
         return
 
     resultDict = stored['info']
-    plain_text = message.extract_plain_text().strip()
+    plain_text = ctx.text
     if not plain_text:
         return
 
@@ -148,19 +124,19 @@ async def handle_提取url(bot: Bot, event: Event):
             return
 
         msg = "\n".join(f"{index} - {resultDict[index - 1]['url']}" for index in args)
-        await 提取url_handler.send(drawTextToImage(msg))
+        await 提取url_handler.send(ctx.build_image(drawTextToImage(msg)))
 
     except (IndexError, ValueError):
         await 提取url_handler.send("未找到对应图片链接, 请检查输入是否正确")
 
 
 @reply_command('picurl')
-async def picurl_cmd(event: GroupMessageEvent, img_url: str, bot: Bot) -> str:
+async def picurl_cmd(event, img_url: str, bot: Bot) -> str:
     return img_url
 
 
 @reply_command('url')
-async def url_cmd(event: GroupMessageEvent, img_url: str, bot: Bot) -> str:
+async def url_cmd(event, img_url: str, bot: Bot) -> str:
     return img_url
 
 
@@ -173,7 +149,9 @@ async def 快捷搜图_cmd(event, img_url: str, bot: Bot):
     if not resultDict or not resultDict["info"]:
         return '没有搜索到结果^ ^'
 
-    return ReplyCommandResult(message=imgLocalPathToBase64(os.path.join(CACHE_DIR, 'picsearch.jpg')), stored_id={'info': resultDict['info']})
+    with open(os.path.join(CACHE_DIR, 'picsearch.jpg'), 'rb') as f:
+        pic_data = f.read()
+    return ReplyCommandResult(message=pic_data, stored_id={'info': resultDict['info']})
 
 
 async def getSearchResult(imgUrl):
@@ -203,8 +181,9 @@ def drawTextToImage(text: str):
         y = 25 + i * fontSize + i * splitSize
         draw.text((25, y), line, font=font, fill=(0, 0, 0))
 
-    img.save(os.path.join(CACHE_DIR, "picsearchUrl.jpg"), format="JPEG", quality=95)
-    return imgLocalPathToBase64(os.path.join(CACHE_DIR, "picsearchUrl.jpg"))
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
 
 
 class ImgExploration:

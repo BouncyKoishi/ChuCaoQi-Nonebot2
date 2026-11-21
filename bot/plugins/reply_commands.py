@@ -2,9 +2,9 @@ from typing import Dict, Tuple, Callable, Optional, Union
 from dataclasses import dataclass
 from collections import OrderedDict
 from nonebot import on_message, logger
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters import Bot
 from nonebot.typing import T_State
-from utils import extractImgUrls
+from platform_context import get_context
 
 _reply_command_handlers: Dict[str, Tuple[Callable, str]] = {}
 _reply_preprocessors: Dict[str, Callable] = {}
@@ -19,7 +19,8 @@ _reply_main_handler = on_message(priority=10, block=False)
 
 @dataclass
 class ReplyCommandResult:
-    message: str = ''
+    # bytes 表示图片数据，由分发器按当前平台构造图片消息
+    message: Union[str, bytes] = ''
     stored_id: Optional[dict] = None
     # 文本类 # 指令发送成功后回调，用于埋点等旁路逻辑；不得影响发送结果。
     on_sent: Optional[Callable] = None
@@ -42,31 +43,13 @@ def reply_text_command(command: str, with_args: bool = False):
     return decorator
 
 
-def _proper_reply_message(event) -> Optional["Message"]:
-    """获取事件所回复消息的 Message 对象（未回复/异常返回 None）
-
-    直接取 event.reply.message：适配器的 Reply 模型自带完整被回复消息，
-    用 str(event.reply) 会得到 pydantic repr 而非 CQ 码，无法解析图片。
-    """
-    if not hasattr(event, 'reply') or not event.reply:
-        return None
-    reply = event.reply
-    try:
-        msg = reply.message
-    except AttributeError:
-        return None
-    return msg if msg else None
-
-
 def extract_reply_images(event) -> list:
     """提取所回复消息中的全部图片 URL（多图支持）
 
     #指令只处理所回复的消息：#消息本身仅作触发器，不入参解析。
     """
-    msg = _proper_reply_message(event)
-    if msg is None:
-        return []
-    return extractImgUrls(msg)
+    quote = get_context(event).quote
+    return list(quote.images) if quote else []
 
 
 def extract_reply_content(event) -> Tuple[str, list]:
@@ -76,16 +59,10 @@ def extract_reply_content(event) -> Tuple[str, list]:
     不感知上层具体类型（如 chat 的 TextPart/ImagePart），保持依赖方向：
     reply_commands 不依赖具体业务内容结构。
     """
-    text, urls = '', []
-    msg = _proper_reply_message(event)
-    if msg is None:
-        return text, urls
-    try:
-        text = msg.extract_plain_text().strip()
-    except Exception:
-        text = ''
-    urls = extractImgUrls(msg)
-    return text, urls
+    quote = get_context(event).quote
+    if not quote:
+        return '', []
+    return quote.text, list(quote.images)
 
 
 def extract_reply_image(event) -> Optional[str]:
@@ -95,12 +72,9 @@ def extract_reply_image(event) -> Optional[str]:
 
 
 def extract_image_from_message(event) -> Optional[str]:
-    """提取当前消息中的第一张图片 URL（NapCat 回复时会把图副本附在当前#消息里）"""
-    message = event.get_message()
-    img_urls = extractImgUrls(message)
-    if img_urls:
-        return img_urls[0]
-    return None
+    """提取当前消息中的第一张图片 URL（回复时会把图副本附在当前#消息里）"""
+    images = get_context(event).images
+    return images[0] if images else None
 
 
 def extract_image(event) -> Optional[str]:
@@ -139,13 +113,32 @@ def get_stored_result(message_id) -> Optional[dict]:
     return _reply_stored_results.get(str(message_id))
 
 
+def get_sent_message_id(sent) -> Optional[str]:
+    """取发送返回的消息 ID：OneBot 为 dict['message_id']，QQ 官方为模型 id"""
+    if sent is None:
+        return None
+    if isinstance(sent, dict):
+        value = sent.get('message_id') or sent.get('id')
+    else:
+        value = getattr(sent, 'message_id', None) or getattr(sent, 'id', None)
+    return str(value) if value is not None else None
+
+
+async def _send(bot: Bot, event, ctx, message):
+    """按当前平台发送：bytes 视作图片数据，其余原样交给适配器"""
+    if isinstance(message, (bytes, bytearray)):
+        message = ctx.build_image(bytes(message))
+    return await bot.send(event=event, message=message)
+
+
 @_reply_main_handler.handle()
 async def handle_reply_command(bot: Bot, event, state: T_State):
-    if not hasattr(event, 'reply') or not event.reply:
+    ctx = get_context(event, bot)
+    if not ctx.quote:
         return
 
     # 取纯文本而非 str(Message)：str() 会带 CQ 码与转义，命令名和参数都会被污染
-    message_text = event.get_message().extract_plain_text().strip()
+    message_text = ctx.text
 
     if not message_text.startswith('#'):
         return
@@ -163,14 +156,14 @@ async def handle_reply_command(bot: Bot, event, state: T_State):
             result = await (handler(event, bot, arg_text) if with_args else handler(event, bot))
             if isinstance(result, ReplyCommandResult):
                 if result.message:
-                    sent = await bot.send(event=event, message=result.message)
+                    sent = await _send(bot, event, ctx, result.message)
                     if result.on_sent:
                         try:
                             result.on_sent(sent)
                         except Exception as exc:
                             logger.warning(f"reply_text_command on_sent callback failed for '{command}': {exc}")
             elif result:
-                await bot.send(event=event, message=result)
+                await _send(bot, event, ctx, result)
         except Exception as e:
             logger.error(f"reply_text_command handler error for '{command}': {e}")
             import traceback
@@ -189,7 +182,7 @@ async def handle_reply_command(bot: Bot, event, state: T_State):
         should_continue, state_data = await preprocessor(event, img_url)
         if not should_continue:
             if state_data:
-                await bot.send(event=event, message=state_data)
+                await _send(bot, event, ctx, state_data)
             return
 
     handler = _reply_command_handlers[command][0]
@@ -199,11 +192,12 @@ async def handle_reply_command(bot: Bot, event, state: T_State):
 
         if isinstance(result, ReplyCommandResult):
             if result.message:
-                sent_msg = await bot.send(event=event, message=result.message)
-                if result.stored_id is not None and sent_msg.get('message_id'):
-                    store_result(sent_msg['message_id'], result.stored_id)
+                sent_msg = await _send(bot, event, ctx, result.message)
+                message_id = get_sent_message_id(sent_msg)
+                if result.stored_id is not None and message_id:
+                    store_result(message_id, result.stored_id)
         elif isinstance(result, str):
-            await bot.send(event=event, message=result)
+            await _send(bot, event, ctx, result)
     except Exception as e:
         logger.error(f"reply_command handler error for '{command}': {e}")
         import traceback

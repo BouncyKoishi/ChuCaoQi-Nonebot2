@@ -72,8 +72,8 @@ def get_archive_list() -> List[Dict[str, str]]:
 def parse_pic_filename(filename: str) -> Dict[str, Any]:
     """从文件名解析上传者信息
 
-    文件命名规则: {user_id}-{timestamp}-{pic_{i}}{ext}
-    其中 user_id 在 OneBot V11 平台即为 QQ 号
+    文件命名规则: {uploader}-{timestamp}-{pic_{i}}{ext}
+    uploader 通常是 QQ 号；未绑定的官机用户为 u<统一ID>，解析为未知来源
     """
     base = os.path.splitext(filename)[0]
     parts = base.split('-', 2)
@@ -317,12 +317,15 @@ def _safe_remove(path: str) -> None:
 
 
 async def download_and_check_dup(
-    img_urls: List[str], user_id: int, md5_set: Set[str],
+    img_urls: List[str], uploader: str, md5_set: Set[str],
     max_size_bytes: Optional[int] = None,
 ) -> Tuple[int, int, int, Set[str]]:
     """下载图片到待分类目录并查重（带 MD5 查重）并拦截超大图片
 
     bot 端 commitpic / #commitpic 指令调用，传入 bot 维护的 md5_set
+
+    uploader 为文件名上传者前缀：真实 QQ 号优先；未绑定的官机用户为 u<统一ID>，
+    不匹配 parse_uploader_qq 的数字前缀规则，统计时归入“未知来源”。
 
     大小拦截：发起流式 GET，在读取 body 前利用 Content-Length 头预判大小，
     超阈值直接拦截，不下载 body；若响应头缺失（分块传输）则边下载边计数，
@@ -347,7 +350,7 @@ async def download_and_check_dup(
     for i, url in enumerate(img_urls):
         ext = _extract_ext_from_url(url)
         safe_filename = re.sub(r'[^\w\.-]', '_', f"pic_{i}") + ext
-        new_filename = f'{user_id}-{timestamp}-{safe_filename}'
+        new_filename = f'{uploader}-{timestamp}-{safe_filename}'
         file_path = os.path.join(examine_path, new_filename)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

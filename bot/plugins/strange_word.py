@@ -463,7 +463,7 @@ async def handle_say(event: UnifiedMessageEvent, args: Message = CommandArg()):
     ctx = get_context(event)
     group_num = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
-    imgUrls = extractImgUrls(args)
+    imgUrls = extractImgUrls(args) or ctx.images
     decision = None
     if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
         decision = await get_sentence_advance(
@@ -499,7 +499,7 @@ async def handle_say_shuffle(event: UnifiedMessageEvent):
 async def handle_say_many(event: UnifiedMessageEvent, args: Message = CommandArg()):
     group_id = getattr(event, 'group_id', default_group_num)
     stripped_text = args.extract_plain_text().strip()
-    imgUrls = extractImgUrls(args)
+    imgUrls = extractImgUrls(args) or get_context(event).images
     if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
         reply_list = await get_sentence_list_advance(group_id, stripped_text, imgUrls=imgUrls)
     else:

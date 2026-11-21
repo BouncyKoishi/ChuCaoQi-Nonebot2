@@ -19,16 +19,12 @@ from nonebot.adapters import Message
 
 from kusa_base import plugin_config, send_group_msg
 from core.config import DATA_DIR
+from platform_context import Ctx
 
 try:
     from nonebot_plugin_apscheduler import scheduler
 except ImportError:
     scheduler = None
-
-try:
-    from nonebot.adapters.onebot.v11 import MessageSegment
-except ImportError:
-    MessageSegment = None
 
 HEAVY_RAIN_THRESHOLD = 2.5
 RAIN_ALERT_GROUP = 597468560
@@ -296,7 +292,7 @@ async def _get_cma_simple_report(data_id: Optional[str]) -> str:
 # ==================== 雷达回波模块 ====================
 
 @radar_cmd.handle()
-async def handle_radar(args: Message = CommandArg()):
+async def handle_radar(ctx: Ctx, args: Message = CommandArg()):
     raw_args = args.extract_plain_text().strip()
     region, use_gif = _parse_radar_args(raw_args)
 
@@ -324,16 +320,14 @@ async def handle_radar(args: Message = CommandArg()):
             response = await client.get(radar_pic_url, timeout=15)
             image_bytes = response.content
 
-        pic = MessageSegment.image(image_bytes)
-        await radar_cmd.finish(pic)
+        await radar_cmd.finish(ctx.build_image(image_bytes))
     else:
         gif_data, message = await _generate_radar_gif(region, radar_url)
 
         if not gif_data:
             await radar_cmd.finish(message)
 
-        pic = MessageSegment.image(gif_data)
-        await radar_cmd.finish(pic)
+        await radar_cmd.finish(ctx.build_image(gif_data))
 
 
 async def _get_radar_pic_url(url: str) -> Optional[str]:
@@ -592,7 +586,7 @@ async def _get_precipitation_forecast(lat: float, lon: float) -> Optional[dict]:
 # ==================== 降雨预报模块 ====================
 
 @precip_cmd.handle()
-async def handle_precipitation(args: Message = CommandArg()):
+async def handle_precipitation(ctx: Ctx, args: Message = CommandArg()):
     now = datetime.now()
     cache_hour_key = now.strftime("%Y%m%d%H")
 
@@ -622,7 +616,7 @@ async def handle_precipitation(args: Message = CommandArg()):
 
     img_bytes = _generate_precip_image(locations_data)
 
-    await precip_cmd.finish(MessageSegment.image(img_bytes))
+    await precip_cmd.finish(ctx.build_image(img_bytes))
 
 
 def _is_heavy_rain(minutely_15: list) -> bool:

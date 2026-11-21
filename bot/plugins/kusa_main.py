@@ -9,15 +9,12 @@ import re
 import string
 import random
 import asyncio
-from typing import Dict, Union
+from typing import Dict
 from datetime import datetime
 
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
-from nonebot.adapters.qq import MessageEvent as QQMessageEvent
-from nonebot.adapters.onebot.v11 import MessageSegment as OneBotMS
 from nonebot.params import CommandArg
-from nonebot.adapters import Message
+from nonebot.adapters import Message, Bot
 
 import core.db.kusa_system as base_db
 import core.db.kusa_item as item_db
@@ -28,7 +25,7 @@ from utils import convertNumStrToInt, parse_transfer_target_args
 from kusa_base import plugin_config, send_private_msg, send_group_msg, get_bot_qq
 from core.services import WarehouseService
 from multi_platform import send_finish
-from platform_context import get_context, Ctx
+from platform_context import Ctx
 from . import scheduler
 
 
@@ -370,19 +367,19 @@ kusa_ban_cmd = on_command("口球", priority=5, block=True)
 
 @kusa_ban_cmd.handle()
 async def handle_kusa_ban(
-    bot: OneBotV11Bot,
-    event: Union[OneBotV11MessageEvent, QQMessageEvent],
+    bot: Bot,
+    ctx: Ctx,
     args: Message = CommandArg()
 ):
     """处理口球命令"""
-    if not get_context(event).capabilities.can_ban:
+    if not ctx.capabilities.can_ban_by_qq:
         await send_finish(kusa_ban_cmd, '该功能暂不支持 QQ 官方 Bot')
         return
 
-    group_id = event.group_id
-    user_id = await get_context(event).get_user_id(auto_create=False)
+    group_id = int(ctx.group_id) if ctx.group_id else None
+    user_id = await ctx.get_user_id(auto_create=False)
 
-    if not user_id:
+    if not group_id or not user_id:
         await send_finish(kusa_ban_cmd, '获取用户信息失败')
         return
 
@@ -499,10 +496,10 @@ async def handle_give_envelope(ctx: Ctx, args: Message = CommandArg()):
     global kusa_envelope_dict
 
     user_id = await ctx.get_user_id(auto_create=True)
-    group_id = int(ctx.group_id) if ctx.group_id else None
+    group_id = ctx.group_id
     main_group = plugin_config.get('group', {}).get('main')
 
-    if group_id != main_group:
+    if not group_id or str(group_id) != str(main_group):
         await send_finish(give_envelope_cmd, '只能在除草器主群中进行发草包^ ^')
         return
 
@@ -555,10 +552,10 @@ async def handle_grab_envelope(ctx: Ctx):
     global kusa_envelope_dict
 
     user_id = await ctx.get_user_id(auto_create=True)
-    group_id = int(ctx.group_id) if ctx.group_id else None
+    group_id = ctx.group_id
     main_group = plugin_config.get('group', {}).get('main')
 
-    if group_id != main_group:
+    if not group_id or str(group_id) != str(main_group):
         await send_finish(grab_envelope_cmd, '只能在除草器主群中进行抢草包^ ^')
         return
 

@@ -8,13 +8,10 @@ import asyncio
 import dataclasses
 import random
 import string
-from typing import Dict, Union
+from typing import Dict
 from datetime import datetime
 
 from reloader import kusa_command as on_command
-from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
-from nonebot.adapters.qq import MessageEvent as QQMessageEvent
-from nonebot.adapters.onebot.v11 import MessageSegment as MS
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
@@ -25,7 +22,7 @@ from core.db.user import getUnifiedUser
 from kusa_base import plugin_config, send_private_msg, send_group_msg
 from core.services import FarmService
 from multi_platform import send_reply, send_finish
-from platform_context import get_context, Ctx
+from platform_context import Ctx
 
 import aiohttp
 
