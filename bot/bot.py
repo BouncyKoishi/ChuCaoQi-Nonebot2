@@ -79,6 +79,8 @@ async def init_database():
     """初始化数据库"""
     import core.db.db as base_db
     await base_db.init_db()
+    from core.services import identity_service
+    await identity_service.load_group_mappings()
     print("--- Database initialized on startup ---")
 
 # 添加全局错误处理，防止连接错误导致 Bot 退出

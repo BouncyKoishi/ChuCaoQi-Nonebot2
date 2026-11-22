@@ -74,10 +74,10 @@ async def handle_醒了(ctx: Ctx):
 
 async def sleep(matcher, ctx: PlatformContext, msg, base, summa, size):
     allow_list = plugin_config.get('group', {}).get('adminAuthGroup', [])
-    group_id = ctx.group_id
+    group_key = ctx.group_key
     user_qq = await ctx.get_real_qq()
     
-    if not group_id or not user_qq:
+    if not group_key or not user_qq:
         return
 
     if not ctx.capabilities.can_ban:
@@ -85,8 +85,7 @@ async def sleep(matcher, ctx: PlatformContext, msg, base, summa, size):
         await send_finish(matcher, msg)
         return
 
-    # 配置项为 QQ 群号；官bot 的 group_openid 暂无法匹配，待群映射后按统一群标识处理
-    if group_id in {str(g) for g in allow_list}:
+    if group_key in {str(g) for g in allow_list}:
         durTime = sleepTimeCalculation(base, summa, size)
         now = datetime.datetime.now()
         wake_dt = now + datetime.timedelta(seconds=durTime)

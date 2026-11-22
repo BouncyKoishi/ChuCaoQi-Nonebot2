@@ -4,8 +4,6 @@ env: 'dev'
 qq:
   bot: 0 # NapCat Bot QQ号
   # official_bot: 0 # 官方 Bot QQ号 [已禁用] 官方QQ Bot未连接时无需配置，auto_bind 插件已移至 _disabled 目录
-  ban:
-    - 10000
 
 group:
   main: 0 # 主群号

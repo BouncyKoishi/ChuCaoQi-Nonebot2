@@ -134,6 +134,70 @@ async def delete_user_data(userId: int):
     await TradeRecord.filter(user_id=userId).delete()
 
 
+# ===== 群映射 =====
+
+_group_openid_to_onebot: dict = {}
+_group_onebot_to_openid: dict = {}
+_group_mapping_loaded = False
+
+
+async def load_group_mappings(force: bool = False):
+    """加载群映射到进程内缓存（启动时调用；映射变更后 force=True 刷新）"""
+    global _group_mapping_loaded
+    if _group_mapping_loaded and not force:
+        return
+    mappings = await user_db.getAllGroupMappings()
+    openid_to_onebot = {}
+    onebot_to_openid = {}
+    for mapping in mappings:
+        if mapping.qqbotGroupOpenid and mapping.onebotGroupId:
+            openid_to_onebot[mapping.qqbotGroupOpenid] = mapping.onebotGroupId
+            onebot_to_openid[mapping.onebotGroupId] = mapping.qqbotGroupOpenid
+    _group_openid_to_onebot.clear()
+    _group_openid_to_onebot.update(openid_to_onebot)
+    _group_onebot_to_openid.clear()
+    _group_onebot_to_openid.update(onebot_to_openid)
+    _group_mapping_loaded = True
+    print(f'--- 群映射缓存加载：{len(openid_to_onebot)} 条 ---')
+
+
+def resolve_group_key(platform: str, group_id) -> Optional[str]:
+    """把平台群标识解析成统一群标识
+
+    OneBot 的群标识本来就是 QQ 群号；官方 Bot 用映射表换成 QQ 群号，
+    未建立映射时回退 group_openid。
+    """
+    if group_id is None:
+        return None
+    group_id = str(group_id)
+    if platform == 'qqbot':
+        return _group_openid_to_onebot.get(group_id, group_id)
+    return group_id
+
+
+def get_onebot_group_id_by_openid(openid: str) -> Optional[str]:
+    return _group_openid_to_onebot.get(str(openid))
+
+
+def get_openid_by_onebot_group_id(onebot_group_id: str) -> Optional[str]:
+    return _group_onebot_to_openid.get(str(onebot_group_id))
+
+
+async def get_group_mapping_by_openid(openid: str):
+    return await user_db.getGroupMappingByQqbotGroupOpenid(openid)
+
+
+async def get_group_mapping_by_onebot_id(onebot_group_id: str):
+    return await user_db.getGroupMappingByOnebotGroupId(onebot_group_id)
+
+
+async def bind_group_mapping(openid: str, onebot_group_id: str):
+    """建立或覆盖官方群 openid 到 QQ 群号的映射，并刷新缓存"""
+    mapping = await user_db.upsertGroupMapping(onebot_group_id, openid)
+    await load_group_mappings(force=True)
+    return mapping
+
+
 async def merge_users(
     source_id: int,
     target_id: int,

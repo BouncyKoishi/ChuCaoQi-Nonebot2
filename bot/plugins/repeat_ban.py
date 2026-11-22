@@ -9,9 +9,8 @@
 """
 
 from kusa_base import is_super_admin, plugin_config
-from platform_context import get_context, Ctx
+from platform_context import Ctx
 from nonebot import on_command, on_message
-from nonebot.adapters import Event
 from collections import deque
 
 
@@ -144,8 +143,7 @@ repeat_ban_handler = on_message(priority=10, block=False)
 
 
 @repeat_ban_handler.handle()
-async def handle_repeat_ban(event: Event):
-    ctx = get_context(event)
+async def handle_repeat_ban(ctx: Ctx):
     if not ctx.capabilities.can_ban:
         return
     
@@ -155,11 +153,10 @@ async def handle_repeat_ban(event: Event):
     if not ban_manager.is_enabled():
         return
     
-    group_id = ctx.group_id
+    group_key = ctx.group_key
     sysu_group = plugin_config.get('group', {}).get('sysu')
     
-    # 配置项为 QQ 群号；官bot 的 group_openid 暂无法匹配，待群映射后按统一群标识处理
-    if str(group_id) != str(sysu_group):
+    if not group_key or group_key != str(sysu_group):
         return
     
     user_id = ctx.platform_member_id
@@ -168,7 +165,7 @@ async def handle_repeat_ban(event: Event):
     if not user_id or not message.strip():
         return
     
-    result = ban_manager.add_message(group_id, user_id, message)
+    result = ban_manager.add_message(group_key, user_id, message)
     
     if result['action'] != 'none':
         ban_result = await ctx.ban(result['duration'], target=result['target_user'])

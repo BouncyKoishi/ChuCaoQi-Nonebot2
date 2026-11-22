@@ -76,6 +76,14 @@ auto_reply_sample_size = auto_reply_config.get('sampleSize', 30)
 auto_reply_enabled = True
 
 
+def _group_num_from_ctx(ctx) -> int:
+    """统一群标识可转成 QQ 群号时取之，否则回退默认群语料"""
+    group_key = ctx.group_key
+    if group_key and str(group_key).isdigit():
+        return int(group_key)
+    return default_group_num
+
+
 class GroupChatBuffer:
     """群聊消息缓冲区，参考MaiBot的HeartFlow设计"""
     def __init__(self, max_size=30):
@@ -456,12 +464,10 @@ async def handle_auto_freeze():
     await auto_freeze_cmd.send(f'自动怪话已{"启用" if auto_reply_enabled else "禁用"}')
 
 
-# 以下说怪话指令按 group_id 取分群语料，属于平台群标识语义，
-# 待群映射（GroupMapping）阶段统一改用 ctx.group_key，暂保留 event。
 @say_cmd.handle()
 async def handle_say(event: UnifiedMessageEvent, args: Message = CommandArg()):
     ctx = get_context(event)
-    group_num = getattr(event, 'group_id', default_group_num)
+    group_num = _group_num_from_ctx(ctx)
     stripped_text = args.extract_plain_text().strip()
     imgUrls = extractImgUrls(args) or ctx.images
     decision = None
@@ -482,13 +488,15 @@ async def handle_say(event: UnifiedMessageEvent, args: Message = CommandArg()):
 
 @say_reverse_cmd.handle()
 async def handle_say_reverse(event: UnifiedMessageEvent):
-    msg = get_random_sentence(getattr(event, 'group_id', default_group_num))
+    ctx = get_context(event)
+    msg = get_random_sentence(_group_num_from_ctx(ctx))
     await say_reverse_cmd.send(msg[::-1])
 
 
 @say_shuffle_cmd.handle()
 async def handle_say_shuffle(event: UnifiedMessageEvent):
-    group_id = getattr(event, 'group_id', default_group_num)
+    ctx = get_context(event)
+    group_id = _group_num_from_ctx(ctx)
     msg = get_random_sentence(group_id)
     msg_list = list(msg)
     random.shuffle(msg_list)
@@ -497,9 +505,10 @@ async def handle_say_shuffle(event: UnifiedMessageEvent):
 
 @say_many_cmd.handle()
 async def handle_say_many(event: UnifiedMessageEvent, args: Message = CommandArg()):
-    group_id = getattr(event, 'group_id', default_group_num)
+    ctx = get_context(event)
+    group_id = _group_num_from_ctx(ctx)
     stripped_text = args.extract_plain_text().strip()
-    imgUrls = extractImgUrls(args) or get_context(event).images
+    imgUrls = extractImgUrls(args) or ctx.images
     if (stripped_text or imgUrls) and allow_model and random.random() < 0.8:
         reply_list = await get_sentence_list_advance(group_id, stripped_text, imgUrls=imgUrls)
     else:
@@ -512,7 +521,7 @@ async def handle_say_many(event: UnifiedMessageEvent, args: Message = CommandArg
         await say_many_cmd.send(msg)
         await asyncio.sleep(1)
     if reply_list:
-        update_poke_cache(group_id, reply_list[-1], get_context(event).timestamp or int(time.time()))
+        update_poke_cache(group_id, reply_list[-1], ctx.timestamp or int(time.time()))
 
 
 record_message_matcher = on_message(priority=5, block=False)

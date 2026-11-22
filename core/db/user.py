@@ -6,7 +6,7 @@
 
 import datetime
 from typing import Optional, List, Dict
-from .models import UnifiedUser  # GroupMapping 已禁用
+from .models import UnifiedUser, GroupMapping
 
 
 # ===== 查询类函数 =====
@@ -143,50 +143,44 @@ async def deleteUnifiedUser(user: UnifiedUser) -> None:
     await user.delete()
 
 
-# ===== GroupMapping 相关函数 - 已禁用 =====
-# 官方 QQ Bot 功能已禁用，GroupMapping 表暂时不需要
-#
-# async def getGroupMappingByOnebotGroupId(onebotGroupId: str) -> Optional[GroupMapping]:
-#     """通过 OneBot 群 ID 获取群映射"""
-#     return await GroupMapping.filter(onebotGroupId=onebotGroupId).first()
-#
-#
-# async def getGroupMappingByQqbotGroupOpenid(qqbotGroupOpenid: str) -> Optional[GroupMapping]:
-#     """通过 QQ Bot 群 OpenId 获取群映射"""
-#     return await GroupMapping.filter(qqbotGroupOpenid=qqbotGroupOpenid).first()
-#
-#
-# async def getAutoBindGroups() -> List[GroupMapping]:
-#     """获取所有启用自动绑定的群"""
-#     return await GroupMapping.filter(allowAutoBind=True).all()
-#
-#
-# async def isGroupAllowAutoBind(onebotGroupId: str) -> bool:
-#     """检查群是否启用自动绑定"""
-#     mapping = await getGroupMappingByOnebotGroupId(onebotGroupId)
-#     return mapping.allowAutoBind if mapping else False
-#
-#
-# async def setGroupAutoBind(onebotGroupId: str, allowAutoBind: bool) -> bool:
-#     """设置群的自动绑定状态"""
-#     mapping = await getGroupMappingByOnebotGroupId(onebotGroupId)
-#     if not mapping:
-#         return False
-#     mapping.allowAutoBind = allowAutoBind
-#     await mapping.save()
-#     return True
-#
-#
-# async def createGroupMapping(
-#     onebotGroupId: str,
-#     qqbotGroupOpenid: str = None,
-#     groupName: str = None,
-#     allowAutoBind: bool = False
-# ) -> GroupMapping:
-#     """创建群映射"""
-#     return await GroupMapping.create(
-#         onebotGroupId=onebotGroupId,
-#         qqbotGroupOpenid=qqbotGroupOpenid,
-#         groupName=groupName,
-#         allowAutoBind=allowAutoBind
-#     )
+# ===== GroupMapping 相关函数 =====
+
+async def getGroupMappingByOnebotGroupId(onebotGroupId: str) -> Optional[GroupMapping]:
+    """通过 OneBot 群 ID（QQ 群号）获取群映射"""
+    return await GroupMapping.filter(onebotGroupId=str(onebotGroupId)).first()
+
+
+async def getGroupMappingByQqbotGroupOpenid(qqbotGroupOpenid: str) -> Optional[GroupMapping]:
+    """通过官方 Bot 群 OpenId 获取群映射"""
+    return await GroupMapping.filter(qqbotGroupOpenid=str(qqbotGroupOpenid)).first()
+
+
+async def getAllGroupMappings() -> List[GroupMapping]:
+    """获取全部群映射"""
+    return await GroupMapping.all()
+
+
+async def upsertGroupMapping(onebotGroupId: str, qqbotGroupOpenid: str) -> GroupMapping:
+    """建立或覆盖 openid -> QQ 群号 的映射
+
+    onebotGroupId 与 qqbotGroupOpenid 都有唯一约束，写入前先解除另一条
+    记录对目标 QQ 群号的占用，避免唯一约束冲突。
+    """
+    onebotGroupId = str(onebotGroupId)
+    qqbotGroupOpenid = str(qqbotGroupOpenid)
+
+    occupied = await GroupMapping.filter(onebotGroupId=onebotGroupId).first()
+    if occupied and occupied.qqbotGroupOpenid != qqbotGroupOpenid:
+        occupied.onebotGroupId = None
+        await occupied.save()
+
+    mapping = await GroupMapping.filter(qqbotGroupOpenid=qqbotGroupOpenid).first()
+    if mapping:
+        mapping.onebotGroupId = onebotGroupId
+    else:
+        mapping = GroupMapping(
+            qqbotGroupOpenid=qqbotGroupOpenid,
+            onebotGroupId=onebotGroupId,
+        )
+    await mapping.save()
+    return mapping

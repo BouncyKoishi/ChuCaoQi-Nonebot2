@@ -23,21 +23,17 @@ from sensitive_filter import get_sensitive_filter
 
 @抽奖_cmd.handle()
 async def handle_抽奖(ctx: Ctx, args: Message = CommandArg()):
-    groupId = ctx.group_id
+    groupKey = ctx.group_key
     userId = await ctx.get_user_id(auto_create=True)
     realQQ = await ctx.get_real_qq()
     
-    if not groupId:
+    if not groupKey:
         await send_finish(抽奖_cmd, '暂不支持私聊抽奖^ ^')
         return
-    try:
-        groupIdInt = int(groupId)
-    except (TypeError, ValueError):
-        groupIdInt = None
-    if groupIdInt not in drawConfig['groupAllowDraw']:
+    if groupKey not in {str(g) for g in drawConfig['groupAllowDraw']}:
         await send_finish(抽奖_cmd, '本群暂不支持抽奖^ ^')
         return
-    if groupIdInt not in drawConfig['groupAllowItem']:
+    if groupKey not in {str(g) for g in drawConfig['groupAllowItem']}:
         await send_finish(抽奖_cmd, '本群暂不支持抽奖物品^ ^')
         return
 
@@ -50,17 +46,13 @@ async def handle_抽奖(ctx: Ctx, args: Message = CommandArg()):
 
 @十连抽_cmd.handle()
 async def handle_十连抽(ctx: Ctx, args: Message = CommandArg()):
-    groupId = ctx.group_id
+    groupKey = ctx.group_key
     userId = await ctx.get_user_id(auto_create=True)
 
-    if not groupId:
+    if not groupKey:
         await send_finish(十连抽_cmd, '暂不支持私聊抽奖^ ^')
         return
-    try:
-        groupIdInt = int(groupId)
-    except (TypeError, ValueError):
-        groupIdInt = None
-    if groupIdInt not in drawConfig['groupAllowItem']:
+    if groupKey not in {str(g) for g in drawConfig['groupAllowItem']}:
         await send_finish(十连抽_cmd, '本群暂不支持十连抽^ ^')
         return
 

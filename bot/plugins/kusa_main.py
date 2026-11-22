@@ -496,10 +496,10 @@ async def handle_give_envelope(ctx: Ctx, args: Message = CommandArg()):
     global kusa_envelope_dict
 
     user_id = await ctx.get_user_id(auto_create=True)
-    group_id = ctx.group_id
+    group_key = ctx.group_key
     main_group = plugin_config.get('group', {}).get('main')
 
-    if not group_id or str(group_id) != str(main_group):
+    if not group_key or group_key != str(main_group):
         await send_finish(give_envelope_cmd, '只能在除草器主群中进行发草包^ ^')
         return
 
@@ -552,10 +552,10 @@ async def handle_grab_envelope(ctx: Ctx):
     global kusa_envelope_dict
 
     user_id = await ctx.get_user_id(auto_create=True)
-    group_id = ctx.group_id
+    group_key = ctx.group_key
     main_group = plugin_config.get('group', {}).get('main')
 
-    if not group_id or str(group_id) != str(main_group):
+    if not group_key or group_key != str(main_group):
         await send_finish(grab_envelope_cmd, '只能在除草器主群中进行抢草包^ ^')
         return
 

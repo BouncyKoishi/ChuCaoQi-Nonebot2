@@ -17,14 +17,18 @@ class UnifiedUser(Model):
     updatedAt = DatetimeField(auto_now=True)
 
 
-# class GroupMapping(Model):
-#     """群组映射表 - 用于 OneBot + 官方QQ Bot 双平台运行场景，目前已禁用"""
-#     id = IntField(pk=True)
-#     onebotGroupId = CharField(max_length=12, unique=True, null=True)
-#     qqbotGroupOpenid = CharField(max_length=128, unique=True, null=True)
-#     groupName = CharField(max_length=64, null=True)
-#     allowAutoBind = BooleanField(default=False)
-#     createdAt = DatetimeField(auto_now_add=True)
+class GroupMapping(Model):
+    """群组映射表 - 用于 OneBot + 官方QQ Bot 双平台运行场景
+
+    qqbotGroupOpenid 为官方 Bot 的群标识，onebotGroupId 为对应 QQ 群号。
+    两者均可为空，便于在只掌握一侧信息时先占位。
+    """
+    id = IntField(pk=True)
+    onebotGroupId = CharField(max_length=12, unique=True, null=True)
+    qqbotGroupOpenid = CharField(max_length=128, unique=True, null=True)
+    groupName = CharField(max_length=64, null=True)
+    allowAutoBind = BooleanField(default=False)
+    createdAt = DatetimeField(auto_now_add=True)
 
 
 class KusaBase(Model):

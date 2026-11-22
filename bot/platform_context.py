@@ -346,7 +346,14 @@ class PlatformContext:
 
     @property
     def group_id(self) -> Optional[str]:
+        """平台原始群标识：OneBot 为 QQ 群号，官方 Bot 为 group_openid"""
         return get_group_id(self.event)
+
+    @property
+    def group_key(self) -> Optional[str]:
+        """统一群标识：官方 Bot 经群映射解析为 QQ 群号，未映射时回退原始标识"""
+        from core.services.identity_service import resolve_group_key
+        return resolve_group_key(self.platform, self.group_id)
 
     @property
     def platform_user_id(self) -> Optional[str]:

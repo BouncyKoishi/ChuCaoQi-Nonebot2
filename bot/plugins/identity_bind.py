@@ -17,7 +17,9 @@ from core.services.identity_service import (
     get_unified_user_by_id,
     get_unified_user_by_real_qq,
     generate_web_token,
-
+    get_group_mapping_by_onebot_id,
+    get_group_mapping_by_openid,
+    bind_group_mapping,
 )
 from core.db.user import saveUnifiedUser
 from kusa_base import is_super_admin
@@ -261,3 +263,42 @@ async def handle_查看token(ctx: Ctx):
         f'您的Web端token：\n{unified_user.webToken}\n\n'
         f'创建时间：{unified_user.webTokenCreatedAt.strftime("%Y-%m-%d %H:%M:%S") if unified_user.webTokenCreatedAt else "未知"}'
     )
+
+
+群映射_cmd = on_command('群映射', priority=5, block=True)
+
+@群映射_cmd.handle()
+async def handle_群映射(ctx: Ctx, args: Message = CommandArg()):
+    """群映射：官方 Bot 端为唯一写入口，OneBot 端只读"""
+    if not ctx.is_group:
+        await send_finish(群映射_cmd, '该指令只能在群聊中使用^ ^')
+        return
+
+    user_id = await ctx.get_user_id(auto_create=False)
+    if not user_id or not await is_super_admin(user_id):
+        await send_finish(群映射_cmd, '只有管理员才能操作群映射')
+        return
+
+    if ctx.platform == 'onebot':
+        mapping = await get_group_mapping_by_onebot_id(ctx.group_id)
+        if mapping and mapping.qqbotGroupOpenid:
+            await send_finish(群映射_cmd, '本群已绑定官方Bot群')
+        else:
+            await send_finish(群映射_cmd, '本群未绑定官方Bot群')
+        return
+
+    arg_text = args.extract_plain_text().strip()
+    mapping = await get_group_mapping_by_openid(ctx.group_id)
+    if not arg_text:
+        if mapping and mapping.onebotGroupId:
+            await send_finish(群映射_cmd, f'本群已绑定QQ群：{ctx.group_key}')
+        else:
+            await send_finish(群映射_cmd, '本群未绑定QQ群')
+        return
+
+    if not arg_text.isdigit():
+        await send_finish(群映射_cmd, '请输入正确的QQ群号，格式：!群映射 123456789')
+        return
+
+    await bind_group_mapping(ctx.group_id, arg_text)
+    await send_finish(群映射_cmd, f'✅ 群映射成功：本群 → QQ群 {arg_text}')
