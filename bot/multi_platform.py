@@ -171,46 +171,6 @@ def get_platform_type(event: Event) -> Optional[str]:
 from nonebot import get_bots
 
 
-# async def get_real_group_id(official_group_id: str) -> Optional[int]:
-#     """
-#     通过 GroupMapping 获取真实群号
-#     
-#     Args:
-#         official_group_id: 官方 Bot 的群 OpenID
-#         
-#     Returns:
-#         真实群号或 None
-#     """
-#     try:
-#         from core.db.models import GroupMapping
-#         mapping = await GroupMapping.filter(qqbotGroupOpenid=official_group_id).first()
-#         if mapping and mapping.onebotGroupId:
-#             return int(mapping.onebotGroupId)
-#     except Exception as e:
-#         print(f"[NapCat] 获取真实群号失败: {e}")
-#     return None
-
-
-async def get_real_user_id(unified_user_id: int) -> Optional[int]:
-    """
-    通过 UnifiedUser 获取真实 QQ 号
-    
-    Args:
-        unified_user_id: 统一用户 ID
-        
-    Returns:
-        真实 QQ 号或 None
-    """
-    try:
-        from core.db.models import UnifiedUser
-        user = await UnifiedUser.filter(id=unified_user_id).first()
-        if user and user.realQQ:
-            return int(user.realQQ)
-    except Exception as e:
-        print(f"[NapCat] 获取真实用户ID失败: {e}")
-    return None
-
-
 def get_napcat_bot() -> Optional[Bot]:
     """
     获取 NapCat (OneBot V11) Bot 实例
@@ -221,20 +181,6 @@ def get_napcat_bot() -> Optional[Bot]:
     bots = get_bots()
     for bot in bots.values():
         if is_onebot_v11_bot(bot):
-            return bot
-    return None
-
-
-def get_qqbot_instance() -> Optional[Bot]:
-    """
-    获取 QQ 官方 Bot 实例
-    
-    Returns:
-        QQ 官方 Bot 实例或 None
-    """
-    bots = get_bots()
-    for bot in bots.values():
-        if is_qq_bot(bot):
             return bot
     return None
 
@@ -263,8 +209,14 @@ async def execute_via_napcat(
         return False
     
     try:
-        real_group_id = await get_real_group_id(group_id)
-        real_user_id = await get_real_user_id(user_id)
+        from core.services.identity_service import (
+            get_group_mapping_by_openid,
+            get_unified_user_by_id,
+        )
+        mapping = await get_group_mapping_by_openid(group_id)
+        real_group_id = int(mapping.onebotGroupId) if mapping and mapping.onebotGroupId else None
+        unified_user = await get_unified_user_by_id(user_id)
+        real_user_id = int(unified_user.realQQ) if unified_user and unified_user.realQQ else None
         
         if not real_group_id:
             print(f"[NapCat] 无法找到群 {group_id} 的真实群号")

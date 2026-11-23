@@ -148,11 +148,11 @@ def get_platform_type(event: Event) -> Optional[str]:
 
 
 def get_platform_user_id(event: Event) -> Optional[str]:
-    """平台侧用户标识：OneBot 为 QQ 号，QQ 官方为 openid
+    """平台侧用户标识：OneBot 为 QQ 号，QQ 官方为个人 openid
 
-    QQ 官方只允许 union_openid 作为跨场景身份；它缺失时按事件场景回退到
-    场景内 ID（群聊 member_openid / 私聊 user_openid），绝不跨场景回退，
-    否则同一人会在群聊和私聊中被当成两个用户。
+    优先取平台明确提供的个人 openid（群消息 member_openid / 私聊 user_openid），
+    与适配器 get_user_id() 及交互事件的 group_member_openid / user_openid 同源；
+    author.id 仅作兜底，不依赖它隐含的语义。
     """
     if is_onebot_v11_event(event):
         user_id = getattr(event, 'user_id', None)
@@ -160,14 +160,11 @@ def get_platform_user_id(event: Event) -> Optional[str]:
     if is_qq_event(event):
         author = getattr(event, 'author', None)
         if author:
-            union_openid = getattr(author, 'union_openid', None)
-            if union_openid:
-                return str(union_openid)
-            if is_group_message(event):
-                scene_id = getattr(author, 'member_openid', None) or getattr(author, 'id', None)
-            else:
-                scene_id = getattr(author, 'user_openid', None) or getattr(author, 'id', None)
-            return str(scene_id) if scene_id else None
+            for field in ('member_openid', 'user_openid', 'union_openid', 'id'):
+                value = getattr(author, field, None)
+                if value:
+                    return str(value)
+            return None
         user = getattr(event, 'user', None)
         if user:
             return str(user.id)

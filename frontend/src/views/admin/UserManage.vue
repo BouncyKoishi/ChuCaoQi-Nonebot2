@@ -8,7 +8,7 @@
           <div class="search-bar">
             <el-input
               v-model="searchId"
-              placeholder="按 ID 或 QQ 号搜索"
+              placeholder="按 ID / QQ / OpenID 搜索"
               clearable
               size="small"
               style="width: 200px"
@@ -39,7 +39,17 @@
         style="width: 100%"
       >
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="qq" label="QQ" width="120" />
+        <el-table-column label="QQ 身份" width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.qq || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="OpenID" width="80" align="center">
+          <template #default="{ row }">
+            <span v-if="row.qqbotOpenid" style="color: #67c23a">✓</span>
+            <span v-else style="color: #c0c4cc">✗</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="昵称" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.name || '-' }}
@@ -78,6 +88,8 @@
                     <el-dropdown-item command="token">生成 webToken</el-dropdown-item>
                     <el-dropdown-item command="friendCode">查看好友码</el-dropdown-item>
                     <el-dropdown-item command="marks">帐号标记</el-dropdown-item>
+                    <el-dropdown-item command="qq">修改 QQ 号</el-dropdown-item>
+                    <el-dropdown-item command="openid">修改 OpenID</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -422,6 +434,62 @@
       </template>
     </el-dialog>
 
+    <!-- 修改 QQ 号弹窗 -->
+    <el-dialog v-model="qqDialog.visible" title="修改 QQ 号" width="500px">
+      <p class="identity-user">
+        用户 <strong>{{ qqDialog.userName }}</strong>（ID: {{ qqDialog.userId }}）
+      </p>
+      <el-form label-width="100px">
+        <el-form-item label="当前 QQ 号">
+          <span>{{ qqDialog.original || '未设置' }}</span>
+        </el-form-item>
+        <el-form-item label="QQ 号" required>
+          <el-input v-model="qqDialog.value" placeholder="5-12 位数字" @keyup.enter="saveQq" />
+        </el-form-item>
+      </el-form>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="修改后该账号改用新 QQ 号登录，旧 QQ 号会被释放；业务数据按用户 ID 关联，不会迁移。清空后该账号无法通过 QQ 登录。"
+      />
+      <template #footer>
+        <el-button v-if="qqDialog.original" type="danger" plain :loading="qqDialog.submitting" @click="clearQq">
+          清空 QQ 号
+        </el-button>
+        <el-button @click="qqDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="qqDialog.submitting" @click="saveQq">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 修改 OpenID 弹窗 -->
+    <el-dialog v-model="openidDialog.visible" title="修改 OpenID" width="500px">
+      <p class="identity-user">
+        用户 <strong>{{ openidDialog.userName }}</strong>（ID: {{ openidDialog.userId }}）
+      </p>
+      <el-form label-width="100px">
+        <el-form-item label="当前 OpenID">
+          <span>{{ openidDialog.original || '未设置' }}</span>
+        </el-form-item>
+        <el-form-item label="OpenID" required>
+          <el-input v-model="openidDialog.value" placeholder="官方 Bot openid（字母与数字）" @keyup.enter="saveOpenid" />
+        </el-form-item>
+      </el-form>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="修改后该账号改用新 OpenID 登录官方 Bot；清空后无法通过官方 Bot 登录，历史归属数据不会迁移。"
+      />
+      <template #footer>
+        <el-button v-if="openidDialog.original" type="danger" plain :loading="openidDialog.submitting" @click="clearOpenid">
+          清空 OpenID
+        </el-button>
+        <el-button @click="openidDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="openidDialog.submitting" @click="saveOpenid">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 新增称号弹窗 -->
     <el-dialog v-model="createTitleDialog.visible" title="新增称号" width="400px">
       <el-form label-width="80px">
@@ -628,6 +696,12 @@ const handleCommand = (cmd: string, row: any) => {
       break
     case 'marks':
       openMarksDialog(row)
+      break
+    case 'qq':
+      openQqDialog(row)
+      break
+    case 'openid':
+      openOpenidDialog(row)
       break
   }
 }
@@ -1064,6 +1138,184 @@ const submitMarks = async () => {
   }
 }
 
+// ==================== 身份信息 ====================
+const qqDialog = reactive({
+  visible: false,
+  userId: 0,
+  userName: '',
+  value: '',
+  original: '',
+  submitting: false
+})
+
+const openidDialog = reactive({
+  visible: false,
+  userId: 0,
+  userName: '',
+  value: '',
+  original: '',
+  submitting: false
+})
+
+const openQqDialog = (row: any) => {
+  qqDialog.userId = row.id
+  qqDialog.userName = row.name || `ID:${row.id}`
+  qqDialog.original = row.qq || ''
+  qqDialog.value = qqDialog.original
+  qqDialog.submitting = false
+  qqDialog.visible = true
+}
+
+const openOpenidDialog = (row: any) => {
+  openidDialog.userId = row.id
+  openidDialog.userName = row.name || `ID:${row.id}`
+  openidDialog.original = row.qqbotOpenid || ''
+  openidDialog.value = openidDialog.original
+  openidDialog.submitting = false
+  openidDialog.visible = true
+}
+
+// 身份值被临时官机账号占用时，确认后可将其并入当前账号再写入
+const applyIdentity = async (userId: number, field: 'realQQ' | 'qqbotOpenid', value: string) => {
+  try {
+    return await adminApi.updateUserIdentity(userId, field, value)
+  } catch (e: any) {
+    const detail = e?.response?.data
+    if (!detail?.mergeable) throw e
+    const label = field === 'realQQ' ? 'QQ 号' : 'OpenID'
+    try {
+      await ElMessageBox.confirm(
+        `${detail.error}。该账号是仅含 ${label} 的临时官机账号，可将其并入当前账号后完成修改，确定？`,
+        '身份已被临时账号占用',
+        { type: 'warning', confirmButtonText: '合并并修改' }
+      )
+    } catch {
+      return null
+    }
+    return await adminApi.updateUserIdentity(userId, field, value, true)
+  }
+}
+
+const saveQq = async () => {
+  const value = qqDialog.value.trim()
+  if (!value) {
+    ElMessage.warning('请输入 QQ 号；如需清空请点击「清空 QQ 号」')
+    return
+  }
+  if (!/^\d{5,12}$/.test(value)) {
+    ElMessage.warning('QQ 号应为 5-12 位数字')
+    return
+  }
+  if (value === qqDialog.original) {
+    ElMessage.info('QQ 号未变化')
+    return
+  }
+  if (qqDialog.original) {
+    try {
+      await ElMessageBox.confirm(`将把原 QQ 号 ${qqDialog.original} 替换为 ${value}，确定？`, '确认修改', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+  qqDialog.submitting = true
+  try {
+    const res: any = await applyIdentity(qqDialog.userId, 'realQQ', value)
+    if (!res) return
+    ElMessage.success('QQ 号已更新')
+    if (res.mergedFrom) ElMessage.info(`临时账号 #${res.mergedFrom} 已并入当前账号`)
+    if (res?.warning) ElMessage.warning(res.warning)
+    qqDialog.original = value
+    qqDialog.visible = false
+    fetchUsers()
+  } catch (e: any) {
+    ElMessage.error(e.message || '更新失败')
+  } finally {
+    qqDialog.submitting = false
+  }
+}
+
+const clearQq = async () => {
+  try {
+    await ElMessageBox.confirm('清空后该账号将无法通过 QQ 登录，确定？', '确认清空', { type: 'warning' })
+  } catch {
+    return
+  }
+  qqDialog.submitting = true
+  try {
+    const res: any = await adminApi.clearUserIdentity(qqDialog.userId, 'realQQ')
+    ElMessage.success(res?.message || '已清空 QQ 号')
+    if (res?.warning) ElMessage.warning(res.warning)
+    qqDialog.original = ''
+    qqDialog.value = ''
+    qqDialog.visible = false
+    fetchUsers()
+  } catch (e: any) {
+    ElMessage.error(e.message || '清空失败')
+  } finally {
+    qqDialog.submitting = false
+  }
+}
+
+const saveOpenid = async () => {
+  const value = openidDialog.value.trim()
+  if (!value) {
+    ElMessage.warning('请输入 OpenID；如需清空请点击「清空 OpenID」')
+    return
+  }
+  if (value.length > 128 || !/^[A-Za-z0-9]+$/.test(value)) {
+    ElMessage.warning('OpenID 仅允许字母与数字，长度不超过 128')
+    return
+  }
+  if (value === openidDialog.original) {
+    ElMessage.info('OpenID 未变化')
+    return
+  }
+  if (openidDialog.original) {
+    try {
+      await ElMessageBox.confirm('将替换原 OpenID，旧值会被释放，确定？', '确认修改', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+  openidDialog.submitting = true
+  try {
+    const res: any = await applyIdentity(openidDialog.userId, 'qqbotOpenid', value)
+    if (!res) return
+    ElMessage.success('OpenID 已更新')
+    if (res.mergedFrom) ElMessage.info(`临时账号 #${res.mergedFrom} 已并入当前账号`)
+    if (res?.warning) ElMessage.warning(res.warning)
+    openidDialog.original = value
+    openidDialog.visible = false
+    fetchUsers()
+  } catch (e: any) {
+    ElMessage.error(e.message || '更新失败')
+  } finally {
+    openidDialog.submitting = false
+  }
+}
+
+const clearOpenid = async () => {
+  try {
+    await ElMessageBox.confirm('清空后该账号无法通过官方 Bot 登录，历史归属数据不会迁移，确定？', '确认清空', { type: 'warning' })
+  } catch {
+    return
+  }
+  openidDialog.submitting = true
+  try {
+    const res: any = await adminApi.clearUserIdentity(openidDialog.userId, 'qqbotOpenid')
+    ElMessage.success(res?.message || '已清空 OpenID')
+    if (res?.warning) ElMessage.warning(res.warning)
+    openidDialog.original = ''
+    openidDialog.value = ''
+    openidDialog.visible = false
+    fetchUsers()
+  } catch (e: any) {
+    ElMessage.error(e.message || '清空失败')
+  } finally {
+    openidDialog.submitting = false
+  }
+}
+
 // ==================== 称号拥有者详情 ====================
 const ownersDialog = reactive({
   visible: false,
@@ -1146,5 +1398,10 @@ onMounted(() => {
 .no-owners {
   color: #c0c4cc;
   font-size: 12px;
+}
+
+.identity-user {
+  margin: 0 0 16px;
+  color: #303133;
 }
 </style>

@@ -8,7 +8,7 @@ import os
 import codecs
 from typing import Union
 from utils import convertNumStrToInt, parse_transfer_target_args
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg, ArgPlainText

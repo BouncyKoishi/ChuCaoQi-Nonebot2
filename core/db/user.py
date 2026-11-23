@@ -6,7 +6,7 @@
 
 import datetime
 from typing import Optional, List, Dict
-from .models import UnifiedUser, GroupMapping
+from .models import UnifiedUser, GroupMapping, IdentityBindRequest
 
 
 # ===== 查询类函数 =====
@@ -141,6 +141,83 @@ async def bindPlatformIdentity(user: UnifiedUser, platform: str, platform_id: st
 async def deleteUnifiedUser(user: UnifiedUser) -> None:
     """删除UnifiedUser"""
     await user.delete()
+
+
+# ===== 身份绑定申请 =====
+
+async def getIdentityBindRequest(requestId: int) -> Optional[IdentityBindRequest]:
+    return await IdentityBindRequest.filter(id=requestId).first()
+
+
+async def getPendingBindRequestByOpenid(openid: str) -> Optional[IdentityBindRequest]:
+    """同一 openid 只允许一条 pending"""
+    return await IdentityBindRequest.filter(
+        qqbotOpenid=str(openid), status='pending'
+    ).order_by('-id').first()
+
+
+async def getPendingBindRequestsByTargetQQ(targetQQ: str) -> List[IdentityBindRequest]:
+    return await IdentityBindRequest.filter(
+        targetQQ=str(targetQQ), status='pending'
+    ).all()
+
+
+async def getPendingBindRequests() -> List[IdentityBindRequest]:
+    return await IdentityBindRequest.filter(status='pending').order_by('-id').all()
+
+
+async def createIdentityBindRequest(
+    qqbotOpenid: str,
+    sourceUserId: Optional[int],
+    targetQQ: str,
+    bindType: str,
+) -> IdentityBindRequest:
+    return await IdentityBindRequest.create(
+        qqbotOpenid=str(qqbotOpenid),
+        sourceUserId=sourceUserId,
+        targetQQ=str(targetQQ),
+        bindType=bindType,
+    )
+
+
+async def updateIdentityBindRequest(
+    request: IdentityBindRequest,
+    status: str,
+    note: Optional[str] = None,
+) -> None:
+    request.status = status
+    request.note = note
+    request.reviewedAt = datetime.datetime.now().astimezone()
+    await request.save()
+
+
+# ===== 身份字段（realQQ / qqbotOpenid）=====
+
+IDENTITY_FIELDS = ('realQQ', 'qqbotOpenid')
+
+
+async def getUnifiedUserByIdentityValue(field: str, value: str, exclude_id: Optional[int] = None) -> Optional[UnifiedUser]:
+    """按身份字段查重，exclude_id 用于修改场景排除自身"""
+    if field not in IDENTITY_FIELDS or not value:
+        return None
+    query = UnifiedUser.filter(**{field: str(value)})
+    if exclude_id is not None:
+        query = query.exclude(id=exclude_id)
+    return await query.first()
+
+
+async def setUnifiedUserIdentityField(user: UnifiedUser, field: str, value: str) -> None:
+    if field not in IDENTITY_FIELDS:
+        raise ValueError(f'非法身份字段: {field}')
+    setattr(user, field, str(value))
+    await user.save()
+
+
+async def clearUnifiedUserIdentityField(user: UnifiedUser, field: str) -> None:
+    if field not in IDENTITY_FIELDS:
+        raise ValueError(f'非法身份字段: {field}')
+    setattr(user, field, None)
+    await user.save()
 
 
 # ===== GroupMapping 相关函数 =====

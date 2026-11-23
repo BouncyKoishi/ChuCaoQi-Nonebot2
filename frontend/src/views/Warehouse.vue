@@ -268,10 +268,13 @@
         </el-table-column>
         <el-table-column label="对方" min-width="150">
           <template #default="scope">
-            <div>{{ scope.row.counterpartyName || '未设置昵称' }}</div>
-            <div class="records-sub-text">
-              QQ: {{ scope.row.counterpartyQq || '未绑定' }} / ID: {{ scope.row.counterpartyId }}
-            </div>
+            <template v-if="scope.row.counterpartyId">
+              <div>{{ scope.row.counterpartyName || '未设置昵称' }}</div>
+              <div class="records-sub-text">
+                QQ: {{ scope.row.counterpartyQq || '未绑定' }} / ID: {{ scope.row.counterpartyId }}
+              </div>
+            </template>
+            <span v-else class="records-sub-text">已注销账号</span>
           </template>
         </el-table-column>
         <el-table-column label="内容" min-width="140">

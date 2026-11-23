@@ -3,7 +3,7 @@ import core.db.kusa_item as itemDB
 import core.db.kusa_field as fieldDB
 import core.db.user as userDB
 from datetime import datetime
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent, Bot as OneBotV11Bot
 from nonebot.adapters.qq import MessageEvent as QQMessageEvent, Bot as QQBot
 from nonebot.params import CommandArg

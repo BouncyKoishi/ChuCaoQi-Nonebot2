@@ -12,7 +12,7 @@ import asyncio
 from typing import Dict
 from datetime import datetime
 
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
 from nonebot.params import CommandArg
 from nonebot.adapters import Message, Bot
 

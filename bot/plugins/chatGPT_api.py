@@ -8,7 +8,7 @@ from openai import BadRequestError
 
 import core.db.chat as db
 from kusa_base import is_super_admin, send_log
-from reloader import db_command as on_command
+from reloader import bound_db_command as on_command
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
@@ -95,21 +95,24 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     styleConstraint: 附加到用户内容前的风格约束文本，仅由 #chat 入口按作用域传入。
     appendText: 指令后附带的文字，接在被回复内容之后；被回复消息无可提取内容时仍不触发。
     """
-    if not await permissionCheck(get_context(event), 'chat'):
+    ctx = get_context(event)
+    if ctx.platform == 'qqbot' and not await ctx.get_real_qq():
+        return '该指令需要先完成身份绑定，请发送 !绑定 <你的QQ号>'
+    if not await permissionCheck(ctx, 'chat'):
         return None
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
         return None
     if appendText:
         text = f'{text}\n{appendText}' if text else appendText
-    user_id = await get_context(event).get_user_id(auto_create=True)
+    user_id = await ctx.get_user_id(auto_create=True)
     content = _buildContent(text, imgUrls)
     if styleConstraint:
         content.insert(0, TextPart(text=styleConstraint))
     reply = await chat(user_id, content, isNewConversation=True, useDefaultRole=useDefaultRole)
     if reply is None:
         return None  # 模型方未给出回复，静默终止（reply_commands 对 None 不发送）
-    return await get_context(event).build_quoted(reply)
+    return await ctx.build_quoted(reply)
 
 
 @reply_text_command('chat', with_args=True)

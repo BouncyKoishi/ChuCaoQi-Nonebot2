@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, FileResponse
 import sys
 import os
+import asyncio
 
 from core.services import WarehouseService
 from core.services import admin_service
@@ -52,6 +53,31 @@ async def get_users(
         search_id=searchId, search_name=searchName
     )
     return {"success": True, "data": result}
+
+
+@router.put("/users/{userId}/identity")
+async def update_user_identity(userId: int, request: Request):
+    """设置或修改身份字段 {field, value}"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+
+    body = await request.json()
+    field = body.get('field')
+    value = body.get('value')
+    return await admin_service.update_user_identity(
+        userId, field, value, operator=uu.id, takeover=bool(body.get('takeover'))
+    )
+
+
+@router.delete("/users/{userId}/identity/{field}")
+async def clear_user_identity(userId: int, field: str, request: Request):
+    """清空身份字段（realQQ / qqbotOpenid）"""
+    uu, err = _check_admin(request)
+    if err:
+        return err
+
+    return await admin_service.clear_user_identity(userId, field, operator=uu.id)
 
 
 @router.get("/users/{userId}/warehouse")
@@ -386,7 +412,7 @@ async def classify_pic(request: Request):
     category = data.get("category")
     if not filename or not category:
         return JSONResponse({"success": False, "error": "参数缺失"}, status_code=400)
-    result = pic_service.classify_pic(filename, category)
+    result = await asyncio.to_thread(pic_service.classify_pic, filename, category)
     return result
 
 
@@ -400,7 +426,7 @@ async def save_pic(request: Request):
     filename = data.get("filename")
     if not filename:
         return JSONResponse({"success": False, "error": "参数缺失"}, status_code=400)
-    return pic_service.save_pic(filename)
+    return await asyncio.to_thread(pic_service.save_pic, filename)
 
 
 @router.post("/pic-review/skip")
@@ -422,4 +448,4 @@ async def delete_pic(filename: str, request: Request):
     uu, err = _check_admin(request)
     if err:
         return err
-    return pic_service.delete_pic(filename)
+    return await asyncio.to_thread(pic_service.delete_pic, filename)

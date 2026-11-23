@@ -4,8 +4,11 @@
 """
 
 from typing import Optional
-from core.db.models import UnifiedUser, KusaBase, KusaField
+from tortoise.transactions import in_transaction
+from tortoise.expressions import Q
+from core.db.models import UnifiedUser, KusaBase, KusaField, IdentityBindRequest
 from core.db import user as user_db
+import asyncio
 import hashlib
 import secrets
 import string
@@ -54,15 +57,12 @@ async def create_unified_user_for_onebot(realQQ: str) -> UnifiedUser:
 
 
 async def create_unified_user_for_qqbot(openid: str) -> UnifiedUser:
+    """创建官机临时账号
+
+    未完成身份绑定前不发放任何资源：禁止清单中的插件已被插件级门禁拦截，
+    绑定成功后再按绑定类型发放（新建绑定 10000 草 + 1 草地）。
+    """
     unified_user, created = await UnifiedUser.get_or_create(qqbotOpenid=openid)
-    
-    existing_kusa_base = await KusaBase.filter(user_id=unified_user.id).first()
-    if not existing_kusa_base:
-        await KusaBase.create(user=unified_user, kusa=10000, lastUseTime=get_now())
-        await KusaField.create(user=unified_user)
-        from core.db.kusa_item import changeItemAmount
-        await changeItemAmount(unified_user.id, "草地", 1)
-    
     return unified_user
 
 
@@ -121,7 +121,8 @@ async def reset_web_token(unified_user: UnifiedUser) -> str:
 async def delete_user_data(userId: int):
     from core.db.models import (
         KusaBase, KusaField, KusaHistory, DrawItemStorage,
-        KusaItemStorage, ChatUser, DonateRecord, TradeRecord
+        KusaItemStorage, ChatUser, ChatRole, DonateRecord, TradeRecord,
+        Flag, PageView
     )
     
     await KusaBase.filter(user_id=userId).delete()
@@ -130,8 +131,63 @@ async def delete_user_data(userId: int):
     await DrawItemStorage.filter(user_id=userId).delete()
     await KusaItemStorage.filter(user_id=userId).delete()
     await ChatUser.filter(user_id=userId).delete()
+    await ChatRole.filter(user_id=userId).delete()
     await DonateRecord.filter(user_id=userId).delete()
     await TradeRecord.filter(user_id=userId).delete()
+    await Flag.filter(ownerId=userId).delete()
+    await PageView.filter(userId=userId).delete()
+
+
+async def _migrate_source_ownership(source_id: int, target_id: int):
+    """合并前处理归属数据
+
+    - 转让记录保留，双方显式置 NULL，避免 target 账实不符
+    - 工单 / 自制物品的作者改挂 target
+    - 个人配置与访问记录随临时账号删除
+    """
+    from core.db.models import TransferRecord, WorkOrder, DrawItemList, Flag, PageView
+
+    await TransferRecord.filter(fromUser_id=source_id).update(fromUser_id=None)
+    await TransferRecord.filter(toUser_id=source_id).update(toUser_id=None)
+    await WorkOrder.filter(authorId=source_id).update(authorId=target_id)
+    await DrawItemList.filter(authorId=source_id).update(authorId=target_id)
+    await Flag.filter(ownerId=source_id).delete()
+    await PageView.filter(userId=source_id).delete()
+
+
+def _schedule_archive_rename(source_id: int, target_id: int):
+    """合并完成后后台重命名图库文件，失败只记日志"""
+    try:
+        asyncio.create_task(_rename_archive_files(source_id, target_id))
+    except RuntimeError:
+        pass
+
+
+async def _rename_archive_files(source_id: int, target_id: int):
+    try:
+        from core.services import pic_archive_service
+        result = await asyncio.to_thread(
+            pic_archive_service.rename_uploader_files, source_id, target_id
+        )
+        if result.get('failed'):
+            print(f'图库重命名部分失败：{result["failed"]}')
+
+        # 二次清扫：合并提交瞬间可能仍有上传正在落盘（上传已不持锁下载，
+        # 落盘带锁），稍后重跑一次以收走这批迟到文件
+        if result.get('renamed') or result.get('failed'):
+            await asyncio.sleep(20)
+            await asyncio.to_thread(
+                pic_archive_service.rename_uploader_files, source_id, target_id
+            )
+
+        # bot 进程内原地刷新 onlineFilePaths；web / scheduler 中导入失败可忽略
+        try:
+            from plugins.pic_archive import refresh_online_paths
+            refresh_online_paths()
+        except Exception:
+            pass
+    except Exception as e:
+        print(f'图库重命名失败：{e}')
 
 
 # ===== 群映射 =====
@@ -198,28 +254,226 @@ async def bind_group_mapping(openid: str, onebot_group_id: str):
     return mapping
 
 
-async def merge_users(
+async def _merge_users_core(
     source_id: int,
     target_id: int,
     keep_source_data: bool = False
 ) -> bool:
+    """合并的数据库部分（不含事务与图库重命名）
+
+    目标账号保留，源账号的身份字段与归属数据迁移后删除。
+    """
     source_user = await get_unified_user_by_id(source_id)
     target_user = await get_unified_user_by_id(target_id)
-    
-    if not source_user or not target_user:
+
+    if not source_user or not target_user or source_user.id == target_user.id:
         return False
-    
-    if source_user.realQQ and not target_user.realQQ:
-        target_user.realQQ = source_user.realQQ
-    
-    if source_user.qqbotOpenid and not target_user.qqbotOpenid:
-        target_user.qqbotOpenid = source_user.qqbotOpenid
-    
+
+    source_openid = source_user.qqbotOpenid
+    source_qq = source_user.realQQ
+
+    # 先释放源账号的唯一身份值，避免与目标账号写入时唯一约束冲突
+    source_user.realQQ = None
+    source_user.qqbotOpenid = None
+    await user_db.saveUnifiedUser(source_user)
+
+    if source_qq and not target_user.realQQ:
+        target_user.realQQ = source_qq
+    if source_openid and not target_user.qqbotOpenid:
+        target_user.qqbotOpenid = source_openid
     await user_db.saveUnifiedUser(target_user)
-    
+
+    await _migrate_source_ownership(source_id, target_id)
+
+    # 清掉源账号遗留的待处理绑定信息，避免合并后 pending 挡住目标账号的新绑定
+    stale_requests = await IdentityBindRequest.filter(
+        Q(status='pending') & (
+            Q(sourceUserId=source_id) | Q(qqbotOpenid=source_openid or '')
+        )
+    ).all()
+    for request in stale_requests:
+        await user_db.updateIdentityBindRequest(request, 'rejected', note='发起账号已合并')
+
     if not keep_source_data:
         await delete_user_data(source_id)
-    
     await user_db.deleteUnifiedUser(source_user)
-    
     return True
+
+
+async def merge_users(
+    source_id: int,
+    target_id: int,
+    keep_source_data: bool = False,
+    defer_archive: bool = False
+) -> bool:
+    """把临时官机账号合并进目标老账号
+
+    数据库变更在单个事务内完成；图库文件重命名在提交后异步执行。
+    defer_archive=True 时由调用方（如绑定审批的外层事务）在提交后自行调度。
+    """
+    source_openid = None
+    source = await get_unified_user_by_id(source_id)
+    if source:
+        source_openid = source.qqbotOpenid
+
+    async with in_transaction():
+        ok = await _merge_users_core(source_id, target_id, keep_source_data)
+    if not ok:
+        return False
+
+    if source_openid and not defer_archive:
+        target = await get_unified_user_by_id(target_id)
+        if target and target.qqbotOpenid == source_openid:
+            _schedule_archive_rename(source_id, target_id)
+    return True
+
+
+# ===== 身份绑定 =====
+
+BIND_TYPE_LABELS = {
+    'new': '新建',
+    'merge': '合并',
+    'rebind': '换绑',
+}
+
+
+async def determine_bind_type(unified_user: UnifiedUser, target_qq: str):
+    """判定绑定类型
+
+    Returns:
+        (bind_type, target_user, error)
+    """
+    target_qq = str(target_qq).strip()
+    if unified_user.realQQ:
+        if str(unified_user.realQQ) == target_qq:
+            return None, None, '当前账号已绑定该 QQ'
+        target_user = await get_unified_user_by_real_qq(target_qq)
+        if target_user and target_user.id != unified_user.id:
+            return None, target_user, '该 QQ 已被其他账号使用，请联系管理员处理'
+        return 'rebind', None, None
+
+    target_user = await get_unified_user_by_real_qq(target_qq)
+    if target_user and target_user.id != unified_user.id:
+        # 目标账号已有其它官方身份时无法合并，提前拒绝，避免发出注定被驳回的卡片
+        if target_user.qqbotOpenid and target_user.qqbotOpenid != unified_user.qqbotOpenid:
+            return None, target_user, '该 QQ 已绑定其他官方身份，请联系管理员处理'
+        return 'merge', target_user, None
+    return 'new', None, None
+
+
+async def prepare_bind_request(unified_user: UnifiedUser, target_qq: str):
+    """创建绑定信息（同一 openid 只保留一条 pending）
+
+    Returns:
+        (request, error)
+    """
+    if not unified_user.qqbotOpenid:
+        return None, '当前账号缺少官方身份，无法发起绑定'
+
+    existing = await user_db.getPendingBindRequestByOpenid(unified_user.qqbotOpenid)
+    if existing:
+        return None, f'你已有一条待确认的绑定信息（#{existing.id}），请等待处理'
+
+    bind_type, _target_user, error = await determine_bind_type(unified_user, target_qq)
+    if error:
+        return None, error
+
+    request = await user_db.createIdentityBindRequest(
+        qqbotOpenid=unified_user.qqbotOpenid,
+        sourceUserId=unified_user.id,
+        targetQQ=str(target_qq),
+        bindType=bind_type,
+    )
+    return request, None
+
+
+async def _apply_bind_request(request) -> dict:
+    """按审核信息执行绑定，执行前重新校验身份状态"""
+    source = await user_db.getUnifiedUserByQQBotOpenid(request.qqbotOpenid)
+    if not source:
+        return {'success': False, 'error': '发起绑定的账号不存在'}
+    if request.sourceUserId is not None and source.id != request.sourceUserId:
+        return {'success': False, 'error': '发起绑定的账号已变更，请重新发起'}
+
+    target_qq = str(request.targetQQ)
+    target_user = await get_unified_user_by_real_qq(target_qq)
+    bind_type = request.bindType
+
+    if bind_type == 'new':
+        if source.realQQ:
+            return {'success': False, 'error': '当前账号已绑定 QQ，绑定信息已失效'}
+        if target_user and target_user.id != source.id:
+            return {'success': False, 'error': '目标 QQ 已被其他账号使用'}
+        source.realQQ = target_qq
+        await user_db.saveUnifiedUser(source)
+        from core.db import kusa_system
+        await kusa_system.createKusaUser(source.id)
+        return {'success': True, 'userId': source.id, 'bindType': bind_type}
+
+    if bind_type == 'merge':
+        if source.realQQ:
+            return {'success': False, 'error': '当前账号已绑定 QQ，绑定信息已失效'}
+        if not target_user or target_user.id == source.id:
+            return {'success': False, 'error': '目标 QQ 账号不存在'}
+        if target_user.qqbotOpenid and target_user.qqbotOpenid != source.qqbotOpenid:
+            return {'success': False, 'error': '目标账号已绑定其他官方身份，请联系管理员处理'}
+        ok = await merge_users(source.id, target_user.id, defer_archive=True)
+        if not ok:
+            return {'success': False, 'error': '合并失败，请稍后重试'}
+        return {
+            'success': True,
+            'userId': target_user.id,
+            'bindType': bind_type,
+            'deferArchive': True,
+        }
+
+    if bind_type == 'rebind':
+        if not source.realQQ:
+            return {'success': False, 'error': '当前账号尚未绑定 QQ'}
+        if str(source.realQQ) == target_qq:
+            return {'success': True, 'userId': source.id, 'bindType': bind_type}
+        if target_user and target_user.id != source.id:
+            return {'success': False, 'error': '目标 QQ 已被其他账号使用'}
+        source.realQQ = target_qq
+        await user_db.saveUnifiedUser(source)
+        return {'success': True, 'userId': source.id, 'bindType': bind_type}
+
+    return {'success': False, 'error': '未知的绑定类型'}
+
+
+async def approve_bind_request(request_id: int, approve: bool) -> dict:
+    """确认 / 取消绑定信息
+
+    确认时以当时数据重新校验；成功后驳回同一目标 QQ 的其它 pending。
+    """
+    request = await user_db.getIdentityBindRequest(request_id)
+    if not request:
+        return {'success': False, 'error': '绑定信息不存在'}
+    if request.status != 'pending':
+        return {'success': False, 'error': '该绑定信息已处理'}
+
+    if not approve:
+        await user_db.updateIdentityBindRequest(request, 'rejected')
+        return {'success': True, 'status': 'rejected', 'requestId': request.id}
+
+    async with in_transaction():
+        result = await _apply_bind_request(request)
+        if result.get('success'):
+            await user_db.updateIdentityBindRequest(request, 'approved')
+            others = await user_db.getPendingBindRequestsByTargetQQ(request.targetQQ)
+            for other in others:
+                if other.id != request.id:
+                    await user_db.updateIdentityBindRequest(
+                        other, 'rejected', note='目标 QQ 已被其他绑定信息使用'
+                    )
+        else:
+            await user_db.updateIdentityBindRequest(
+                request, 'rejected', note=result.get('error')
+            )
+
+    # 图库文件重命名必须在事务提交后调度
+    if result.get('success') and result.pop('deferArchive', False) and request.sourceUserId:
+        _schedule_archive_rename(request.sourceUserId, result['userId'])
+
+    result['requestId'] = request.id
+    return result

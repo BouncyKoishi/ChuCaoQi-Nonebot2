@@ -12,7 +12,7 @@ from typing import Optional, Dict
 from datetime import datetime
 from collections import Counter
 
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 

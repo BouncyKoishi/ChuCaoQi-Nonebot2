@@ -7,6 +7,8 @@
 
 import sys
 import os
+import re
+import logging
 from typing import Dict, Any, List, Optional
 
 
@@ -19,6 +21,8 @@ from tortoise.expressions import Q
 from core.services import WarehouseService
 from core.services import StatisticService
 from core.services import identity_service
+
+logger = logging.getLogger(__name__)
 
 # ===== 用户管理 =====
 
@@ -36,9 +40,11 @@ async def get_user_list(
     query = UnifiedUser.all()
 
     if search_id:
-        # 同时匹配 id 和 realQQ
+        # 同时匹配 id、realQQ 与 qqbotOpenid
         query = query.filter(
-            Q(id__icontains=search_id) | Q(realQQ__icontains=search_id)
+            Q(id__icontains=search_id)
+            | Q(realQQ__icontains=search_id)
+            | Q(qqbotOpenid__icontains=search_id)
         )
 
     if search_name:
@@ -65,6 +71,7 @@ async def get_user_list(
         result.append({
             'id': u.id,
             'qq': u.realQQ,
+            'qqbotOpenid': u.qqbotOpenid,
             'name': ku.name if ku else None,
             'title': ku.title if ku else None,
             'vipLevel': ku.vipLevel if ku else 0,
@@ -73,6 +80,136 @@ async def get_user_list(
         })
 
     return {'list': result, 'total': total, 'page': page, 'pageSize': page_size}
+
+
+# ===== 用户身份字段 =====
+
+IDENTITY_FIELD_LABELS = {
+    'realQQ': 'QQ 号',
+    'qqbotOpenid': 'openid',
+}
+
+
+def _validate_identity_value(field: str, value: str):
+    # 接口可能收到 JSON 数字，统一转成字符串后再校验
+    value = '' if value is None else str(value).strip()
+    if not value:
+        return None, '值不能为空；如需清空请使用清空操作'
+    if field == 'realQQ':
+        if not re.fullmatch(r'\d{5,12}', value):
+            return None, 'QQ 号格式不正确（5-12 位数字）'
+    elif field == 'qqbotOpenid':
+        if len(value) > 128 or not re.fullmatch(r'[A-Za-z0-9]+', value):
+            return None, 'openid 格式不正确（仅字母与数字，长度不超过 128）'
+    else:
+        return None, '不支持的身份字段'
+    return value, None
+
+
+async def _identity_owner_display(user: UnifiedUser) -> str:
+    ku = await KusaBase.filter(user_id=user.id).first()
+    return f'#{user.id}（{ku.name}）' if ku and ku.name else f'#{user.id}'
+
+
+async def update_user_identity(
+    userId: int, field: str, value: str, operator: Optional[int] = None, takeover: bool = False
+) -> Dict[str, Any]:
+    if field not in IDENTITY_FIELD_LABELS:
+        return {'success': False, 'error': '不支持的身份字段'}
+
+    user = await UnifiedUser.filter(id=userId).first()
+    if not user:
+        return {'success': False, 'error': '用户不存在'}
+
+    value, error = _validate_identity_value(field, value)
+    if error:
+        return {'success': False, 'error': error}
+
+    old_value = getattr(user, field)
+    merged_from: Optional[int] = None
+    conflict = await user_db.getUnifiedUserByIdentityValue(field, value, exclude_id=user.id)
+    if conflict:
+        # 官机临时账号（只有 openid、没有 QQ 号）可被并入当前账号。
+        # 官机单端部署下，超管首次把 openid 补到自己账号时，官机侧会先以
+        # openid 建出一个空账号，群内审批又依赖超管身份，形成死锁；走合并即可解开。
+        # 仅限 openid 被无 QQ 号的临时账号占用；realQQ 冲突仍按人工兜底处理。
+        mergeable = field == 'qqbotOpenid' and not conflict.realQQ
+        if not (takeover and mergeable):
+            owner = await _identity_owner_display(conflict)
+            return {
+                'success': False,
+                'error': f'该 {IDENTITY_FIELD_LABELS[field]} 已属于用户 {owner}',
+                'conflictUserId': conflict.id,
+                'mergeable': mergeable,
+            }
+
+        merged = await identity_service.merge_users(conflict.id, user.id)
+        if not merged:
+            return {'success': False, 'error': '合并临时账号失败，请检查账号状态'}
+        logger.info(
+            '身份合并：操作者=%s 目标用户=%s 并入临时账号=%s 字段=%s 新值=%s',
+            operator, userId, conflict.id, field, value
+        )
+        user = await UnifiedUser.filter(id=userId).first()
+        merged_from = conflict.id
+
+    try:
+        await user_db.setUnifiedUserIdentityField(user, field, value)
+    except Exception as e:
+        if e.__class__.__name__ == 'IntegrityError':
+            return {'success': False, 'error': f'该 {IDENTITY_FIELD_LABELS[field]} 已被占用'}
+        return {'success': False, 'error': f'保存失败：{e}'}
+
+    logger.info(
+        '身份字段修改：操作者=%s 目标用户=%s 字段=%s 旧值=%s 新值=%s',
+        operator, userId, field, old_value, value
+    )
+    result: Dict[str, Any] = {
+        'success': True,
+        'id': userId,
+        'field': field,
+        'oldValue': old_value,
+        'newValue': value,
+    }
+    if merged_from is not None:
+        result['mergedFrom'] = merged_from
+    if operator is not None and operator == userId:
+        result['warning'] = '你正在修改自己的身份，可能导致无法登录'
+    return result
+
+
+async def clear_user_identity(
+    userId: int, field: str, operator: Optional[int] = None
+) -> Dict[str, Any]:
+    if field not in IDENTITY_FIELD_LABELS:
+        return {'success': False, 'error': '不支持的身份字段'}
+
+    user = await UnifiedUser.filter(id=userId).first()
+    if not user:
+        return {'success': False, 'error': '用户不存在'}
+
+    old_value = getattr(user, field)
+    await user_db.clearUnifiedUserIdentityField(user, field)
+
+    other_field = 'qqbotOpenid' if field == 'realQQ' else 'realQQ'
+    other_value = getattr(user, other_field)
+
+    logger.info(
+        '身份字段清空：操作者=%s 目标用户=%s 字段=%s 旧值=%s',
+        operator, userId, field, old_value
+    )
+
+    if field == 'realQQ':
+        message = '已清空 QQ 号，该账号将无法通过 QQ 登录'
+    else:
+        message = '已清空 openid，该账号将无法通过官方 Bot 登录；历史归属数据不会迁移'
+    if not other_value:
+        message += '；该账号将无法通过任何平台登录'
+
+    result: Dict[str, Any] = {'success': True, 'message': message}
+    if operator is not None and operator == userId:
+        result['warning'] = '你正在修改自己的身份，可能导致无法登录'
+    return result
 
 
 async def give_title(userId: int, title_name: str) -> Dict[str, Any]:

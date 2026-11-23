@@ -1,6 +1,7 @@
 import os
 import glob
 import random
+import asyncio
 
 from nonebot import on_command, logger
 from nonebot.adapters import Event
@@ -30,6 +31,9 @@ for value in archiveInfo.values():
     else:
         value['onlineFilePaths'] = []
 
+# 上次缓存刷新时对应的图库变更标记（跨进程改名后由 stamp mtime 触发重建）
+_archive_stamp_mtime = pic_service.get_refresh_stamp_mtime()
+
 _pic_md5_set: set[str] = set()
 
 
@@ -47,6 +51,27 @@ def _add_to_archive_paths(archive_key: str, file_path: str):
         archiveInfo[archive_key]['onlineFilePaths'].sort()
 
 
+def refresh_online_paths():
+    """重建各分类 onlineFilePaths 缓存（身份合并重命名文件后调用）"""
+    global _archive_stamp_mtime
+    for value in archiveInfo.values():
+        directory = value['onlinePath']
+        if os.path.exists(directory):
+            value['onlineFilePaths'] = [
+                f for f in glob.glob(os.path.join(directory, '*')) if os.path.isfile(f)
+            ]
+            value['onlineFilePaths'].sort()
+        else:
+            value['onlineFilePaths'] = []
+    _archive_stamp_mtime = pic_service.get_refresh_stamp_mtime()
+
+
+def maybe_refresh_online_paths():
+    """其它进程（web 合并）改过图库文件时，按 stamp mtime 重建缓存"""
+    if pic_service.get_refresh_stamp_mtime() > _archive_stamp_mtime:
+        refresh_online_paths()
+
+
 async def _resolve_uploader(ctx: PlatformContext) -> str:
     """上传者前缀：真实 QQ 优先，未绑定的官机用户回退 u<统一ID>
 
@@ -57,7 +82,7 @@ async def _resolve_uploader(ctx: PlatformContext) -> str:
     if real_qq:
         return real_qq
     user_id = await ctx.get_user_id(auto_create=True)
-    return f'u{user_id}' if user_id is not None else 'unknown'
+    return pic_service.uploader_prefix_for_user(user_id) if user_id is not None else 'unknown'
 
 
 async def _download_and_check_dup(imgUrls: list[str], uploader: str) -> tuple[int, int, int]:
@@ -89,7 +114,10 @@ _build_md5_index()
 def getExamineFiles():
     """获取待审核文件列表（兼容旧接口，复用 service 层路径）"""
     if os.path.exists(EXAMINE_PATH):
-        return glob.glob(os.path.join(EXAMINE_PATH, '*'))
+        return [
+            f for f in glob.glob(os.path.join(EXAMINE_PATH, '*'))
+            if not pic_service.is_temp_file(os.path.basename(f))
+        ]
     return []
 
 
@@ -99,6 +127,9 @@ async def rollPic(ctx: PlatformContext, imageArchiveName: str):
 
     if not ctx.capabilities.can_send_image:
         return "该功能目前仅支持OneBot平台"
+
+    # 其它进程（web）改过图库文件时先重建缓存，避免读到已改名的旧路径
+    maybe_refresh_online_paths()
 
     imageArchive = archiveInfo.get(imageArchiveName)
     if not imageArchive:
@@ -271,10 +302,11 @@ async def handle_examinepic(event: Event, state: T_State):
                     _pic_md5_set.discard(file_md5)
                 except Exception:
                     pass
-                pic_service.delete_pic(fileName)
+                # 图库操作内部持跨进程阻塞锁，放到线程里避免卡事件循环
+                await asyncio.to_thread(pic_service.delete_pic, fileName)
                 logger.info(f'已删除图片: {currentFile}')
             elif choice == 's':
-                pic_service.save_pic(fileName)
+                await asyncio.to_thread(pic_service.save_pic, fileName)
                 logger.info(f'已保存图片: {fileName}')
             elif choice == '0':
                 pass
@@ -282,7 +314,7 @@ async def handle_examinepic(event: Event, state: T_State):
                 archiveIndex = int(choice) - 1
                 if 0 <= archiveIndex < len(archive_keys):
                     archiveKey = archive_keys[archiveIndex]
-                    pic_service.classify_pic(fileName, archiveKey)
+                    await asyncio.to_thread(pic_service.classify_pic, fileName, archiveKey)
                     # 更新 bot 的 onlineFilePaths 缓存（rollPic 用）
                     new_path = os.path.join(archiveInfo[archiveKey]['onlinePath'], fileName)
                     _add_to_archive_paths(archiveKey, new_path)

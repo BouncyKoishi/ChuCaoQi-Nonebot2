@@ -189,6 +189,10 @@ export const adminApi = {
     api.get<{ list: any[]; total: number; page: number; pageSize: number }>('/admin/users', {
       params: { page, pageSize, searchId, searchName }
     }),
+  updateUserIdentity: (userId: number, field: 'realQQ' | 'qqbotOpenid', value: string, takeover = false) =>
+    api.put<{ success?: boolean; error?: string; warning?: string; mergeable?: boolean; mergedFrom?: number; oldValue?: string | null; newValue?: string }>(`/admin/users/${userId}/identity`, { field, value, takeover }),
+  clearUserIdentity: (userId: number, field: 'realQQ' | 'qqbotOpenid') =>
+    api.delete<{ success?: boolean; error?: string; warning?: string; message?: string }>(`/admin/users/${userId}/identity/${field}`),
   getUserWarehouse: (userId: number) =>
     api.get<any>(`/admin/users/${userId}/warehouse`),
   updateUserName: (userId: number, name: string) =>

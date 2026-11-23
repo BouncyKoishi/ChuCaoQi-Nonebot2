@@ -1,4 +1,4 @@
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from kusa_base import plugin_config

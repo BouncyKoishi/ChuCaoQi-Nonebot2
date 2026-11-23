@@ -4,7 +4,9 @@
 定时批量结算由 scheduler/jobs/industrial.py 执行
 """
 
-from reloader import kusa_command as on_command
+from reloader import bound_kusa_command as on_command
+
+import math
 
 import core.db.kusa_system as base_db
 import core.db.user as user_db

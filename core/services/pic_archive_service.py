@@ -9,6 +9,7 @@ import glob
 import shutil
 import hashlib
 import re
+import asyncio
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import Dict, Any, List, Optional, Tuple, Set
@@ -16,11 +17,25 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 import sys
 
 import httpx
+from filelock import FileLock
 
 from core.config import plugin_config, DATA_DIR
 
 import logging
 logger = logging.getLogger(__name__)
+
+# 图库文件操作锁：分类 / 删除 / 私藏 / 上传写入 / 合并重命名互斥
+# 用文件锁而非进程内锁：bot 与 backend 是两个进程，需要跨进程互斥
+_LOCK_DIR = os.path.join(DATA_DIR, 'locks')
+os.makedirs(_LOCK_DIR, exist_ok=True)
+_FILE_LOCK = FileLock(os.path.join(_LOCK_DIR, 'pic_archive.lock'), timeout=60)
+
+# 图库缓存刷新标记：改名等跨进程文件变更后写入，bot 端比对 mtime 重建 onlineFilePaths
+_REFRESH_STAMP = os.path.join(DATA_DIR, 'picArchive', '.refresh')
+
+# 上传文件名约定：{uploader}-{timestamp}-pic_{i}{ext}
+# uploader 为真实 QQ 号，或未绑定官机用户的 u<统一ID>；下载中的临时文件不带 uploader 前缀
+TEMP_FILE_PREFIX = '.upload-'
 
 
 # ==================== 路径与分类定义 ====================
@@ -67,20 +82,7 @@ def get_archive_list() -> List[Dict[str, str]]:
     ]
 
 
-# ==================== 文件名解析 ====================
-
-def parse_pic_filename(filename: str) -> Dict[str, Any]:
-    """从文件名解析上传者信息
-
-    文件命名规则: {uploader}-{timestamp}-{pic_{i}}{ext}
-    uploader 通常是 QQ 号；未绑定的官机用户为 u<统一ID>，解析为未知来源
-    """
-    base = os.path.splitext(filename)[0]
-    parts = base.split('-', 2)
-    if len(parts) >= 1 and parts[0].isdigit():
-        return {'uploaderQQ': parts[0]}
-    return {'uploaderQQ': None}
-
+# ==================== 文件名解析与构造 ====================
 
 # 上传者 QQ 前缀：文件名以 5 位及以上数字加连字符开头才识别为 QQ
 _QQ_PREFIX_RE = re.compile(r'(\d{5,})-')
@@ -89,12 +91,31 @@ _QQ_PREFIX_RE = re.compile(r'(\d{5,})-')
 def parse_uploader_qq(filename: str) -> Optional[str]:
     """从文件名解析上传者 QQ 号
 
-    文件命名规则: {user_id}-{timestamp}-{pic_{i}}{ext}
+    文件命名规则: {uploader}-{timestamp}-{pic_{i}}{ext}
     仅当文件名以多位数（>=5 位）数字加连字符开头时才识别为 QQ，
-    否则（如历史遗留 MD5 命名等）返回 None，由调用方归入"未知来源"
+    否则（历史遗留 MD5 命名、u<id> 临时账号等）返回 None，归入"未知来源"
     """
     m = _QQ_PREFIX_RE.match(filename)
     return m.group(1) if m else None
+
+
+def uploader_prefix_for_user(user_id: int) -> str:
+    """未绑定官机用户的上传者前缀（与真实 QQ 的数字前缀区分）"""
+    return f'u{user_id}'
+
+
+def build_pic_filename(uploader: str, timestamp: str, index: int, ext: str) -> str:
+    return f'{uploader}-{timestamp}-pic_{index}{ext}'
+
+
+def build_temp_filename(timestamp: str, index: int, ext: str) -> str:
+    """下载中的临时文件名：不带上传者前缀，避免被合并重命名扫到"""
+    return f'{TEMP_FILE_PREFIX}{timestamp}-{index}{ext}.part'
+
+
+def is_temp_file(filename: str) -> bool:
+    """临时/隐藏文件（.upload-*.part 等）不参与索引与审核"""
+    return filename.startswith('.')
 
 
 # ==================== 待审核图片查询 ====================
@@ -110,13 +131,14 @@ def get_pending_pics() -> List[Dict[str, Any]]:
         if not os.path.isfile(file_path):
             continue
         filename = os.path.basename(file_path)
+        if is_temp_file(filename):
+            continue
         size = os.path.getsize(file_path)
-        info = parse_pic_filename(filename)
         result.append({
             'filename': filename,
             'size': size,
             'sizeStr': _format_size(size),
-            'uploaderQQ': info['uploaderQQ'],
+            'uploaderQQ': parse_uploader_qq(filename),
         })
     return result
 
@@ -138,9 +160,12 @@ def get_gallery_summary() -> List[Dict[str, Any]]:
         total_size = 0
         if os.path.isdir(dir_path):
             for file_path in glob.glob(os.path.join(dir_path, '*')):
-                if os.path.isfile(file_path):
-                    count += 1
-                    total_size += os.path.getsize(file_path)
+                if not os.path.isfile(file_path):
+                    continue
+                if is_temp_file(os.path.basename(file_path)):
+                    continue
+                count += 1
+                total_size += os.path.getsize(file_path)
         result.append({
             'key': key,
             'name': info['displayName'],
@@ -164,6 +189,8 @@ def get_gallery_uploader_stats(category_key: str) -> Dict[str, Any]:
     if os.path.isdir(dir_path):
         for file_path in glob.glob(os.path.join(dir_path, '*')):
             if not os.path.isfile(file_path):
+                continue
+            if is_temp_file(os.path.basename(file_path)):
                 continue
             qq = parse_uploader_qq(os.path.basename(file_path))
             label = qq if qq else '未知来源'
@@ -219,7 +246,8 @@ def classify_pic(filename: str, category_key: str) -> Dict[str, Any]:
     target_dir = ARCHIVE_INFO[category_key]['onlinePath']
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, safe_name)
-    shutil.move(src_path, target_path)
+    with _FILE_LOCK:
+        shutil.move(src_path, target_path)
 
     return {
         'success': True,
@@ -236,9 +264,9 @@ def delete_pic(filename: str) -> Dict[str, Any]:
     if not src_path or not os.path.isfile(src_path):
         return {'success': False, 'error': '文件不存在'}
 
-    os.remove(src_path)
+    with _FILE_LOCK:
+        os.remove(src_path)
     return {'success': True, 'message': '已删除'}
-
 
 def save_pic(filename: str) -> Dict[str, Any]:
     """将待审核图片移动到私藏目录"""
@@ -250,7 +278,8 @@ def save_pic(filename: str) -> Dict[str, Any]:
     save_dir = get_save_path()
     os.makedirs(save_dir, exist_ok=True)
     target_path = os.path.join(save_dir, safe_name)
-    shutil.move(src_path, target_path)
+    with _FILE_LOCK:
+        shutil.move(src_path, target_path)
 
     return {'success': True, 'message': '已移到私藏'}
 
@@ -289,6 +318,8 @@ def build_md5_index() -> Tuple[Set[str], int]:
         for file_path in glob.glob(os.path.join(dir_path, '*')):
             if not os.path.isfile(file_path):
                 continue
+            if is_temp_file(os.path.basename(file_path)):
+                continue
             try:
                 md5_set.add(compute_md5(file_path))
                 total += 1
@@ -314,6 +345,22 @@ def _safe_remove(path: str) -> None:
             os.remove(path)
     except Exception:
         pass
+
+
+def _commit_download(temp_path: str, file_path: str, md5_set: Set[str]) -> str:
+    """在跨进程锁内完成落盘与查重
+
+    FileLock 是阻塞锁（跨进程持有时最长等 60s），必须在工作线程里执行，
+    不能直接跑在 asyncio 事件循环上。返回 'duplicate' 或 'success'。
+    """
+    with _FILE_LOCK:
+        file_md5 = compute_md5(temp_path)
+        if file_md5 in md5_set:
+            _safe_remove(temp_path)
+            return 'duplicate'
+        os.replace(temp_path, file_path)
+        md5_set.add(file_md5)
+        return 'success'
 
 
 async def download_and_check_dup(
@@ -349,9 +396,10 @@ async def download_and_check_dup(
 
     for i, url in enumerate(img_urls):
         ext = _extract_ext_from_url(url)
-        safe_filename = re.sub(r'[^\w\.-]', '_', f"pic_{i}") + ext
-        new_filename = f'{uploader}-{timestamp}-{safe_filename}'
+        new_filename = build_pic_filename(uploader, timestamp, i, ext)
         file_path = os.path.join(examine_path, new_filename)
+        # 临时文件不带上传者前缀：避免下载期间被合并重命名逻辑扫到
+        temp_path = os.path.join(examine_path, build_temp_filename(timestamp, i, ext))
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream('GET', url) as resp:
@@ -362,7 +410,7 @@ async def download_and_check_dup(
                         continue
                     downloaded = 0
                     exceeded = False
-                    with open(file_path, 'wb') as f:
+                    with open(temp_path, 'wb') as f:
                         async for chunk in resp.aiter_bytes(8192):
                             downloaded += len(chunk)
                             if downloaded > max_size_bytes:
@@ -370,17 +418,78 @@ async def download_and_check_dup(
                                 break
                             f.write(chunk)
             if exceeded:
-                _safe_remove(file_path)
+                _safe_remove(temp_path)
                 oversized_count += 1
                 continue
-            file_md5 = compute_md5(file_path)
-            if file_md5 in md5_set:
-                _safe_remove(file_path)
+            # 落盘与查重在同一把跨进程锁内完成，避免与合并重命名交错；
+            # 锁是阻塞式的，放到线程里执行，不卡事件循环
+            status = await asyncio.to_thread(_commit_download, temp_path, file_path, md5_set)
+            if status == 'duplicate':
                 duplicate_count += 1
             else:
-                md5_set.add(file_md5)
                 success_count += 1
         except Exception as e:
             logger.warning(f'download_and_check_dup 下载失败 {url}: {e}')
-            _safe_remove(file_path)
+            _safe_remove(temp_path)
     return success_count, duplicate_count, oversized_count, md5_set
+
+
+def get_refresh_stamp_path() -> str:
+    return _REFRESH_STAMP
+
+
+def get_refresh_stamp_mtime() -> float:
+    """读取图库变更标记的 mtime，缺失时返回 0"""
+    try:
+        return os.path.getmtime(_REFRESH_STAMP)
+    except OSError:
+        return 0.0
+
+
+def touch_refresh_stamp() -> None:
+    """写入图库变更标记，通知其它进程（如 bot）重建缓存"""
+    try:
+        os.makedirs(os.path.dirname(_REFRESH_STAMP), exist_ok=True)
+        with open(_REFRESH_STAMP, 'w', encoding='utf-8') as f:
+            f.write(str(datetime.now().timestamp()))
+    except OSError as e:
+        logger.warning(f'图库刷新标记写入失败: {e}')
+
+
+def rename_uploader_files(source_id: int, target_id: int) -> Dict[str, List[str]]:
+    """把 u<sourceId>-* 图库文件重命名为 u<targetId>-*
+
+    身份合并时后台调用。扫描待审核、私藏与各在线分类目录；
+    目标文件已存在时不覆盖，记入 failed 供人工处理。
+    有实际改名时写入刷新标记，供 bot 进程重建 onlineFilePaths 缓存。
+    """
+    result: Dict[str, List[str]] = {'renamed': [], 'failed': []}
+    if source_id == target_id:
+        return result
+
+    old_prefix = uploader_prefix_for_user(source_id) + '-'
+    new_prefix = uploader_prefix_for_user(target_id) + '-'
+    dirs = [get_examine_path(), get_save_path()]
+    dirs.extend(info['onlinePath'] for info in ARCHIVE_INFO.values())
+
+    with _FILE_LOCK:
+        for directory in dirs:
+            if not os.path.isdir(directory):
+                continue
+            for old_path in glob.glob(os.path.join(directory, f'{old_prefix}*')):
+                if not os.path.isfile(old_path):
+                    continue
+                new_name = new_prefix + os.path.basename(old_path)[len(old_prefix):]
+                new_path = os.path.join(directory, new_name)
+                if os.path.exists(new_path):
+                    result['failed'].append(old_path)
+                    continue
+                try:
+                    os.rename(old_path, new_path)
+                    result['renamed'].append(new_path)
+                except Exception as e:
+                    logger.warning(f'图库重命名失败 {old_path}: {e}')
+                    result['failed'].append(old_path)
+    if result['renamed']:
+        touch_refresh_stamp()
+    return result

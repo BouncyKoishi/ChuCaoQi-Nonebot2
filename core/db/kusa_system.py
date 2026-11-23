@@ -19,9 +19,16 @@ def get_now():
 # ===== KusaUser 相关操作 =====
 
 async def createKusaUser(userId):
-    """创建生草系统用户"""
+    """创建生草系统用户
+
+    官机账号未完成身份绑定前不创建生草账号（0 资源），
+    绑定成功时由身份服务按绑定类型发放。
+    """
     unifiedUser = await user_db.getUnifiedUser(userId)
     if not unifiedUser:
+        return
+
+    if unifiedUser.qqbotOpenid and not unifiedUser.realQQ:
         return
     
     kusaBase, created = await KusaBase.get_or_create(

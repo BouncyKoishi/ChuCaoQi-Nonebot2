@@ -141,5 +141,5 @@ async def handle_friend_code(ctx: Ctx, args: Message = CommandArg()):
     if not await is_super_admin(userId):
         return
     qq_num = args.extract_plain_text().strip()
-    friendCode = getFriendAddCode(qq_num)
+    friendCode = identity_service.generate_friend_code(qq_num)
     await friend_code_cmd.finish(f"此QQ号的FriendCode为: {friendCode}")

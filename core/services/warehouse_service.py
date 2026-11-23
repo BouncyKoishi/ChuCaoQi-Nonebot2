@@ -331,7 +331,7 @@ class WarehouseService:
         counterparty_ids = []
         for record in records:
             counterparty_id = record.toUser_id if record.fromUser_id == userId else record.fromUser_id
-            if counterparty_id not in counterparty_ids:
+            if counterparty_id is not None and counterparty_id not in counterparty_ids:
                 counterparty_ids.append(counterparty_id)
         qq_map = await user_db.getRealQQsByUserIds(counterparty_ids)
 
@@ -348,7 +348,7 @@ class WarehouseService:
                 'fromUserId': record.fromUser_id,
                 'toUserId': record.toUser_id,
                 'counterpartyId': counterparty_id,
-                'counterpartyQq': qq_map.get(counterparty_id)
+                'counterpartyQq': qq_map.get(counterparty_id) if counterparty_id is not None else None
             })
 
         return {

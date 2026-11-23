@@ -1,5 +1,5 @@
 from tortoise.models import Model
-from tortoise.fields import CharField, IntField, BooleanField, FloatField, DatetimeField, ForeignKeyField, CASCADE
+from tortoise.fields import CharField, IntField, BooleanField, FloatField, DatetimeField, ForeignKeyField, CASCADE, SET_NULL
 
 
 class UnifiedUser(Model):
@@ -29,6 +29,28 @@ class GroupMapping(Model):
     groupName = CharField(max_length=64, null=True)
     allowAutoBind = BooleanField(default=False)
     createdAt = DatetimeField(auto_now_add=True)
+
+
+class IdentityBindRequest(Model):
+    """身份绑定信息
+
+    官机用户发起 !绑定 后生成，由超级管理员确认后执行。
+    同一 openid 只允许一条 pending；同一目标 QQ 被多个 openid 发起时，
+    超管确认其中一条，其余手动驳回。
+    """
+    id = IntField(pk=True)
+    qqbotOpenid = CharField(max_length=128)
+    sourceUserId = IntField(null=True)
+    targetQQ = CharField(max_length=12)
+    bindType = CharField(max_length=16)  # new / merge / rebind
+    status = CharField(max_length=16, default='pending')  # pending / approved / rejected
+    note = CharField(max_length=256, null=True)
+    cardMessageId = CharField(max_length=128, null=True)  # 绑定卡消息ID，审批后用于删除
+    createdAt = DatetimeField(auto_now_add=True)
+    reviewedAt = DatetimeField(null=True)
+
+    class Meta:
+        table = "identity_bind_request"
 
 
 class KusaBase(Model):
@@ -193,8 +215,9 @@ class TransferRecord(Model):
     tradeType 取值：'草' / '物品'
     """
     id = IntField(pk=True)
-    fromUser = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="transfer_records_out", source_field="fromUserId")
-    toUser = ForeignKeyField("models.UnifiedUser", on_delete=CASCADE, related_name="transfer_records_in", source_field="toUserId")
+    # 账号注销（身份合并）后记录保留，双方置空；查询侧需处理 None
+    fromUser = ForeignKeyField("models.UnifiedUser", on_delete=SET_NULL, related_name="transfer_records_out", source_field="fromUserId", null=True)
+    toUser = ForeignKeyField("models.UnifiedUser", on_delete=SET_NULL, related_name="transfer_records_in", source_field="toUserId", null=True)
     tradeType = CharField(max_length=8)
     itemName = CharField(max_length=64, null=True)
     amount = IntField()

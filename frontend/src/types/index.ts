@@ -30,9 +30,9 @@ export interface TransferRecord {
   itemName: string | null
   amount: number
   isIncoming: boolean
-  fromUserId: number
-  toUserId: number
-  counterpartyId: number
+  fromUserId: number | null
+  toUserId: number | null
+  counterpartyId: number | null
   counterpartyQq: string | null
   counterpartyName?: string | null
 }
