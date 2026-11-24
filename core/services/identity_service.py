@@ -311,6 +311,16 @@ async def determine_bind_type(unified_user: UnifiedUser, target_qq: str):
     return 'new', None, None
 
 
+async def has_pending_bind_request(openid: Optional[str]) -> bool:
+    """该 openid 是否已有待审批的绑定申请
+
+    门禁提示据此静默：申请提交后用户再次触发受限指令时不再反复提示。
+    """
+    if not openid:
+        return False
+    return await user_db.getPendingBindRequestByOpenid(str(openid)) is not None
+
+
 async def prepare_bind_request(unified_user: UnifiedUser, target_qq: str):
     """创建绑定信息（同一 openid 只保留一条 pending）
 

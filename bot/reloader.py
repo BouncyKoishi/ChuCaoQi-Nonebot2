@@ -185,7 +185,11 @@ async def _is_unbound_blocked_command(bot, event: Event) -> bool:
         return False
     if _parse_command_name((event.get_plaintext() or '').strip()) not in _blocked_commands:
         return False
-    return not await _is_bound(bot, event)
+    if await _is_bound(bot, event):
+        return False
+    # 已有待审批的绑定申请时静默，避免超管未处理期间用户反复收到提示
+    from core.services.identity_service import has_pending_bind_request
+    return not await has_pending_bind_request(get_platform_user_id(event))
 
 
 bind_hint = _on_message(rule=Rule(_is_unbound_blocked_command), priority=2, block=True)

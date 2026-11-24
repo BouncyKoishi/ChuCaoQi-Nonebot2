@@ -62,6 +62,14 @@ async def _ensure_bound(ctx: PlatformContext) -> bool:
     return bool(user and user.realQQ)
 
 
+async def _bind_hint(ctx: PlatformContext):
+    """未绑定提示；已有待审批申请时返回 None，由调用方静默"""
+    from core.services.identity_service import has_pending_bind_request
+    if await has_pending_bind_request(ctx.platform_user_id):
+        return None
+    return BIND_REQUIRED_HINT
+
+
 async def _resolve_uploader(ctx: PlatformContext) -> str:
     """上传者前缀：真实 QQ 号
 
@@ -192,7 +200,9 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
     if not await _ensure_bound(ctx):
-        await send_finish(commitpic_cmd, BIND_REQUIRED_HINT)
+        hint = await _bind_hint(ctx)
+        if hint:
+            await send_finish(commitpic_cmd, hint)
         return
 
     imgUrls = extractImgUrls(args) or ctx.images
@@ -206,7 +216,9 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
 async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
     # 等待上传期间可能被管理员解除绑定，落盘前再校验一次
     if not await _ensure_bound(ctx):
-        await send_finish(commitpic_cmd, BIND_REQUIRED_HINT)
+        hint = await _bind_hint(ctx)
+        if hint:
+            await send_finish(commitpic_cmd, hint)
         return
     try:
         imgUrls = extractImgUrls(image) or ctx.images
@@ -232,7 +244,7 @@ async def commitpic_reply(event, bot):
     try:
         ctx = get_context(event)
         if not await _ensure_bound(ctx):
-            return BIND_REQUIRED_HINT
+            return await _bind_hint(ctx)
         urls = extract_reply_images(event) or ctx.images
         if not urls:
             return '请引用一条包含图片的消息后发送 #commitpic'

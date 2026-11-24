@@ -15,6 +15,7 @@ from nonebot.adapters import Message
 from utils import nameDetailSplit, extractImgUrls
 from core.config import DATA_DIR
 from core.services.chat_service import ChatService, TextPart, ImagePart, ChatMessage
+from core.services.identity_service import has_pending_bind_request
 from nonebot_plugin_apscheduler import scheduler
 from multi_platform import send_reply, send_finish
 from platform_context import get_context, PlatformContext, Ctx
@@ -97,6 +98,9 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     """
     ctx = get_context(event)
     if ctx.platform == 'qqbot' and not await ctx.get_real_qq():
+        # 绑定申请等待审批期间静默，避免反复提示
+        if await has_pending_bind_request(ctx.platform_user_id):
+            return None
         return BIND_REQUIRED_HINT
     if not await permissionCheck(ctx, 'chat'):
         return None
