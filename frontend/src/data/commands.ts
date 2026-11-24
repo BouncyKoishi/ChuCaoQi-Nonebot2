@@ -875,11 +875,12 @@ export const commands: Command[] = [
   },
   {
     name: '口球',
-    params: 'qq=QQ号 sec=秒数',
+    params: '@成员 sec=秒数（或 qq=QQ号 sec=秒数）',
     description: '消耗草（1草/秒）给指定用户设置口球（群内禁言）。sec=0时为解除口球。',
     details: [
       '费用为秒数对应的草量，如sec=60则消耗60草',
-      'sec=0时为解除禁言，不消耗草'
+      'sec=0时为解除禁言，不消耗草',
+      'QQ 官方机器人端必须用 @成员 指定目标；OneBot 端两种写法均可'
     ],
     tags: [{ text: '群聊', type: 'warning' }],
     category: '群聊互动',
@@ -1018,7 +1019,8 @@ export const commands: Command[] = [
     details: [
       '可直接附带图片发送，也可先发指令再在后续消息中上传图片',
       '上传的图片先存入待分类目录，需管理员分类后才会进入正式图库',
-      '通过MD5校验自动检测并拦截图库中已有的图片'
+      '通过MD5校验自动检测并拦截图库中已有的图片',
+      'QQ 官方机器人账号需先完成身份绑定（!绑定）才能上传'
     ],
     tags: [{ text: '群聊', type: 'warning' }],
     category: '群聊互动',
@@ -1032,7 +1034,8 @@ export const commands: Command[] = [
       '回复一张图片消息，回复内容输入 #commitpic',
       '与 commitpic 指令功能一致，图片进入待分类目录等待管理员分类',
       '通过MD5校验自动检测并拦截图库中已有的图片',
-      '回复的多张图片中仅上传第一张'
+      '回复的多张图片中仅上传第一张',
+      'QQ 官方机器人账号需先完成身份绑定（!绑定）才能上传'
     ],
     tags: [{ text: '回复触发', type: 'info' }, { text: '群聊', type: 'warning' }],
     category: '群聊互动',
@@ -1061,12 +1064,13 @@ export const commands: Command[] = [
   {
     name: '#nsfw',
     params: '',
-    description: '回复一张图片，检测该图片是否包含NSFW内容，返回adult/teen/everyone三个分类的概率值。回复他人图片时有1/8概率触发黑暗决斗机制。',
+    description: '回复一张图片，检测该图片是否包含NSFW内容，返回adult/teen/everyone三个分类的概率值。回复他人图片时有1/8概率触发黑暗决斗机制（仅 OneBot 端）。',
     details: [
       '使用ModerateContent API进行NSFW检测',
       '在特定群中有3小时冷却时间',
       '黑暗决斗：如果图片是色图，发图者被口球；否则检测者被口球',
-      '无法被口球的目标会收到除草器的一拳（emoji反应）'
+      '无法被口球的目标会收到除草器的一拳（emoji反应）',
+      'QQ 官方机器人端只做检测，不触发决斗'
     ],
     tags: [{ text: '回复触发', type: 'info' }, { text: '群聊', type: 'warning' }],
     category: '群聊互动',
@@ -1075,18 +1079,93 @@ export const commands: Command[] = [
   {
     name: '#nailong',
     params: '',
-    description: '回复一张图片，检测该图片的奶龙指数（0-100），大于50判定为奶龙图。回复他人图片时有1/8概率触发奶龙决斗机制。',
+    description: '回复一张图片，检测该图片的奶龙指数（0-100），大于50判定为奶龙图。回复他人图片时有1/8概率触发奶龙决斗机制（仅 OneBot 端）。',
     details: [
       '使用本地ResNet50模型进行奶龙检测',
       '在特定群中有3小时冷却时间',
       '奶龙决斗：如果奶龙指数>50，发图者被口球；否则检测者被口球',
-      '无法被口球的目标会收到除草器的一拳（emoji反应）'
+      '无法被口球的目标会收到除草器的一拳（emoji反应）',
+      'QQ 官方机器人端只做检测，不触发决斗'
     ],
     tags: [{ text: '回复触发', type: 'info' }, { text: '群聊', type: 'warning' }],
     category: '群聊互动',
     subcategory: '其他互动'
   },
 
+  {
+    name: '我的身份',
+    params: '',
+    description: '查看当前账号的统一用户 ID 与各项身份绑定状态。',
+    details: [
+      '显示统一用户 ID',
+      '显示 QQ 身份是否已绑定，已绑定时显示 QQ 号',
+      '显示官方 Bot 身份是否已绑定',
+      '显示 Web 端 token 是否已设置及创建时间',
+      '需已创建账号后才能查询'
+    ],
+    category: '实用功能',
+    subcategory: '身份'
+  },
+  {
+    name: '绑定',
+    params: '<QQ号>',
+    description: '在官方 Bot 端把当前账号与指定 QQ 号绑定，由超级管理员确认。',
+    details: [
+      '仅官方 Bot 端可用，且需在开发者指定的认证群中发起',
+      '格式：!绑定 123456789（5~12 位数字）',
+      'NapCat 端 QQ 号即身份，无需绑定',
+      '提交后生成绑定信息卡并提及超级管理员，等待管理员点击按钮确认',
+      '按情况分为新建绑定、合并已有账号、换绑三种；该 QQ 号已绑定其它 OpenID 时会直接提示无法绑定'
+    ],
+    tags: [{ text: '官方 Bot', type: 'info' }],
+    category: '实用功能',
+    subcategory: '身份'
+  },
+  {
+    name: '群映射',
+    params: '[QQ群号]',
+    description: '将当前官方群映射为指定 QQ 群号，仅超级管理员可用。',
+    details: [
+      '仅在群聊中可用',
+      '官方 Bot 端为写入入口：!群映射 123456789 建立当前官方群到该 QQ 群的映射',
+      '不填参数时查询本群映射状态',
+      'NapCat 端为只读查询：显示本群是否已绑定官方 Bot 群',
+      '映射后官方群可复用对应 QQ 群的配置与判定'
+    ],
+    tags: [{ text: '需超级管理员', type: 'warning' }],
+    category: '实用功能',
+    subcategory: '身份'
+  },
+  {
+    name: '生成token',
+    params: '[用户ID或QQ号]',
+    description: '生成或重置 Web 端登录 token。',
+    details: [
+      '仅私聊可用',
+      '不填参数时为自己生成 token，已有 token 会被覆盖',
+      '超级管理员可带参数代他人生成：支持统一用户 ID 或 QQ 号',
+      '账号需已完成身份绑定（realQQ）才能生成 Web token',
+      '生成后请在 Web 端登录页使用，并妥善保管'
+    ],
+    tags: [{ text: '仅私聊', type: 'warning' }],
+    category: '实用功能',
+    subcategory: '身份'
+  },
+  {
+    name: '查看token',
+    aliases: ['查询token'],
+    params: '',
+    description: '查看当前账号的 Web 端登录 token。',
+    details: [
+      '仅私聊可用',
+      '显示 token 内容及创建时间',
+      '账号需已完成身份绑定（realQQ）才能查看 token',
+      '未设置时会提示先使用 !生成token'
+    ],
+    tags: [{ text: '仅私聊', type: 'warning' }],
+    category: '实用功能',
+    subcategory: '身份'
+  },
   {
     name: 'roll',
     params: 'XdY 或 XdY-Z',
@@ -1611,7 +1690,7 @@ export const categories = [
   { name: '生草系统', subcategories: ['生草', '仓库与能力', '商店与道具', '用户交互', 'G市', '统计'] },
   { name: '抽奖系统', subcategories: ['基础指令', '自制物品'] },
   { name: '群聊互动', subcategories: ['怪话', '口球与睡眠', '图库', '其他互动'] },
-  { name: '实用功能', subcategories: ['Roll点', '占卜', '信息查询', '图片搜索', '其他'] },
+  { name: '实用功能', subcategories: ['Roll点', '占卜', '信息查询', '图片搜索', '身份', '其他'] },
   { name: 'ChatBot', subcategories: ['基础对话', '角色设定', '模型与存档'] },
   { name: '杂项', subcategories: ['杂项'] }
 ]
