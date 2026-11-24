@@ -24,13 +24,14 @@ import traceback
 from typing import Optional, Dict
 from collections import deque
 from nonebot import on_command, on_message, on_notice
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PokeNotifyEvent, Bot
+from nonebot.adapters import Bot as BaseBot, Event as BaseEvent
+from nonebot.adapters.onebot.v11 import PokeNotifyEvent, Bot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot import get_driver
 from nonebot_plugin_apscheduler import scheduler
 
-from multi_platform import get_napcat_bot, UnifiedMessageEvent
+from multi_platform import UnifiedMessageEvent
 from platform_context import get_context
 from kusa_base import plugin_config
 from core.config import DATA_DIR
@@ -137,11 +138,15 @@ def get_recent_used(group_id: int) -> deque:
 _bot_nickname_cache: Dict[int, str] = {}
 
 
-async def get_bot_nickname(bot: Bot, group_num: int) -> str:
-    """获取bot在群里的昵称，按群缓存，避免重复API调用"""
+async def get_bot_nickname(ctx, group_num: int) -> str:
+    """获取bot在群里的昵称，按群缓存，避免重复API调用（成员信息接口仅 OneBot 可用）"""
+    if ctx.platform != 'onebot' or ctx.bot is None:
+        return 'Bot'
     if group_num not in _bot_nickname_cache:
         try:
-            _bot_nickname_cache[group_num] = await get_group_member_nickname(bot, group_num, int(bot.self_id))
+            _bot_nickname_cache[group_num] = await get_group_member_nickname(
+                ctx.bot, group_num, int(ctx.bot.self_id)
+            )
         except Exception:
             _bot_nickname_cache[group_num] = 'Bot'
     return _bot_nickname_cache[group_num]
@@ -192,14 +197,18 @@ def get_model_sentence_list(group_num: int) -> list:
     return [s for s in get_sentence_list(group_num) if is_valid_for_model(s)]
 
 
-def is_valid_cache_message(event: GroupMessageEvent) -> tuple[bool, str, int]:
-    for seg in event.get_message():
-        if seg.type in ('image', 'at', 'face', 'share', 'music', 'video', 'record', 'file'):
-            return False, '', 0
-    msg = event.get_plaintext()
+def is_valid_cache_message(ctx) -> tuple[bool, str, int]:
+    if ctx.platform == 'onebot':
+        for seg in ctx.event.get_message():
+            if seg.type in ('image', 'at', 'face', 'share', 'music', 'video', 'record', 'file'):
+                return False, '', 0
+    elif ctx.images or ctx.mentions:
+        # 官bot 非文字内容以附件形式出现，含图或 @ 均视为非纯文本
+        return False, '', 0
+    msg = ctx.text
     if not msg or msg.startswith('!') or msg.startswith('#'):
         return False, '', 0
-    return True, msg, event.time
+    return True, msg, ctx.timestamp or int(time.time())
 
 
 def match_strange_word(reply: str, model_list: list) -> Optional[str]:
@@ -368,9 +377,9 @@ async def pick_strange_word_by_context(group_id: int, source: str = 'auto',
     return feedback_log.Decision(matched, event_id)
 
 
-async def send_auto_reply(bot: Bot, group_num: int, reply: str, poke_time: int = 0,
+async def send_auto_reply(ctx, group_num: int, reply: str, poke_time: int = 0,
                           event_id: Optional[str] = None):
-    """发送自动怪话回复并更新所有状态"""
+    """发送自动怪话回复并更新所有状态（走当前平台 bot，官bot 为被动回复）"""
     get_recent_used(group_num).append(reply)
     poke_last_reply[group_num] = reply
     update_poke_cache(group_num, reply, poke_time or int(time.time()))
@@ -378,12 +387,12 @@ async def send_auto_reply(bot: Bot, group_num: int, reply: str, poke_time: int =
     if buf:
         buf.on_replied()
         buf.add_bot_reply(
-            int(bot.self_id),
-            await get_bot_nickname(bot, group_num),
+            str(ctx.bot.self_id) if ctx.bot else '',
+            await get_bot_nickname(ctx, group_num),
             reply,
             poke_time or int(time.time()),
         )
-    sent = await bot.send_group_msg(group_id=group_num, message=reply)
+    sent = await ctx.send(reply)
     feedback_log.bind_event(event_id, reply, group_num, feedback_log.extract_message_id(sent))
 
 
@@ -402,7 +411,7 @@ async def 怪话_cmd(event, bot):
     text, imgUrls = extract_reply_content(event)
     if not text and not imgUrls:
         return '请回复一条包含文字或图片的消息^ ^'
-    group_num = getattr(event, 'group_id', default_group_num)
+    group_num = _group_num_from_ctx(ctx)
     decision = None
     if allow_model and random.random() < 0.8:
         decision = await get_sentence_advance(
@@ -528,18 +537,22 @@ record_message_matcher = on_message(priority=5, block=False)
 
 
 @record_message_matcher.handle()
-async def record_message(event: MessageEvent):
-    if not isinstance(event, GroupMessageEvent):
+async def record_message(bot: BaseBot, event: BaseEvent):
+    ctx = get_context(event, bot)
+    if not ctx.is_group:
         return
 
-    group_num = event.group_id
-    user_id = event.user_id
-    bot_self_id = int(bot_id) if (bot_id := getattr(event, 'self_id', None)) else None
+    # 群标识优先取映射后的 QQ 群号（官bot 未映射时为 group_openid，不匹配任何配置）
+    group_key = ctx.group_key
+    group_num = int(group_key) if group_key and str(group_key).isdigit() else group_key
+    user_id = ctx.platform_user_id
+    bot_self_id = str(bot.self_id)
 
-    # 埋点反馈只观察窗口内的回复/复读/表情，不写任何记忆。
-    feedback_log.observe_message(event, bot_self_id)
+    # 埋点反馈只观察窗口内的回复/复读/表情，不写任何记忆（表情/回复统计依赖 OneBot 通知）
+    if ctx.platform == 'onebot':
+        feedback_log.observe_message(event, bot_self_id)
 
-    valid, msg, timestamp = is_valid_cache_message(event)
+    valid, msg, timestamp = is_valid_cache_message(ctx)
 
     # 拍一拍缓存更新
     if valid and group_num in poke_trigger_groups and user_id != bot_self_id:
@@ -550,24 +563,26 @@ async def record_message(event: MessageEvent):
     if valid and user_id != bot_self_id and (group_num in auto_reply_groups or group_num in poke_trigger_groups):
         if group_num not in group_buffers:
             group_buffers[group_num] = GroupChatBuffer()
-        bot = get_napcat_bot()
-        nickname = await get_group_member_nickname(bot, group_num, user_id) if bot else ''
+        if ctx.platform == 'onebot':
+            nickname = await get_group_member_nickname(bot, group_num, int(user_id))
+        else:
+            nickname = ctx.nickname
         group_buffers[group_num].add(
             user_id=user_id,
             name=nickname,
             content=msg,
             timestamp=timestamp,
-            message_id=event.message_id,
+            message_id=ctx.message_id,
         )
 
-        if bot and group_num in auto_reply_groups and should_auto_reply(group_num):
+        if group_num in auto_reply_groups and should_auto_reply(group_num):
             try:
                 decision = await pick_strange_word_by_context(
                     group_num, source='auto', current_user_id=user_id
                 )
                 if decision:
                     await send_auto_reply(
-                        bot, group_num, decision.text, event_id=decision.event_id
+                        ctx, group_num, decision.text, event_id=decision.event_id
                     )
                     print(f'[怪话] 自动回复，群{group_num}: {decision.text[:30]}...')
                 else:
@@ -584,12 +599,13 @@ async def record_message(event: MessageEvent):
 
     global sentence_list_dict
 
-    for seg in event.get_message():
-        if seg.type in ('image', 'at', 'face', 'share', 'music', 'video', 'record', 'file'):
+    if ctx.platform == 'onebot':
+        for seg in event.get_message():
+            if seg.type in ('image', 'at', 'face', 'share', 'music', 'video', 'record', 'file'):
+                return
+        if getattr(event, 'reply', None):
             return
 
-    if hasattr(event, 'reply') and event.reply:
-        return
     if receive_freeze or not msg:
         return
     # 字面CQ码防注入：nonebot2 发送侧会把 str 中的 "[CQ:xxx]" 重新解析成真实消息段，
@@ -598,7 +614,8 @@ async def record_message(event: MessageEvent):
         return
     if msg in sentence_list_dict.get(group_num, []):
         return
-    if '\n' in msg or user_id in not_record_members:
+    # 配置里的禁录成员按 QQ 号配置，官bot 的 member_openid 无法对应，仅 OneBot 生效
+    if '\n' in msg or (ctx.platform == 'onebot' and int(user_id) in not_record_members):
         return
 
     for word in not_record_words:
@@ -730,7 +747,7 @@ async def handle_poke(bot: Bot, event: PokeNotifyEvent):
             else:
                 reply = get_random_sentence(group_num)
                 event_id = None
-            await send_auto_reply(bot, group_num, reply, poke_time, event_id=event_id)
+            await send_auto_reply(get_context(event, bot), group_num, reply, poke_time, event_id=event_id)
             print(f'[怪话] 拍一拍触发(ChatBuffer)，群 {group_num}: {reply[:30]}...')
         except Exception as e:
             print(f'[怪话] 拍一拍处理失败: {e}')

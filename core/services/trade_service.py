@@ -4,8 +4,6 @@
 不依赖任何 bot 基础设施，仅依赖 core.db 和 core.config
 """
 
-from core.config import plugin_config
-
 
 async def buying(
     userId: int,
@@ -35,13 +33,6 @@ async def buying(
             return False
 
     await item_db.changeItemAmount(userId, item_name_buying, item_amount_buying)
-
-    bot_qq = plugin_config.get('qq', {}).get('bot', 0)
-
-    if is_using_adv_kusa:
-        await base_db.changeAdvKusa(bot_qq, total_price)
-    else:
-        await base_db.changeKusa(bot_qq, total_price)
 
     cost_item_name = '草之精华' if is_using_adv_kusa else '草'
     await base_db.setTradeRecord(
@@ -80,14 +71,10 @@ async def selling(
 
     await item_db.changeItemAmount(userId, item_name_selling, -item_amount_selling)
 
-    bot_qq = plugin_config.get('qq', {}).get('bot', 0)
-
     if is_using_adv_kusa:
         await base_db.changeAdvKusa(userId, total_price)
-        await base_db.changeAdvKusa(bot_qq, -total_price)
     else:
         await base_db.changeKusa(userId, total_price)
-        await base_db.changeKusa(bot_qq, -total_price)
 
     gain_item_name = '草之精华' if is_using_adv_kusa else '草'
     await base_db.setTradeRecord(

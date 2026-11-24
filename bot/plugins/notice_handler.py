@@ -1,7 +1,7 @@
-import nonebot
-from nonebot import on_request, get_bot, on_notice
+from nonebot import on_request
 from nonebot.adapters.onebot.v11 import FriendRequestEvent, GroupRequestEvent, LifecycleMetaEvent, Bot
-from kusa_base import plugin_config, send_log, is_super_admin, append_friend_list
+from kusa_base import plugin_config, send_log, send_group_msg, is_super_admin, append_friend_list
+from multi_platform import get_napcat_bot
 from platform_context import get_context, Ctx
 from core.services import identity_service
 
@@ -19,7 +19,7 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
 
     adder_qq = event.user_id
     st = f"{adder_qq}申请进群。加群备注为：" + event.comment
-    await bot.send_group_msg(group_id=groupNum, message=st)
+    await send_group_msg(groupNum, st)
     await send_log(f'群聊{groupNum}:' + st)
 
     # 目前只对SYSU主群开启自动入群管理，其它群聊仅提示
@@ -41,9 +41,9 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
                     approve=False,
                     reason='触发风控，已自动拒绝加群申请',
                 )
-                await bot.send_group_msg(
-                    group_id=groupNum,
-                    message='触发关键词风控，已自动拒绝加群申请。如有需要，请联系该用户通过邀请方式进群。',
+                await send_group_msg(
+                    groupNum,
+                    '触发关键词风控，已自动拒绝加群申请。如有需要，请联系该用户通过邀请方式进群。',
                 )
                 await send_log(f'群聊{groupNum}触发关键词风控（{keyword}），已拒绝{adder_qq}的申请')
                 return
@@ -64,9 +64,9 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
 
         if warnReasons:
             reasonText = '、'.join(warnReasons)
-            await bot.send_group_msg(
-                group_id=groupNum,
-                message=f'注意：{adder_qq} 的加群申请{reasonText}，请管理员人工确认。',
+            await send_group_msg(
+                groupNum,
+                f'注意：{adder_qq} 的加群申请{reasonText}，请管理员人工确认。',
             )
             await send_log(f'群聊{groupNum}触发提示（{reasonText}），已保留{adder_qq}的申请，等待人工审核')
 
@@ -105,18 +105,12 @@ async def handle_meta_event(event: LifecycleMetaEvent):
     # 当 OneBot 连接建立时，初始化好友列表
     if event.sub_type == "connect":
         try:
-            # 获取所有Bot，找到OneBot V11的Bot
-            bots = nonebot.get_bots()
-            onebot_v11_bot = None
-            for bot_id, bot in bots.items():
-                if hasattr(bot, 'get_friend_list'):
-                    onebot_v11_bot = bot
-                    break
-            
+            # 获取 OneBot V11 Bot
+            onebot_v11_bot = get_napcat_bot()
             if not onebot_v11_bot:
-                print(f'未找到支持好友列表的OneBot V11 Bot')
+                print(f'未找到 OneBot V11 Bot')
                 return
-            
+
             friendListInfo = await onebot_v11_bot.get_friend_list()
             friendListQQ = [str(friend['user_id']) for friend in friendListInfo]
             await append_friend_list(friendListQQ)

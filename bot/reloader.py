@@ -140,14 +140,14 @@ async def _is_bound(bot, event: Event) -> bool:
     platform_id = get_platform_user_id(event)
     if not platform_id:
         return False
-    try:
-        user = await user_db.getUnifiedUserByPlatform('qqbot', platform_id)
-    except Exception:
-        return False
+    user = await user_db.getUnifiedUserByPlatform('qqbot', platform_id)
     return bool(user and user.realQQ)
 
 
 bound_required = Permission(_is_bound)
+
+# 未绑定提示统一文案：门禁 matcher 与各插件的手动门禁共用
+BIND_REQUIRED_HINT = '该指令需要先完成身份绑定，请发送 !绑定 <你的QQ号>'
 
 # 被门禁拦截的指令名（含别名），用于给出绑定提示
 _blocked_commands: set = set()
@@ -193,4 +193,4 @@ bind_hint = _on_message(rule=Rule(_is_unbound_blocked_command), priority=2, bloc
 
 @bind_hint.handle()
 async def _send_bind_hint():
-    await bind_hint.finish('该指令需要先完成身份绑定，请发送 !绑定 <你的QQ号>')
+    await bind_hint.finish(BIND_REQUIRED_HINT)

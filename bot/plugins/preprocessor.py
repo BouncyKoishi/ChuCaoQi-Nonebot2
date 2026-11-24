@@ -20,6 +20,7 @@ import time
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotMessageEvent
 from nonebot.adapters.onebot.v11.event import PokeNotifyEvent
+from nonebot.adapters.qq import C2CMessageCreateEvent, GroupAtMessageCreateEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import IgnoredException
 
@@ -31,14 +32,7 @@ from platform_context import (
     is_group_message,
 )
 
-try:
-    from nonebot.adapters.qq import C2CMessageCreateEvent, GroupAtMessageCreateEvent
-
-    QQ_MESSAGE_EVENTS = (GroupAtMessageCreateEvent, C2CMessageCreateEvent)
-except ImportError:
-    QQ_MESSAGE_EVENTS = ()
-
-MESSAGE_EVENTS = (OneBotMessageEvent,) + QQ_MESSAGE_EVENTS
+MESSAGE_EVENTS = (OneBotMessageEvent, GroupAtMessageCreateEvent, C2CMessageCreateEvent)
 
 # 统一指令入口：! 为业务指令， # 为 reply_commands 的回复类指令
 COMMAND_PREFIXES = ('!', '#')

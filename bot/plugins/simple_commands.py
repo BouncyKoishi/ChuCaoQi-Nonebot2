@@ -73,16 +73,9 @@ async def handle_醒了(ctx: Ctx):
 async def sleep(matcher, ctx: PlatformContext, msg, base, summa, size):
     allow_list = plugin_config.get('group', {}).get('adminAuthGroup', [])
     group_key = ctx.group_key
-    user_qq = await ctx.get_real_qq()
-    
-    if not group_key or not user_qq:
-        return
 
-    if not ctx.capabilities.can_ban:
-        msg += '该功能仅在OneBot平台可用'
-        await send_finish(matcher, msg)
-        return
-
+    # 禁言统一走 ctx.ban：OneBot 用 QQ 号，官机用 member_openid，
+    # 无需真实 QQ 号，也不再按平台能力提前拒绝。
     if group_key in {str(g) for g in allow_list}:
         durTime = sleepTimeCalculation(base, summa, size)
         now = datetime.datetime.now()
@@ -197,10 +190,6 @@ async def _push_timeout_cancel(session_id: str):
 @推送_cmd.handle()
 async def handle_推送(bot: Bot, event: Event, state: T_State):
     ctx = get_context(event)
-    # 推送最终经 NapCat 发往指定 QQ 群，官bot 无法复用
-    if ctx.platform != 'onebot':
-        await send_finish(推送_cmd, '该功能暂不支持 QQ 官方 Bot')
-        return
     # 首次发起推送
     if "push_state" not in state:
         user_id = await ctx.get_user_id()
@@ -225,7 +214,8 @@ async def handle_推送(bot: Bot, event: Event, state: T_State):
         state["push_content"] = args
         state["push_target"] = str(log_group)
 
-        # 获取 bot 所在的群集合，用于切换群号时校验（获取失败则跳过校验）
+        # OneBot：以 bot 实际所在群校验切换的群号（获取失败则跳过校验）
+        # 官机：以是否建立群映射校验（见确认阶段）
         valid_groups = None
         napcat_bot = get_napcat_bot()
         if napcat_bot:
@@ -269,12 +259,19 @@ async def handle_推送(bot: Bot, event: Event, state: T_State):
         _push_end_session(session_id, state)
         await send_finish(推送_cmd, '已取消推送')
     elif reply_text.isdigit():
-        if valid_groups is None or reply_text in valid_groups:
+        if ctx.platform == 'qqbot':
+            from core.services.identity_service import get_openid_by_onebot_group_id
+            allowed = get_openid_by_onebot_group_id(reply_text) is not None
+            reject_text = f'群聊{reply_text}未建立官方 Bot 群映射，无法推送。'
+        else:
+            allowed = valid_groups is None or reply_text in valid_groups
+            reject_text = f'bot 不在群聊{reply_text}中，无法推送。'
+        if allowed:
             state["push_target"] = reply_text
             await 推送_cmd.reject(f'你的消息将被推送至群聊{reply_text}，确认？[y/n/切换群号]')
         else:
             await 推送_cmd.reject(
-                f'bot 不在群聊{reply_text}中，无法推送。当前目标群仍为{target_group}，确认？[y/n/切换群号]'
+                f'{reject_text}当前目标群仍为{target_group}，确认？[y/n/切换群号]'
             )
     else:
         await 推送_cmd.reject(

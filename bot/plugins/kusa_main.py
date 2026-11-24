@@ -22,7 +22,7 @@ import core.db.kusa_field as field_db
 import core.db.user as user_db
 from core.db.models import KusaBase
 from utils import convertNumStrToInt, parse_transfer_target_args
-from kusa_base import plugin_config, send_private_msg, send_group_msg, get_bot_qq
+from kusa_base import plugin_config, send_private_msg, send_group_msg
 from core.services import WarehouseService
 from multi_platform import send_finish
 from platform_context import Ctx
@@ -365,6 +365,49 @@ async def handle_flag_set(ctx: Ctx, args: Message = CommandArg()):
 
 kusa_ban_cmd = on_command("口球", priority=5, block=True)
 
+
+def _ban_fail_text(reason) -> str:
+    if reason == 'no_permission':
+        return '口球失败：机器人不是管理员或没有权限'
+    if reason == 'rate_limited':
+        return '口球失败：操作太频繁，请稍后再试'
+    if reason == 'invalid_target':
+        return '口球失败：无法识别目标成员'
+    return f'口球失败：{reason or "未知错误"}'
+
+
+async def _handle_kusa_ban_qqbot(ctx: Ctx, user_id: int, seconds_match):
+    """官bot 口球：目标只能由 @成员 指定（平台只提供 member_openid）"""
+    mentions = ctx.mentions
+    if len(mentions) != 1:
+        hint = '一次只能口球一个人，请只 @ 一个成员' if mentions else '未识别到目标成员，请 @ 要口球的成员'
+        await send_finish(kusa_ban_cmd, f'{hint}\n正确格式：!口球 @成员 sec=秒数')
+        return
+    if not seconds_match:
+        await send_finish(kusa_ban_cmd, '参数不正确，正确格式：!口球 @成员 sec=秒数')
+        return
+
+    target = mentions[0]
+    seconds = int(seconds_match.group(0))
+
+    if seconds <= 0:
+        result = await ctx.ban(0, target)
+        status_msg = '已解除相关人员的口球(如果有的话)' if result.ok else _ban_fail_text(result.reason)
+    else:
+        if not await base_db.deductKusa(user_id, seconds):
+            await send_finish(kusa_ban_cmd, '你不够草^ ^')
+            return
+        result = await ctx.ban(seconds, target)
+        if not result.ok:
+            # 口球失败退还草，避免扣了草但没生效
+            await base_db.changeKusa(user_id, seconds)
+            await send_finish(kusa_ban_cmd, _ban_fail_text(result.reason))
+            return
+        status_msg = '已经送出^ ^'
+
+    await send_finish(kusa_ban_cmd, status_msg)
+
+
 @kusa_ban_cmd.handle()
 async def handle_kusa_ban(
     bot: Bot,
@@ -372,21 +415,29 @@ async def handle_kusa_ban(
     args: Message = CommandArg()
 ):
     """处理口球命令"""
-    if not ctx.capabilities.can_ban_by_qq:
-        await send_finish(kusa_ban_cmd, '该功能暂不支持 QQ 官方 Bot')
+    if not ctx.capabilities.can_ban:
+        await send_finish(kusa_ban_cmd, '该功能暂不支持当前平台')
+        return
+
+    user_id = await ctx.get_user_id(auto_create=False)
+    if not user_id:
+        await send_finish(kusa_ban_cmd, '获取用户信息失败')
+        return
+
+    stripped_arg = args.extract_plain_text().strip()
+    seconds_match = re.search(r'(?<=(sec|SEC)=)\d+', stripped_arg)
+
+    if ctx.platform == 'qqbot':
+        await _handle_kusa_ban_qqbot(ctx, user_id, seconds_match)
         return
 
     group_id = int(ctx.group_id) if ctx.group_id else None
-    user_id = await ctx.get_user_id(auto_create=False)
-
-    if not group_id or not user_id:
+    if not group_id:
         await send_finish(kusa_ban_cmd, '获取用户信息失败')
         return
 
     status_msg = '已经送出^ ^'
-    stripped_arg = args.extract_plain_text().strip()
     receiver_qq_match = re.search(r'(?<=(QQ|qq)=)\d+', stripped_arg)
-    seconds_match = re.search(r'(?<=(sec|SEC)=)\d+', stripped_arg)
 
     if receiver_qq_match and seconds_match:
         receiver_qq = int(receiver_qq_match.group(0))
@@ -396,7 +447,6 @@ async def handle_kusa_ban(
             cost_kusa = seconds
             if await base_db.deductKusa(user_id, cost_kusa):
                 await bot.set_group_ban(group_id=group_id, user_id=receiver_qq, duration=seconds)
-                await base_db.changeKusa(await get_bot_qq(), cost_kusa)
             else:
                 status_msg = '你不够草^ ^'
         else:
@@ -623,7 +673,6 @@ async def handle_vip_upgrade(ctx: Ctx):
 
     if await base_db.deductKusa(user_id, cost_kusa):
         await KusaBase.filter(user_id=user_id).update(vipLevel=new_level)
-        await base_db.changeKusa(await get_bot_qq(), cost_kusa)
         await base_db.setTradeRecord(
             userId=user_id,
             tradeType='信息员升级',
@@ -659,7 +708,6 @@ async def handle_vip_upgrade_2(ctx: Ctx):
 
     if await base_db.deductKusa(user_id, cost_adv_point, type='advKusa'):
         await KusaBase.filter(user_id=user_id).update(vipLevel=new_level)
-        await base_db.changeAdvKusa(await get_bot_qq(), cost_adv_point)
         await base_db.setTradeRecord(
             userId=user_id,
             tradeType='进阶信息员升级',

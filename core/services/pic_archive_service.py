@@ -17,24 +17,14 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 import sys
 
 import httpx
-from filelock import FileLock
 
 from core.config import plugin_config, DATA_DIR
 
 import logging
 logger = logging.getLogger(__name__)
 
-# 图库文件操作锁：分类 / 删除 / 私藏 / 上传写入 / 合并重命名互斥
-# 用文件锁而非进程内锁：bot 与 backend 是两个进程，需要跨进程互斥
-_LOCK_DIR = os.path.join(DATA_DIR, 'locks')
-os.makedirs(_LOCK_DIR, exist_ok=True)
-_FILE_LOCK = FileLock(os.path.join(_LOCK_DIR, 'pic_archive.lock'), timeout=60)
-
-# 图库缓存刷新标记：改名等跨进程文件变更后写入，bot 端比对 mtime 重建 onlineFilePaths
-_REFRESH_STAMP = os.path.join(DATA_DIR, 'picArchive', '.refresh')
-
 # 上传文件名约定：{uploader}-{timestamp}-pic_{i}{ext}
-# uploader 为真实 QQ 号，或未绑定官机用户的 u<统一ID>；下载中的临时文件不带 uploader 前缀
+# uploader 为真实 QQ 号；下载中的临时文件不带 uploader 前缀
 TEMP_FILE_PREFIX = '.upload-'
 
 
@@ -246,8 +236,7 @@ def classify_pic(filename: str, category_key: str) -> Dict[str, Any]:
     target_dir = ARCHIVE_INFO[category_key]['onlinePath']
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, safe_name)
-    with _FILE_LOCK:
-        shutil.move(src_path, target_path)
+    shutil.move(src_path, target_path)
 
     return {
         'success': True,
@@ -264,8 +253,7 @@ def delete_pic(filename: str) -> Dict[str, Any]:
     if not src_path or not os.path.isfile(src_path):
         return {'success': False, 'error': '文件不存在'}
 
-    with _FILE_LOCK:
-        os.remove(src_path)
+    os.remove(src_path)
     return {'success': True, 'message': '已删除'}
 
 def save_pic(filename: str) -> Dict[str, Any]:
@@ -278,8 +266,7 @@ def save_pic(filename: str) -> Dict[str, Any]:
     save_dir = get_save_path()
     os.makedirs(save_dir, exist_ok=True)
     target_path = os.path.join(save_dir, safe_name)
-    with _FILE_LOCK:
-        shutil.move(src_path, target_path)
+    shutil.move(src_path, target_path)
 
     return {'success': True, 'message': '已移到私藏'}
 
@@ -348,19 +335,19 @@ def _safe_remove(path: str) -> None:
 
 
 def _commit_download(temp_path: str, file_path: str, md5_set: Set[str]) -> str:
-    """在跨进程锁内完成落盘与查重
+    """在工作线程内完成落盘与查重
 
-    FileLock 是阻塞锁（跨进程持有时最长等 60s），必须在工作线程里执行，
-    不能直接跑在 asyncio 事件循环上。返回 'duplicate' 或 'success'。
+    查重是尽力而为：并发上传同一张图时可能都通过检查，
+    极端情况下会存成两份，不影响已有文件。
+    返回 'duplicate' 或 'success'。
     """
-    with _FILE_LOCK:
-        file_md5 = compute_md5(temp_path)
-        if file_md5 in md5_set:
-            _safe_remove(temp_path)
-            return 'duplicate'
-        os.replace(temp_path, file_path)
-        md5_set.add(file_md5)
-        return 'success'
+    file_md5 = compute_md5(temp_path)
+    if file_md5 in md5_set:
+        _safe_remove(temp_path)
+        return 'duplicate'
+    os.replace(temp_path, file_path)
+    md5_set.add(file_md5)
+    return 'success'
 
 
 async def download_and_check_dup(
@@ -421,8 +408,7 @@ async def download_and_check_dup(
                 _safe_remove(temp_path)
                 oversized_count += 1
                 continue
-            # 落盘与查重在同一把跨进程锁内完成，避免与合并重命名交错；
-            # 锁是阻塞式的，放到线程里执行，不卡事件循环
+            # 落盘与查重放到线程里，避免 md5 计算阻塞事件循环
             status = await asyncio.to_thread(_commit_download, temp_path, file_path, md5_set)
             if status == 'duplicate':
                 duplicate_count += 1
@@ -432,64 +418,3 @@ async def download_and_check_dup(
             logger.warning(f'download_and_check_dup 下载失败 {url}: {e}')
             _safe_remove(temp_path)
     return success_count, duplicate_count, oversized_count, md5_set
-
-
-def get_refresh_stamp_path() -> str:
-    return _REFRESH_STAMP
-
-
-def get_refresh_stamp_mtime() -> float:
-    """读取图库变更标记的 mtime，缺失时返回 0"""
-    try:
-        return os.path.getmtime(_REFRESH_STAMP)
-    except OSError:
-        return 0.0
-
-
-def touch_refresh_stamp() -> None:
-    """写入图库变更标记，通知其它进程（如 bot）重建缓存"""
-    try:
-        os.makedirs(os.path.dirname(_REFRESH_STAMP), exist_ok=True)
-        with open(_REFRESH_STAMP, 'w', encoding='utf-8') as f:
-            f.write(str(datetime.now().timestamp()))
-    except OSError as e:
-        logger.warning(f'图库刷新标记写入失败: {e}')
-
-
-def rename_uploader_files(source_id: int, target_id: int) -> Dict[str, List[str]]:
-    """把 u<sourceId>-* 图库文件重命名为 u<targetId>-*
-
-    身份合并时后台调用。扫描待审核、私藏与各在线分类目录；
-    目标文件已存在时不覆盖，记入 failed 供人工处理。
-    有实际改名时写入刷新标记，供 bot 进程重建 onlineFilePaths 缓存。
-    """
-    result: Dict[str, List[str]] = {'renamed': [], 'failed': []}
-    if source_id == target_id:
-        return result
-
-    old_prefix = uploader_prefix_for_user(source_id) + '-'
-    new_prefix = uploader_prefix_for_user(target_id) + '-'
-    dirs = [get_examine_path(), get_save_path()]
-    dirs.extend(info['onlinePath'] for info in ARCHIVE_INFO.values())
-
-    with _FILE_LOCK:
-        for directory in dirs:
-            if not os.path.isdir(directory):
-                continue
-            for old_path in glob.glob(os.path.join(directory, f'{old_prefix}*')):
-                if not os.path.isfile(old_path):
-                    continue
-                new_name = new_prefix + os.path.basename(old_path)[len(old_prefix):]
-                new_path = os.path.join(directory, new_name)
-                if os.path.exists(new_path):
-                    result['failed'].append(old_path)
-                    continue
-                try:
-                    os.rename(old_path, new_path)
-                    result['renamed'].append(new_path)
-                except Exception as e:
-                    logger.warning(f'图库重命名失败 {old_path}: {e}')
-                    result['failed'].append(old_path)
-    if result['renamed']:
-        touch_refresh_stamp()
-    return result

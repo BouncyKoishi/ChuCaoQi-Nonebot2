@@ -8,7 +8,6 @@ from tortoise.transactions import in_transaction
 from tortoise.expressions import Q
 from core.db.models import UnifiedUser, KusaBase, KusaField, IdentityBindRequest
 from core.db import user as user_db
-import asyncio
 import hashlib
 import secrets
 import string
@@ -155,41 +154,6 @@ async def _migrate_source_ownership(source_id: int, target_id: int):
     await PageView.filter(userId=source_id).delete()
 
 
-def _schedule_archive_rename(source_id: int, target_id: int):
-    """合并完成后后台重命名图库文件，失败只记日志"""
-    try:
-        asyncio.create_task(_rename_archive_files(source_id, target_id))
-    except RuntimeError:
-        pass
-
-
-async def _rename_archive_files(source_id: int, target_id: int):
-    try:
-        from core.services import pic_archive_service
-        result = await asyncio.to_thread(
-            pic_archive_service.rename_uploader_files, source_id, target_id
-        )
-        if result.get('failed'):
-            print(f'图库重命名部分失败：{result["failed"]}')
-
-        # 二次清扫：合并提交瞬间可能仍有上传正在落盘（上传已不持锁下载，
-        # 落盘带锁），稍后重跑一次以收走这批迟到文件
-        if result.get('renamed') or result.get('failed'):
-            await asyncio.sleep(20)
-            await asyncio.to_thread(
-                pic_archive_service.rename_uploader_files, source_id, target_id
-            )
-
-        # bot 进程内原地刷新 onlineFilePaths；web / scheduler 中导入失败可忽略
-        try:
-            from plugins.pic_archive import refresh_online_paths
-            refresh_online_paths()
-        except Exception:
-            pass
-    except Exception as e:
-        print(f'图库重命名失败：{e}')
-
-
 # ===== 群映射 =====
 
 _group_openid_to_onebot: dict = {}
@@ -303,29 +267,15 @@ async def _merge_users_core(
 async def merge_users(
     source_id: int,
     target_id: int,
-    keep_source_data: bool = False,
-    defer_archive: bool = False
+    keep_source_data: bool = False
 ) -> bool:
     """把临时官机账号合并进目标老账号
 
-    数据库变更在单个事务内完成；图库文件重命名在提交后异步执行。
-    defer_archive=True 时由调用方（如绑定审批的外层事务）在提交后自行调度。
+    数据库变更在单个事务内完成。未绑定官机账号不允许上传图库，
+    合并时不涉及图库文件迁移。
     """
-    source_openid = None
-    source = await get_unified_user_by_id(source_id)
-    if source:
-        source_openid = source.qqbotOpenid
-
     async with in_transaction():
-        ok = await _merge_users_core(source_id, target_id, keep_source_data)
-    if not ok:
-        return False
-
-    if source_openid and not defer_archive:
-        target = await get_unified_user_by_id(target_id)
-        if target and target.qqbotOpenid == source_openid:
-            _schedule_archive_rename(source_id, target_id)
-    return True
+        return await _merge_users_core(source_id, target_id, keep_source_data)
 
 
 # ===== 身份绑定 =====
@@ -417,14 +367,13 @@ async def _apply_bind_request(request) -> dict:
             return {'success': False, 'error': '目标 QQ 账号不存在'}
         if target_user.qqbotOpenid and target_user.qqbotOpenid != source.qqbotOpenid:
             return {'success': False, 'error': '目标账号已绑定其他官方身份，请联系管理员处理'}
-        ok = await merge_users(source.id, target_user.id, defer_archive=True)
+        ok = await merge_users(source.id, target_user.id)
         if not ok:
             return {'success': False, 'error': '合并失败，请稍后重试'}
         return {
             'success': True,
             'userId': target_user.id,
             'bindType': bind_type,
-            'deferArchive': True,
         }
 
     if bind_type == 'rebind':
@@ -470,10 +419,6 @@ async def approve_bind_request(request_id: int, approve: bool) -> dict:
             await user_db.updateIdentityBindRequest(
                 request, 'rejected', note=result.get('error')
             )
-
-    # 图库文件重命名必须在事务提交后调度
-    if result.get('success') and result.pop('deferArchive', False) and request.sourceUserId:
-        _schedule_archive_rename(request.sourceUserId, result['userId'])
 
     result['requestId'] = request.id
     return result

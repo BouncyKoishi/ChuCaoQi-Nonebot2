@@ -56,8 +56,10 @@ async def _handle_send_group(data: dict) -> bool:
     message = _build_message(data.get('message'))
     if not group_id or message is None:
         return False
-    await send_group_msg(group_id, message)
-    return True
+    ok = await send_group_msg(group_id, message)
+    if not ok:
+        logger.warning(f'[internal_notify] 群消息推送失败 groupId={group_id}')
+    return ok
 
 
 async def _handle_send_private(data: dict) -> bool:
@@ -66,8 +68,10 @@ async def _handle_send_private(data: dict) -> bool:
     message = _build_message(data.get('message'))
     if not user_id or message is None:
         return False
-    await send_private_msg(user_id, message)
-    return True
+    ok = await send_private_msg(user_id, message)
+    if not ok:
+        logger.warning(f'[internal_notify] 私聊消息推送失败 userId={user_id}')
+    return ok
 
 
 async def _handle_kusa_harvested_event(data: dict) -> bool:

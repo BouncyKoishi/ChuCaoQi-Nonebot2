@@ -8,7 +8,7 @@ from openai import BadRequestError
 
 import core.db.chat as db
 from kusa_base import is_super_admin, send_log
-from reloader import bound_db_command as on_command
+from reloader import bound_db_command as on_command, BIND_REQUIRED_HINT
 from nonebot.adapters import Bot, Event
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
@@ -97,7 +97,7 @@ async def _handle_reply_chat(bot: Bot, event: Event, useDefaultRole: bool, style
     """
     ctx = get_context(event)
     if ctx.platform == 'qqbot' and not await ctx.get_real_qq():
-        return '该指令需要先完成身份绑定，请发送 !绑定 <你的QQ号>'
+        return BIND_REQUIRED_HINT
     if not await permissionCheck(ctx, 'chat'):
         return None
     text, imgUrls = extract_reply_content(event)

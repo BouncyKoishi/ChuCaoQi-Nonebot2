@@ -4,8 +4,8 @@ from datetime import datetime
 from nonebot import on_command
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_apscheduler import scheduler
-from kusa_base import plugin_config
-from multi_platform import send_finish, get_napcat_bot
+from kusa_base import plugin_config, send_group_msg
+from multi_platform import send_finish
 
 
 class SysuNetworkReport(typing.NamedTuple):
@@ -46,9 +46,7 @@ if scheduler:
                     for x in r.json()
                 )
 
-                bot = get_napcat_bot()
-                # 仅在OneBot端进行主动推送
-                if bot and latestReport is not None:
+                if latestReport is not None:
                     for x in filter(lambda x: x.time > latestReport.time, d):
                         await send_group_msg_to_sysu(str(x))
                 latestReport = max(d, key=lambda x: x.time)
@@ -60,21 +58,16 @@ if scheduler:
     async def vacationMentionRunner():
         if not ENV_PROD:
             return
-        bot = get_napcat_bot()
-        # 仅在OneBot端进行主动推送
-        if bot:
-            await send_group_msg_to_sysu('给网费按个暂停键！\n寒暑假将至，可以前往 https://netpay.sysu.edu.cn/ 自助办理个人网络服务的暂停和恢复。')
+        await send_group_msg_to_sysu('给网费按个暂停键！\n寒暑假将至，可以前往 https://netpay.sysu.edu.cn/ 自助办理个人网络服务的暂停和恢复。')
 
 
 async def send_group_msg_to_sysu(message: str):
-    bot = get_napcat_bot()
-    if not bot:
-        return
     sysu_group = plugin_config.get('group', {}).get('sysu')
     if not sysu_group:
         return
-    
-    await bot.send_group_msg(group_id=int(sysu_group), message=message)
+    ok = await send_group_msg(sysu_group, message)
+    if not ok:
+        print(f'校园网公告推送群{sysu_group}失败')
 
 
 校园网_cmd = on_command('校园网', priority=5, block=True)

@@ -4,36 +4,36 @@
 提供统一的接口供其他插件调用
 """
 
-from typing import Union, Optional, Any
+from dataclasses import dataclass
+from typing import Any, Optional, Tuple, Union
+
 from nonebot.adapters import Bot, Event, Message
-
-# 尝试导入QQ适配器的事件类型
-try:
-    from nonebot.adapters.qq import Event as QQEvent
-    from nonebot.adapters.qq import Message as QQMessage
-    from nonebot.adapters.qq import MessageSegment as QQMessageSegment
-    from nonebot.adapters.qq import C2CMessageCreateEvent
-    from nonebot.adapters.qq import GroupAtMessageCreateEvent
-    from nonebot.adapters.qq import Bot as QQBot
-    QQ_AVAILABLE = True
-except ImportError:
-    QQEvent = None
-    QQMessage = None
-    QQMessageSegment = None
-    C2CMessageCreateEvent = None
-    GroupAtMessageCreateEvent = None
-    QQBot = None
-    QQ_AVAILABLE = False
-
-# OneBot V11 事件类型
 from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
 from nonebot.adapters.onebot.v11 import MessageEvent as OneBotV11MessageEvent
 from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
+from nonebot.adapters.onebot.v11 import Message as OneBotV11Message
+from nonebot.adapters.onebot.v11 import MessageSegment as OneBotV11MessageSegment
+from nonebot.adapters.qq import Event as QQEvent
+from nonebot.adapters.qq import Message as QQMessage
+from nonebot.adapters.qq import MessageSegment as QQMessageSegment
+from nonebot.adapters.qq import Bot as QQBot
 
 
 # 统一的事件类型
-UnifiedEvent = Union[OneBotV11Event, QQEvent] if QQ_AVAILABLE else OneBotV11Event
-UnifiedMessageEvent = Union[OneBotV11MessageEvent, QQEvent] if QQ_AVAILABLE else OneBotV11MessageEvent
+UnifiedEvent = Union[OneBotV11Event, QQEvent]
+UnifiedMessageEvent = Union[OneBotV11MessageEvent, QQEvent]
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    """跨事件动作（禁言 / 主动推送）的执行结果
+
+    reason 取值：no_bot / not_group / unsupported / invalid_target /
+    no_permission / rate_limited / network / failed: ...
+    """
+
+    ok: bool
+    reason: Optional[str] = None
 
 
 def is_onebot_v11_event(event: Event) -> bool:
@@ -55,8 +55,6 @@ def is_onebot_v11_bot(bot: Bot) -> bool:
 
 def is_qq_bot(bot: Bot) -> bool:
     """判断是否为 QQ 官方 Bot"""
-    if not QQ_AVAILABLE:
-        return False
     return isinstance(bot, QQBot)
 
 
@@ -165,7 +163,7 @@ def get_platform_type(event: Event) -> Optional[str]:
 
 
 # ============================================================
-# 双端架构支持 - 通过 NapCat 执行官方 Bot 不支持的操作
+# NapCat (OneBot V11) Bot 实例访问
 # ============================================================
 
 from nonebot import get_bots
@@ -185,122 +183,192 @@ def get_napcat_bot() -> Optional[Bot]:
     return None
 
 
-async def execute_via_napcat(
-    group_id: str,
-    user_id: int,
-    action: str,
-    **kwargs
-) -> bool:
+# ============================================================
+# 主动推送 - 事件无关的运行时发送能力
+# ============================================================
+
+def _get_current_bot() -> Tuple[Optional[str], Optional[Bot]]:
+    """当前连接端的平台与 Bot 实例（NapCat 与官机互斥，只会命中一端）"""
+    bots = list(get_bots().values())
+    for bot in bots:
+        if is_onebot_v11_bot(bot):
+            return 'onebot', bot
+    for bot in bots:
+        if is_qq_bot(bot):
+            return 'qqbot', bot
+    return None, None
+
+
+def _to_qq_message(message: Union[str, Message]) -> Optional[Union[str, Any]]:
+    """把消息转成官机可发送的形态；无法表达时返回 None
+
+    官方 Bot 消息（如官机下的命令参数）原样返回；OneBot 消息只转换
+    文本、@、图片与引用，其它富媒体返回 None，由调用方返回 unsupported，
+    避免发出半截消息。
     """
-    通过 NapCat 实例执行操作
-    
-    Args:
-        group_id: 官方 Bot 的群 OpenID
-        user_id: 统一用户 ID
-        action: 操作类型 ("ban", "unban", "kick", "emoji_like")
-        **kwargs: 其他参数
-        
-    Returns:
-        是否执行成功
-    """
-    bot = get_napcat_bot()
-    if not bot:
-        print("[NapCat] 未找到 NapCat 实例")
-        return False
-    
-    try:
-        from core.services.identity_service import (
-            get_group_mapping_by_openid,
-            get_unified_user_by_id,
-        )
-        mapping = await get_group_mapping_by_openid(group_id)
-        real_group_id = int(mapping.onebotGroupId) if mapping and mapping.onebotGroupId else None
-        unified_user = await get_unified_user_by_id(user_id)
-        real_user_id = int(unified_user.realQQ) if unified_user and unified_user.realQQ else None
-        
-        if not real_group_id:
-            print(f"[NapCat] 无法找到群 {group_id} 的真实群号")
-            return False
-        
-        if action == "ban":
-            if not real_user_id:
-                print(f"[NapCat] 无法找到用户 {user_id} 的真实QQ号")
-                return False
-            duration = kwargs.get("duration", 60)
-            await bot.set_group_ban(
-                group_id=real_group_id,
-                user_id=real_user_id,
-                duration=duration
-            )
-            print(f"[NapCat] 禁言成功: 群 {real_group_id}, 用户 {real_user_id}, 时长 {duration}s")
-            return True
-            
-        elif action == "unban":
-            if not real_user_id:
-                print(f"[NapCat] 无法找到用户 {user_id} 的真实QQ号")
-                return False
-            await bot.set_group_ban(
-                group_id=real_group_id,
-                user_id=real_user_id,
-                duration=0
-            )
-            print(f"[NapCat] 解除禁言成功: 群 {real_group_id}, 用户 {real_user_id}")
-            return True
-            
-        elif action == "kick":
-            if not real_user_id:
-                print(f"[NapCat] 无法找到用户 {user_id} 的真实QQ号")
-                return False
-            await bot.set_group_kick(
-                group_id=real_group_id,
-                user_id=real_user_id
-            )
-            print(f"[NapCat] 踢出成功: 群 {real_group_id}, 用户 {real_user_id}")
-            return True
-            
-        elif action == "emoji_like":
-            message_id = kwargs.get("message_id")
-            emoji_id = kwargs.get("emoji_id", 128074)
-            if not message_id:
-                print("[NapCat] emoji_like 需要提供 message_id")
-                return False
-            await bot.set_msg_emoji_like(
-                message_id=message_id,
-                emoji_id=emoji_id
-            )
-            print(f"[NapCat] 表情点赞成功: 消息 {message_id}, 表情 {emoji_id}")
-            return True
-            
-        elif action == "set_group_admin":
-            if not real_user_id:
-                print(f"[NapCat] 无法找到用户 {user_id} 的真实QQ号")
-                return False
-            enable = kwargs.get("enable", True)
-            await bot.set_group_admin(
-                group_id=real_group_id,
-                user_id=real_user_id,
-                enable=enable
-            )
-            print(f"[NapCat] 设置管理员成功: 群 {real_group_id}, 用户 {real_user_id}")
-            return True
-            
-        elif action == "set_group_card":
-            if not real_user_id:
-                print(f"[NapCat] 无法找到用户 {user_id} 的真实QQ号")
-                return False
-            card = kwargs.get("card", "")
-            await bot.set_group_card(
-                group_id=real_group_id,
-                user_id=real_user_id,
-                card=card
-            )
-            print(f"[NapCat] 设置群名片成功: 群 {real_group_id}, 用户 {real_user_id}")
-            return True
-            
+    if isinstance(message, str):
+        return message
+
+    if isinstance(message, QQMessageSegment):
+        return QQMessage([message])
+    if isinstance(message, QQMessage):
+        return message
+
+    if isinstance(message, OneBotV11MessageSegment):
+        segments = [message]
+    elif isinstance(message, OneBotV11Message):
+        segments = list(message)
+    else:
+        return None
+
+    built = []
+    for seg in segments:
+        if seg.type == 'text':
+            built.append(QQMessageSegment.text(str(seg.data.get('text') or '')))
+        elif seg.type == 'at':
+            qq = str(seg.data.get('qq') or '')
+            if qq:
+                built.append(QQMessageSegment.text(f'@{qq} '))
+        elif seg.type == 'image':
+            file = str(seg.data.get('file') or '')
+            url = str(seg.data.get('url') or '')
+            if file.startswith('base64://'):
+                import base64
+                built.append(QQMessageSegment.file_image(base64.b64decode(file[len('base64://'):])))
+            elif url.startswith('http'):
+                built.append(QQMessageSegment.image(url))
+            elif file.startswith('http'):
+                built.append(QQMessageSegment.image(file))
+            else:
+                return None
+        elif seg.type == 'reply':
+            # 主动推送没有可引用的消息，忽略引用段
+            continue
         else:
-            print(f"[NapCat] 未知的操作类型: {action}")
-            return False
-            
+            return None
+    return QQMessage(built) if built else None
+
+
+def _onebot_failure(exc: Exception) -> ActionResult:
+    from nonebot.exception import ActionFailed, ApiNotAvailable, NetworkError
+
+    if isinstance(exc, ActionFailed):
+        info = exc.info
+        retcode = info.get('retcode')
+        wording = info.get('wording') or info.get('message') or ''
+        detail = f'{retcode or ""} {wording}'.strip()
+        return ActionResult(False, f'failed: {detail or "unknown"}')
+    if isinstance(exc, NetworkError):
+        return ActionResult(False, 'network')
+    if isinstance(exc, ApiNotAvailable):
+        return ActionResult(False, 'unsupported')
+    return ActionResult(False, f'failed: {exc}')
+
+
+def _qq_failure(exc: Exception) -> ActionResult:
+    from nonebot.adapters.qq.exception import (
+        ActionFailed as QQActionFailed,
+        ApiNotAvailable as QQApiNotAvailable,
+        NetworkError as QQNetworkError,
+        RateLimitException,
+    )
+
+    if isinstance(exc, RateLimitException):
+        return ActionResult(False, 'rate_limited')
+    if isinstance(exc, QQActionFailed):
+        if exc.code == 22009:
+            return ActionResult(False, 'rate_limited')
+        if exc.status_code == 403:
+            return ActionResult(False, 'no_permission')
+        detail = f'{exc.code or exc.status_code} {exc.message or ""}'.strip()
+        return ActionResult(False, f'failed: {detail}')
+    if isinstance(exc, QQNetworkError):
+        return ActionResult(False, 'network')
+    if isinstance(exc, QQApiNotAvailable):
+        return ActionResult(False, 'unsupported')
+    return ActionResult(False, f'failed: {exc}')
+
+
+async def push_group(
+    group_id: Union[int, str],
+    message: Union[str, Message],
+) -> ActionResult:
+    """主动向群推送消息（事件无关）
+
+    group_id 统一为 QQ 群号：OneBot 直接使用，官机经群映射换 group_openid。
+    通道由当前连接端决定，两端互斥，发送失败直接返回原因，不跨端回退。
+    """
+    platform, bot = _get_current_bot()
+    if bot is None:
+        return ActionResult(False, 'no_bot')
+
+    if platform == 'onebot':
+        try:
+            target = int(group_id)
+        except (TypeError, ValueError):
+            return ActionResult(False, 'invalid_target')
+        try:
+            await bot.send_group_msg(group_id=target, message=message)
+        except Exception as e:
+            return _onebot_failure(e)
+        return ActionResult(True)
+
+    # 官机：QQ 群号需经映射换成 group_openid
+    from core.services.identity_service import get_openid_by_onebot_group_id
+
+    openid = get_openid_by_onebot_group_id(str(group_id))
+    if not openid:
+        return ActionResult(False, 'invalid_target')
+    payload = _to_qq_message(message)
+    if payload is None:
+        return ActionResult(False, 'unsupported')
+    try:
+        await bot.send_to_group(group_openid=openid, message=payload)
     except Exception as e:
-        print(f"[NapCat] 执行操作失败: {e}")
-        return False
+        return _qq_failure(e)
+    return ActionResult(True)
+
+
+async def push_private(
+    unified_user_id: Union[int, str],
+    message: Union[str, Message],
+) -> ActionResult:
+    """主动向用户推送单聊消息（事件无关）
+
+    unified_user_id 为 UnifiedUser.id：OneBot 走 realQQ 私聊，官机走 C2C。
+    好友关系由 kusa_base 判断；两端互斥，不跨端回退。
+    """
+    from core.services.identity_service import get_unified_user_by_id
+
+    try:
+        user = await get_unified_user_by_id(int(unified_user_id))
+    except (TypeError, ValueError):
+        return ActionResult(False, 'invalid_target')
+    if user is None:
+        return ActionResult(False, 'invalid_target')
+
+    platform, bot = _get_current_bot()
+    if bot is None:
+        return ActionResult(False, 'no_bot')
+
+    if platform == 'onebot':
+        if not user.realQQ:
+            return ActionResult(False, 'invalid_target')
+        try:
+            await bot.send_private_msg(user_id=int(user.realQQ), message=message)
+        except Exception as e:
+            return _onebot_failure(e)
+        return ActionResult(True)
+
+    # 官机：C2C 需要用户已绑定 qqbotOpenid
+    openid = user.qqbotOpenid
+    if not openid:
+        return ActionResult(False, 'invalid_target')
+    payload = _to_qq_message(message)
+    if payload is None:
+        return ActionResult(False, 'unsupported')
+    try:
+        await bot.send_to_c2c(openid=openid, message=payload)
+    except Exception as e:
+        return _qq_failure(e)
+    return ActionResult(True)

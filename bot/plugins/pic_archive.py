@@ -1,7 +1,6 @@
 import os
 import glob
 import random
-import asyncio
 
 from nonebot import on_command, logger
 from nonebot.adapters import Event
@@ -11,10 +10,11 @@ from nonebot.exception import FinishedException, PausedException, RejectedExcept
 from nonebot.typing import T_State
 
 from kusa_base import is_super_admin
+from reloader import BIND_REQUIRED_HINT
 from multi_platform import send_reply, send_finish
 from platform_context import get_context, PlatformContext, Ctx
 from utils import extractImgUrls
-from .reply_commands import reply_command, extract_reply_images
+from .reply_commands import reply_text_command, extract_reply_images
 from core.services import pic_archive_service as pic_service
 from core.services.pic_archive_service import ARCHIVE_INFO as archiveInfo
 
@@ -31,11 +31,7 @@ for value in archiveInfo.values():
     else:
         value['onlineFilePaths'] = []
 
-# 上次缓存刷新时对应的图库变更标记（跨进程改名后由 stamp mtime 触发重建）
-_archive_stamp_mtime = pic_service.get_refresh_stamp_mtime()
-
 _pic_md5_set: set[str] = set()
-
 
 def _build_md5_index():
     """构建 MD5 索引到 bot 内存（commitpic 查重用）"""
@@ -51,32 +47,26 @@ def _add_to_archive_paths(archive_key: str, file_path: str):
         archiveInfo[archive_key]['onlineFilePaths'].sort()
 
 
-def refresh_online_paths():
-    """重建各分类 onlineFilePaths 缓存（身份合并重命名文件后调用）"""
-    global _archive_stamp_mtime
-    for value in archiveInfo.values():
-        directory = value['onlinePath']
-        if os.path.exists(directory):
-            value['onlineFilePaths'] = [
-                f for f in glob.glob(os.path.join(directory, '*')) if os.path.isfile(f)
-            ]
-            value['onlineFilePaths'].sort()
-        else:
-            value['onlineFilePaths'] = []
-    _archive_stamp_mtime = pic_service.get_refresh_stamp_mtime()
+async def _ensure_bound(ctx: PlatformContext) -> bool:
+    """图库上传要求身份已绑定
 
-
-def maybe_refresh_online_paths():
-    """其它进程（web 合并）改过图库文件时，按 stamp mtime 重建缓存"""
-    if pic_service.get_refresh_stamp_mtime() > _archive_stamp_mtime:
-        refresh_online_paths()
+    未绑定官机账号不产生 u<统一ID> 前缀文件，合并时无需迁移图库文件。
+    """
+    if ctx.platform == 'onebot':
+        return True
+    user_id = await ctx.get_user_id(auto_create=False)
+    if not user_id:
+        return False
+    from core.services.identity_service import get_unified_user_by_id
+    user = await get_unified_user_by_id(user_id)
+    return bool(user and user.realQQ)
 
 
 async def _resolve_uploader(ctx: PlatformContext) -> str:
-    """上传者前缀：真实 QQ 优先，未绑定的官机用户回退 u<统一ID>
+    """上传者前缀：真实 QQ 号
 
-    文件名规则为 {uploader}-{timestamp}-...，前端按“上传者QQ”解析数字前缀；
-    u 前缀不会被误认为是 QQ 号，归入“未知来源”但保留追溯线索。
+    官机端已在入口处要求绑定，因此正常路径总能取到真实 QQ；
+    取不到时回退 u<统一ID> 仅作防御。
     """
     real_qq = await ctx.get_real_qq()
     if real_qq:
@@ -127,9 +117,6 @@ async def rollPic(ctx: PlatformContext, imageArchiveName: str):
 
     if not ctx.capabilities.can_send_image:
         return "该功能目前仅支持OneBot平台"
-
-    # 其它进程（web）改过图库文件时先重建缓存，避免读到已改名的旧路径
-    maybe_refresh_online_paths()
 
     imageArchive = archiveInfo.get(imageArchiveName)
     if not imageArchive:
@@ -204,6 +191,9 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
     if not ctx.capabilities.can_receive_images:
         await send_finish(commitpic_cmd, "该功能目前仅支持OneBot平台")
         return
+    if not await _ensure_bound(ctx):
+        await send_finish(commitpic_cmd, BIND_REQUIRED_HINT)
+        return
 
     imgUrls = extractImgUrls(args) or ctx.images
     if imgUrls:
@@ -214,6 +204,10 @@ async def handle_commitpic(ctx: Ctx, args: Message = CommandArg()):
 
 @commitpic_cmd.got("image", prompt="请上传图片")
 async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
+    # 等待上传期间可能被管理员解除绑定，落盘前再校验一次
+    if not await _ensure_bound(ctx):
+        await send_finish(commitpic_cmd, BIND_REQUIRED_HINT)
+        return
     try:
         imgUrls = extractImgUrls(image) or ctx.images
         if not imgUrls:
@@ -232,12 +226,17 @@ async def handle_commitpic_got(ctx: Ctx, image: Message = Arg()):
 
 
 # #指令版：回复一条含图片的消息，上传所回复消息中的全部图片到待分类目录
-# #消息本身仅作触发器，只处理所回复消息的多图
-@reply_command('commitpic')
-async def commitpic_reply(event, img_url, bot):
+# 注册为文本类 # 指令：未引用图片时也能给出提示，而不是静默忽略
+@reply_text_command('commitpic')
+async def commitpic_reply(event, bot):
     try:
-        urls = extract_reply_images(event) or [img_url]
-        uploader = await _resolve_uploader(get_context(event))
+        ctx = get_context(event)
+        if not await _ensure_bound(ctx):
+            return BIND_REQUIRED_HINT
+        urls = extract_reply_images(event) or ctx.images
+        if not urls:
+            return '请引用一条包含图片的消息后发送 #commitpic'
+        uploader = await _resolve_uploader(ctx)
         success_count, duplicate_count, oversized_count = await _download_and_check_dup(urls, uploader)
         return _format_upload_msg(success_count, duplicate_count, oversized_count)
     except Exception as e:
@@ -302,11 +301,11 @@ async def handle_examinepic(event: Event, state: T_State):
                     _pic_md5_set.discard(file_md5)
                 except Exception:
                     pass
-                # 图库操作内部持跨进程阻塞锁，放到线程里避免卡事件循环
-                await asyncio.to_thread(pic_service.delete_pic, fileName)
+                # 移动/删除是单次原子文件操作，直接调用即可
+                pic_service.delete_pic(fileName)
                 logger.info(f'已删除图片: {currentFile}')
             elif choice == 's':
-                await asyncio.to_thread(pic_service.save_pic, fileName)
+                pic_service.save_pic(fileName)
                 logger.info(f'已保存图片: {fileName}')
             elif choice == '0':
                 pass
@@ -314,7 +313,7 @@ async def handle_examinepic(event: Event, state: T_State):
                 archiveIndex = int(choice) - 1
                 if 0 <= archiveIndex < len(archive_keys):
                     archiveKey = archive_keys[archiveIndex]
-                    await asyncio.to_thread(pic_service.classify_pic, fileName, archiveKey)
+                    pic_service.classify_pic(fileName, archiveKey)
                     # 更新 bot 的 onlineFilePaths 缓存（rollPic 用）
                     new_path = os.path.join(archiveInfo[archiveKey]['onlinePath'], fileName)
                     _add_to_archive_paths(archiveKey, new_path)

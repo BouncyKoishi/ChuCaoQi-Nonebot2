@@ -63,12 +63,26 @@ async def _warn_configure(message: str) -> None:
     print(f'[pic_classifier] {message}')
 
 
-def time_check(command: str, ctx: dict):
-    if 'group_id' not in ctx or ctx['group_id'] != plugin_config.get('group', {}).get('sysu'):
+def _group_num_from_ctx(ctx):
+    """统一群标识：官bot 经群映射得到 QQ 群号，非数字时原样返回"""
+    key = ctx.group_key
+    return int(key) if key and str(key).isdigit() else key
+
+
+def _user_key_from_ctx(ctx):
+    """冷却表/决斗表的用户键：OneBot 为 QQ 号，官bot 为 member_openid"""
+    uid = ctx.platform_user_id
+    if ctx.platform == 'onebot':
+        return int(uid) if uid else None
+    return uid
+
+
+def time_check(command: str, ctx):
+    if _group_num_from_ctx(ctx) != plugin_config.get('group', {}).get('sysu'):
         return True, None
 
     command = command.replace('#', '')
-    key = f'{ctx["user_id"]}_{command}'
+    key = f'{ctx.platform_user_id}_{command}'
     if key in lastUsedTime:
         now_time = int(time.time())
         end_time = lastUsedTime[key] + 3 * 3600
@@ -79,26 +93,27 @@ def time_check(command: str, ctx: dict):
     return True, None
 
 
-def time_updater(command: str, group_id: int, user_id: int):
+def time_updater(command: str, ctx):
     global lastUsedTime
-    if group_id != plugin_config.get('group', {}).get('sysu'):
+    if _group_num_from_ctx(ctx) != plugin_config.get('group', {}).get('sysu'):
         return
     command = command.replace('#', '')
-    key = f'{user_id}_{command}'
+    key = f'{ctx.platform_user_id}_{command}'
     lastUsedTime[key] = int(time.time())
 
 
 async def nsfw_preprocessor(event: Event, img_url: str):
-    # 决斗与表情表态依赖 OneBot 的消息/成员语义，官bot 暂不接入
+    # 决斗依赖 OneBot 的引用发送者与表情表态，官bot 仅做检测
     ctx = get_context(event)
-    if ctx.platform != 'onebot':
-        return False, '该功能目前仅支持OneBot平台'
     if not ctx.is_group:
         return False, '该功能目前仅支持群聊'
-    user_id = event.user_id
-    reply_user_id = event.reply.sender.user_id if event.reply else user_id
+    user_id = _user_key_from_ctx(ctx)
+    reply_user_id = user_id
+    reply = getattr(event, 'reply', None) if ctx.platform == 'onebot' else None
+    if reply:
+        reply_user_id = reply.sender.user_id
 
-    time_check_result, sign = time_check('#nsfw', event.dict())
+    time_check_result, sign = time_check('#nsfw', ctx)
     if not time_check_result:
         return False, sign
 
@@ -107,8 +122,8 @@ async def nsfw_preprocessor(event: Event, img_url: str):
         set_duel_confirmations(user_id, {
             'sender': reply_user_id,
             'imgUrl': img_url,
-            'imgMsgId': event.reply.message_id if event.reply else 0,
-            'commandMsgId': event.message_id,
+            'imgMsgId': int(reply.message_id),
+            'commandMsgId': int(ctx.message_id),
             'type': 'nsfw'
         })
         return False, duel_msg
@@ -117,16 +132,17 @@ async def nsfw_preprocessor(event: Event, img_url: str):
 
 
 async def nailong_preprocessor(event: Event, img_url: str):
-    # 决斗与表情表态依赖 OneBot 的消息/成员语义，官bot 暂不接入
+    # 决斗依赖 OneBot 的引用发送者与表情表态，官bot 仅做检测
     ctx = get_context(event)
-    if ctx.platform != 'onebot':
-        return False, '该功能目前仅支持OneBot平台'
     if not ctx.is_group:
         return False, '该功能目前仅支持群聊'
-    user_id = event.user_id
-    reply_user_id = event.reply.sender.user_id if event.reply else user_id
+    user_id = _user_key_from_ctx(ctx)
+    reply_user_id = user_id
+    reply = getattr(event, 'reply', None) if ctx.platform == 'onebot' else None
+    if reply:
+        reply_user_id = reply.sender.user_id
 
-    time_check_result, sign = time_check('#nailong', event.dict())
+    time_check_result, sign = time_check('#nailong', ctx)
     if not time_check_result:
         return False, sign
 
@@ -135,8 +151,8 @@ async def nailong_preprocessor(event: Event, img_url: str):
         set_duel_confirmations(user_id, {
             'sender': reply_user_id,
             'imgUrl': img_url,
-            'imgMsgId': event.reply.message_id if event.reply else 0,
-            'commandMsgId': event.message_id,
+            'imgMsgId': int(reply.message_id),
+            'commandMsgId': int(ctx.message_id),
             'type': 'nailong'
         })
         return False, duel_msg
@@ -144,7 +160,7 @@ async def nailong_preprocessor(event: Event, img_url: str):
     return True, None
 
 
-async def check_nsfw(event: GroupMessageEvent, img_url: str, bot: Bot) -> Optional[str]:
+async def check_nsfw(ctx, img_url: str) -> Optional[str]:
     moderate_content_api_key = plugin_config.get('web', {}).get('moderateContent', {}).get('key', '')
     if not moderate_content_api_key:
         await _warn_configure('未配置 NSFW 检测 API Key')
@@ -168,14 +184,14 @@ async def check_nsfw(event: GroupMessageEvent, img_url: str, bot: Bot) -> Option
                 print(f'NSFW检测异常：{result}')
                 return None
             else:
-                time_updater('#nsfw', event.group_id if hasattr(event, 'group_id') else 0, event.user_id)
+                time_updater('#nsfw', ctx)
                 return '检测结果：\n' + '\n'.join([f'{k} {v:.4f}' for k, v in result['predictions'].items()])
     except Exception as e:
         print(f"处理图片失败 {img_url}: {e}")
         return None
 
 
-async def check_nailong(event: GroupMessageEvent, img_url: str, bot: Bot) -> Optional[str]:
+async def check_nailong(ctx, img_url: str) -> Optional[str]:
     if nailongModel is None:
         await _warn_configure('奶龙模型未加载')
         return None
@@ -193,7 +209,7 @@ async def check_nailong(event: GroupMessageEvent, img_url: str, bot: Bot) -> Opt
                         prob = nn.Softmax(dim=1)(outputs)
                         result = float(prob[0, 1]) * 100
 
-                    time_updater('#nailong', event.group_id if hasattr(event, 'group_id') else 0, event.user_id)
+                    time_updater('#nailong', ctx)
                     return f'奶龙指数：{result:.4f}'
                 print(f'下载图片失败 HTTP {response.status}: {img_url}')
                 return None
@@ -203,13 +219,13 @@ async def check_nailong(event: GroupMessageEvent, img_url: str, bot: Bot) -> Opt
 
 
 @reply_command('nsfw', preprocessor=nsfw_preprocessor)
-async def nsfw_cmd(event: GroupMessageEvent, img_url: str, bot: Bot) -> Optional[str]:
-    return await check_nsfw(event, img_url, bot)
+async def nsfw_cmd(event: Event, img_url: str, bot: Bot) -> Optional[str]:
+    return await check_nsfw(get_context(event, bot), img_url)
 
 
 @reply_command('nailong', preprocessor=nailong_preprocessor)
-async def nailong_cmd(event: GroupMessageEvent, img_url: str, bot: Bot) -> Optional[str]:
-    return await check_nailong(event, img_url, bot)
+async def nailong_cmd(event: Event, img_url: str, bot: Bot) -> Optional[str]:
+    return await check_nailong(get_context(event, bot), img_url)
 
 
 confirm_duel = on_message(priority=10, block=False)
@@ -217,6 +233,9 @@ confirm_duel = on_message(priority=10, block=False)
 
 @confirm_duel.handle()
 async def handle_confirm_duel(bot: Bot, event: GroupMessageEvent):
+    # 决斗只在 OneBot 侧创建，官bot 事件直接跳过
+    if not isinstance(event, GroupMessageEvent):
+        return
     user_qq = event.user_id
     confirmations = get_duel_confirmations()
     if user_qq not in confirmations:
@@ -260,7 +279,7 @@ async def handle_confirm_duel(bot: Bot, event: GroupMessageEvent):
             await bot.send(event=event, message=f'{result_str}\n{fight_result_str}')
         else:
             await bot.send(event=event, message=result_str)
-        time_updater('nsfw', event.group_id if hasattr(event, 'group_id') else 0, user_qq)
+        time_updater('nsfw', get_context(event, bot))
 
     elif command_type == 'nailong':
         nailong_score = await _get_nailong_score(info['imgUrl'])
@@ -284,7 +303,7 @@ async def handle_confirm_duel(bot: Bot, event: GroupMessageEvent):
                     await bot.set_msg_emoji_like(message_id=msg_id, emoji_id=128074)
                     fight_result_str += f'无法被口球，获得了除草器的一拳！'
             await bot.send(event=event, message=f'{result_str}\n{fight_result_str}')
-        time_updater('nailong', event.group_id if hasattr(event, 'group_id') else 0, user_qq)
+        time_updater('nailong', get_context(event, bot))
 
     del_duel_confirmations(user_qq)
 

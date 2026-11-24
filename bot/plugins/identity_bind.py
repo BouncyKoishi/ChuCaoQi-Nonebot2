@@ -335,7 +335,7 @@ async def handle_我的身份(ctx: Ctx):
         await send_finish(我的身份_cmd, '获取用户信息失败，请稍后重试')
         return
 
-    output = f'您的统一用户ID：{user_id}\n\n'
+    output = f'您的统一用户ID：{user_id}\n'
 
     if unified_user.realQQ:
         output += f'✓ QQ 身份：已绑定 (QQ: {unified_user.realQQ})\n'
@@ -348,12 +348,12 @@ async def handle_我的身份(ctx: Ctx):
         output += f'✗ 官方Bot身份：未绑定\n'
 
     if unified_user.webToken:
-        output += f'\n✓ Web端token：已设置\n'
+        output += f'✓ Web端token：已设置\n'
         output += f'  创建时间：{unified_user.webTokenCreatedAt.strftime("%Y-%m-%d %H:%M:%S") if unified_user.webTokenCreatedAt else "未知"}\n'
     else:
-        output += f'\n✗ Web端token：未设置\n'
+        output += f'✗ Web端token：未设置\n'
 
-    await send_finish(我的身份_cmd, output)
+    await send_finish(我的身份_cmd, output.rstrip('\n'))
 
 
 生成token_cmd = on_command('生成token', priority=5, block=True)
@@ -408,6 +408,10 @@ async def handle_生成token(ctx: Ctx, args: Message = CommandArg()):
         await send_finish(生成token_cmd, '获取用户信息失败，请稍后重试')
         return
 
+    if not unified_user.realQQ:
+        await send_finish(生成token_cmd, '该账号尚未完成身份绑定，无法使用 Web 端。请先完成绑定')
+        return
+
     old_token_exists = bool(unified_user.webToken)
 
     token = await generate_web_token(unified_user)
@@ -453,6 +457,10 @@ async def handle_查看token(ctx: Ctx):
     unified_user = await get_unified_user_by_id(user_id)
     if not unified_user:
         await send_finish(查看token_cmd, '获取用户信息失败，请稍后重试')
+        return
+
+    if not unified_user.realQQ:
+        await send_finish(查看token_cmd, '该账号尚未完成身份绑定，无法使用 Web 端。请先完成绑定')
         return
 
     if not unified_user.webToken:

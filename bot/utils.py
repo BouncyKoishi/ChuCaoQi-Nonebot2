@@ -3,22 +3,10 @@ import httpx
 import base64
 import traceback
 
-try:
-    import nonebot
-    from nonebot.adapters.onebot.v11 import MessageSegment as ms
-    from nonebot.adapters.onebot.v11 import Message
-    from nonebot.adapters.onebot.v11.exception import ActionFailed
-    from multi_platform import get_napcat_bot
-    NONE_BOT_AVAILABLE = True
-except ImportError:
-    NONE_BOT_AVAILABLE = False
-    nonebot = None
-    Message = None
-    ms = None
-    ActionFailed = Exception
-
-    def get_napcat_bot():
-        return None
+from nonebot.adapters.onebot.v11 import MessageSegment as ms
+from nonebot.adapters.onebot.v11 import Message
+from nonebot.adapters.onebot.v11.exception import ActionFailed
+from multi_platform import get_napcat_bot
 
 groupMemberInfoCache = {}
 
@@ -60,29 +48,6 @@ def extractImgUrls(picInfo):
     ]
     urls = [url.replace('amp;', '') for url in urls if url]
     return urls
-
-
-async def getUserAndGroupMsg(userId, groupId):
-    userMsg = userId
-    groupMsg = groupId
-    bot = get_napcat_bot()
-    if not bot:
-        return userMsg, groupMsg
-    try:
-        qqInfo = await bot.get_stranger_info(user_id=userId)
-        if qqInfo:
-            userMsg = f"{qqInfo['nickname']}({userId})"
-
-        if groupId:
-            groupInfo = await bot.get_group_info(group_id=groupId)
-            if groupInfo:
-                groupMsg = f"{groupInfo['group_name']}({groupId})"
-        else:
-            groupMsg = "私聊"
-    except:
-        print(f'Error: cqHttpApi not available')
-
-    return userMsg, groupMsg
 
 
 # 综合bot权限和被禁言者权限判断禁言能否被执行
@@ -153,22 +118,6 @@ def romanNumToInt(romanNum):
 def intToRomanNum(intNum):
     romanNumList = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
     return romanNumList[intNum - 1] if 0 < intNum <= 10 else ""
-
-
-async def is_at_bot(event) -> bool:
-    """检查 OneBot V11 群消息是否@了bot"""
-    if not NONE_BOT_AVAILABLE:
-        return False
-    from nonebot.adapters.onebot.v11 import GroupMessageEvent
-    if not isinstance(event, GroupMessageEvent):
-        return False
-    bot_self_id = getattr(event, 'self_id', None)
-    if not bot_self_id:
-        return False
-    for seg in event.get_message():
-        if seg.type == 'at' and str(seg.data.get('qq', '')) == str(bot_self_id):
-            return True
-    return False
 
 
 async def get_group_member_nickname(bot, group_id: int, user_id: int) -> str:

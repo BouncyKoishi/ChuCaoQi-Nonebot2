@@ -11,6 +11,7 @@
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, List, Optional, Union
@@ -19,31 +20,21 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
 from nonebot.adapters.onebot.v11 import Message as OneBotV11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OneBotV11MessageSegment
+from nonebot.adapters.qq import Event as QQEvent
+from nonebot.adapters.qq import GroupAtMessageCreateEvent
+from nonebot.adapters.qq import Message as QQMessage
+from nonebot.adapters.qq import MessageSegment as QQMessageSegment
 from nonebot.drivers import Request
+from nonebot.log import logger
 from nonebot.params import Depends
 
-try:
-    from nonebot.adapters.qq import Event as QQEvent
-    from nonebot.adapters.qq import GroupAtMessageCreateEvent
-    from nonebot.adapters.qq import Message as QQMessage
-    from nonebot.adapters.qq import MessageSegment as QQMessageSegment
-    QQ_AVAILABLE = True
-except ImportError:
-    QQEvent = None
-    GroupAtMessageCreateEvent = None
-    QQMessage = None
-    QQMessageSegment = None
-    QQ_AVAILABLE = False
-
-try:
-    from core.services.identity_service import (
-        get_or_create_unified_user,
-        get_real_qq,
-        get_unified_user_by_platform,
-    )
-    IDENTITY_SERVICE_AVAILABLE = True
-except ImportError:
-    IDENTITY_SERVICE_AVAILABLE = False
+from core.services.identity_service import (
+    get_or_create_unified_user,
+    get_real_qq,
+    get_unified_user_by_platform,
+)
+# 跨事件动作结果与主动推送能力统一由 multi_platform 提供
+from multi_platform import ActionResult
 
 
 @dataclass(frozen=True)
@@ -58,18 +49,6 @@ class Quote:
     message_id: Optional[str] = None
     sender_name: Optional[str] = None
     images: List[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class ActionResult:
-    """双端动作（目前仅禁言）的执行结果
-
-    reason 取值：not_group / unsupported / invalid_target / no_permission /
-    rate_limited / failed / network
-    """
-
-    ok: bool
-    reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -133,8 +112,6 @@ def is_onebot_v11_event(event: Event) -> bool:
 
 
 def is_qq_event(event: Event) -> bool:
-    if not QQ_AVAILABLE:
-        return False
     return isinstance(event, QQEvent)
 
 
@@ -185,10 +162,8 @@ def get_group_id(event: Event) -> Optional[str]:
         group_id = getattr(event, 'group_id', None)
         return str(group_id) if group_id is not None else None
     if is_qq_event(event):
-        for attr in ('group_openid', 'group_id', 'guild_id', 'channel_id'):
-            value = getattr(event, attr, None)
-            if value:
-                return str(value)
+        group_openid = getattr(event, 'group_openid', None)
+        return str(group_openid) if group_openid else None
     return None
 
 
@@ -198,16 +173,15 @@ def is_group_message(event: Event) -> bool:
             return False
         return getattr(event, 'group_id', None) is not None
     if is_qq_event(event):
-        if QQ_AVAILABLE and GroupAtMessageCreateEvent and isinstance(event, GroupAtMessageCreateEvent):
-            return True
-        return any(hasattr(event, attr) for attr in ('group_openid', 'group_id', 'guild_id'))
+        return isinstance(event, GroupAtMessageCreateEvent)
     return False
 
 
 def get_message_id(event: Event) -> Optional[str]:
     """消息 ID（用于被动回复）"""
     if is_onebot_v11_event(event):
-        return str(getattr(event, 'message_id', None))
+        message_id = getattr(event, 'message_id', None)
+        return str(message_id) if message_id is not None else None
     if is_qq_event(event):
         message_id = getattr(event, 'id', None)
         if message_id:
@@ -236,8 +210,6 @@ def get_message_timestamp(event: Event) -> Optional[int]:
 
 async def get_user_id(event: Event, auto_create: bool = True) -> Optional[int]:
     """统一用户 ID（不存在时按 auto_create 决定是否建号）"""
-    if not IDENTITY_SERVICE_AVAILABLE:
-        return None
     platform = get_platform_type(event)
     platform_id = get_platform_user_id(event)
     if not platform or not platform_id:
@@ -249,8 +221,8 @@ async def get_user_id(event: Event, auto_create: bool = True) -> Optional[int]:
             unified_user = await get_unified_user_by_platform(platform, platform_id)
         if unified_user:
             return unified_user.id
-    except Exception as e:
-        print(f'获取user_id失败：{e}')
+    except Exception:
+        logger.exception('获取 user_id 失败')
     return None
 
 
@@ -259,8 +231,6 @@ async def get_real_qq_by_event(event: Event) -> Optional[str]:
     if is_onebot_v11_event(event):
         user_id = getattr(event, 'user_id', None)
         return str(user_id) if user_id is not None else None
-    if not IDENTITY_SERVICE_AVAILABLE:
-        return None
     platform = get_platform_type(event)
     platform_id = get_platform_user_id(event)
     if not platform or not platform_id:
@@ -269,8 +239,8 @@ async def get_real_qq_by_event(event: Event) -> Optional[str]:
         unified_user = await get_unified_user_by_platform(platform, platform_id)
         if unified_user:
             return await get_real_qq(unified_user)
-    except Exception as e:
-        print(f'获取real_qq失败：{e}')
+    except Exception:
+        logger.exception('获取 real_qq 失败')
     return None
 
 
@@ -388,15 +358,28 @@ class PlatformContext:
             return ''
 
     @property
+    def mentions(self) -> List[str]:
+        """当前消息中被 @ 的成员标识（OneBot 为 QQ 号，官bot 为 member_openid）
+
+        官bot 群 @ 消息的 content 已去除 @机器人 前缀，剩余 <@openid> 即被 @ 的成员。
+        """
+        if self.platform == 'onebot':
+            ids = []
+            for seg in self.event.get_message():
+                if seg.type == 'at':
+                    qq = str(seg.data.get('qq') or '')
+                    if qq and qq != 'all':
+                        ids.append(qq)
+            return ids
+        content = getattr(self.event, 'content', '') or ''
+        return re.findall(r'<@!?([^>]+)>', content)
+
+    @property
     def images(self) -> List[str]:
         """当前消息中的图片 URL 列表"""
         if self.platform == 'onebot':
             urls = []
-            try:
-                segments = self.event.get_message()
-            except Exception:
-                return urls
-            for seg in segments:
+            for seg in self.event.get_message():
                 if seg.type == 'image':
                     url = seg.data.get('url')
                     if url:
@@ -411,33 +394,17 @@ class PlatformContext:
         if self.platform == 'onebot':
             reply = getattr(self.event, 'reply', None)
             if not reply:
-                # 部分实现只在消息里带 reply 段而不填 event.reply，至少保留消息 ID
-                try:
-                    for seg in self.event.get_message():
-                        if seg.type == 'reply':
-                            return Quote(message_id=str(seg.data.get('id') or '') or None)
-                except Exception:
-                    pass
                 return None
-            try:
-                text = reply.message.extract_plain_text().strip()
-            except Exception:
-                text = ''
-            images: List[str] = []
-            try:
-                images = [
+            sender = getattr(reply, 'sender', None)
+            return Quote(
+                text=reply.message.extract_plain_text().strip(),
+                message_id=str(getattr(reply, 'message_id', '') or '') or None,
+                sender_name=getattr(sender, 'nickname', None),
+                images=[
                     seg.data.get('url')
                     for seg in reply.message
                     if seg.type in ('image', 'mface') and seg.data.get('url')
-                ]
-            except Exception:
-                images = []
-            sender = getattr(reply, 'sender', None)
-            return Quote(
-                text=text,
-                message_id=str(getattr(reply, 'message_id', '') or '') or None,
-                sender_name=getattr(sender, 'nickname', None),
-                images=images,
+                ],
             )
 
         def collect_images(node) -> List[str]:
@@ -498,6 +465,18 @@ class PlatformContext:
     def build_image(self, image_data: Any, text: str = '') -> Union[Message, str]:
         """构造图片消息，image_data 可为 URL 或本地字节"""
         return build_image_message(self.event, image_data, text)
+
+    async def send(self, message: Union[str, Message]) -> Any:
+        """用当前 bot 回应本事件
+
+        消息事件走被动回复（官bot 被动回复不受主动消息额度限制）；
+        非消息事件（如拍一拍通知）没有 msg_id 可引用，OneBot 回落为群发。
+        """
+        if self.bot is None:
+            return None
+        if self.message_id is None and self.platform == 'onebot' and self.group_id:
+            return await self.bot.send_group_msg(group_id=int(self.group_id), message=message)
+        return await self.bot.send(event=self.event, message=message)
 
     # ---------- 双端动作 ----------
 

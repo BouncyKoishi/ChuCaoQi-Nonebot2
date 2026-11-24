@@ -412,8 +412,7 @@ async def classify_pic(request: Request):
     category = data.get("category")
     if not filename or not category:
         return JSONResponse({"success": False, "error": "参数缺失"}, status_code=400)
-    result = await asyncio.to_thread(pic_service.classify_pic, filename, category)
-    return result
+    return await asyncio.to_thread(pic_service.classify_pic, filename, category)
 
 
 @router.post("/pic-review/save")

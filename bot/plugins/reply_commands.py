@@ -134,8 +134,10 @@ async def _send(bot: Bot, event, ctx, message):
 @_reply_main_handler.handle()
 async def handle_reply_command(bot: Bot, event, state: T_State):
     ctx = get_context(event, bot)
-    if not ctx.quote:
-        return
+
+    # 不在此处统一要求引用：# 指令分文本类与图片类，文本类由各自 handler 判断
+    # 引用缺失时的提示（如 #commitpic、#怪话），否则它们的未引用提示永远不可达。
+    # 图片类仍在下方 extract_image 取不到图时直接返回。
 
     # 取纯文本而非 str(Message)：str() 会带 CQ 码与转义，命令名和参数都会被污染
     message_text = ctx.text
