@@ -31,6 +31,7 @@ from nonebot.params import Depends
 from core.services.identity_service import (
     get_or_create_unified_user,
     get_real_qq,
+    get_unified_user_by_id,
     get_unified_user_by_platform,
 )
 # 跨事件动作结果与主动推送能力统一由 multi_platform 提供
@@ -210,6 +211,9 @@ def get_message_id(event: Event) -> Optional[str]:
 def get_message_timestamp(event: Event) -> Optional[int]:
     """消息时间戳（秒）"""
     if is_onebot_v11_event(event):
+        timestamp = getattr(event, 'time', None)
+        if timestamp:
+            return int(timestamp)
         import time
         return int(time.time())
     if is_qq_event(event):
@@ -279,10 +283,19 @@ async def build_reply_message(event: Event, message: Union[str, Message]) -> Uni
 
 
 async def build_at_message(event: Event, user_id: int, text: str) -> Union[Message, str]:
-    """构建艾特消息，内部把统一用户 ID 换成真实 QQ 号"""
-    real_qq = await get_real_qq_by_event(event)
+    """构建艾特消息：把统一用户 ID 换成目标用户的平台身份
+
+    OneBot 用目标用户的真实 QQ 号构造 at 段；官机用 openid 构造 markdown at。
+    目标缺少对应身份时退化为纯文本前缀。
+    """
+    target = await get_unified_user_by_id(user_id)
+    real_qq = target.realQQ if target else None
     if is_onebot_v11_event(event) and real_qq:
         return OneBotV11Message([OneBotV11MessageSegment.at(int(real_qq)), ' ' + text])
+    if is_qq_event(event) and target and target.qqbotOpenid:
+        return QQMessage([QQMessageSegment.markdown(
+            f'<qqbot-at-user id="{target.qqbotOpenid}" /> {text}'
+        )])
     return f'@{real_qq or user_id} {text}'
 
 
@@ -483,7 +496,7 @@ class PlatformContext:
         return await build_reply_message(self.event, message)
 
     async def at(self, user_id: int, text: str) -> Union[Message, str]:
-        """构造艾特消息：OneBot 使用真实 at 段，QQ 官方退化为文本前缀"""
+        """构造艾特消息：OneBot 使用真实 at 段，QQ 官方使用 openid 的 markdown at"""
         return await build_at_message(self.event, user_id, text)
 
     def build_image(self, image_data: Any, text: str = '') -> Union[Message, str]:

@@ -4,8 +4,10 @@
 提供统一的接口供其他插件调用
 """
 
+import asyncio
+import os
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
@@ -204,12 +206,43 @@ def get_current_platform() -> Optional[str]:
     return _get_current_bot()[0]
 
 
-def _to_qq_message(message: Union[str, Message]) -> Optional[Union[str, Any]]:
+async def _qq_at_tag(qq: str) -> Optional[str]:
+    """QQ 号转官机 at 标签；缺少绑定时返回 None"""
+    from core.services.identity_service import get_unified_user_by_real_qq
+
+    try:
+        user = await get_unified_user_by_real_qq(qq)
+    except Exception:
+        return None
+    if user and user.qqbotOpenid:
+        return f'<qqbot-at-user id="{user.qqbotOpenid}" /> '
+    return None
+
+
+async def _qq_image_segment(seg: Any) -> Optional[Any]:
+    """OneBot 图片段转官机图片段，无法解析时返回 None"""
+    file = str(seg.data.get('file') or '')
+    url = str(seg.data.get('url') or '')
+    if file.startswith('base64://'):
+        import base64
+        return QQMessageSegment.file_image(base64.b64decode(file[len('base64://'):]))
+    if url.startswith('http'):
+        return QQMessageSegment.image(url)
+    if file.startswith('http'):
+        return QQMessageSegment.image(file)
+    if os.path.isfile(file):
+        content = await asyncio.to_thread(lambda: open(file, 'rb').read())
+        return QQMessageSegment.file_image(content)
+    return None
+
+
+async def _to_qq_message(message: Union[str, Message]) -> Optional[Union[str, Any]]:
     """把消息转成官机可发送的形态；无法表达时返回 None
 
-    官方 Bot 消息（如官机下的命令参数）原样返回；OneBot 消息只转换
-    文本、@、图片与引用，其它富媒体返回 None，由调用方返回 unsupported，
-    避免发出半截消息。
+    官方 Bot 消息（如官机下的命令参数）原样返回；OneBot 消息支持
+    文本、@、图片与引用，其它富媒体返回 None，避免发出半截消息。
+    纯文本消息中的 @ 转为 markdown 真 at；官方协议不允许 markdown
+    与媒体同条，含图片时 @ 仍退化为文本。
     """
     if isinstance(message, str):
         return message
@@ -226,31 +259,42 @@ def _to_qq_message(message: Union[str, Message]) -> Optional[Union[str, Any]]:
     else:
         return None
 
+    has_media = any(seg.type == 'image' for seg in segments)
+    has_at = any(seg.type == 'at' for seg in segments)
+
     built = []
+    markdown_parts: List[str] = []
     for seg in segments:
         if seg.type == 'text':
-            built.append(QQMessageSegment.text(str(seg.data.get('text') or '')))
+            text = str(seg.data.get('text') or '')
+            built.append(QQMessageSegment.text(text))
+            markdown_parts.append(text)
         elif seg.type == 'at':
             qq = str(seg.data.get('qq') or '')
-            if qq:
-                built.append(QQMessageSegment.text(f'@{qq} '))
-        elif seg.type == 'image':
-            file = str(seg.data.get('file') or '')
-            url = str(seg.data.get('url') or '')
-            if file.startswith('base64://'):
-                import base64
-                built.append(QQMessageSegment.file_image(base64.b64decode(file[len('base64://'):])))
-            elif url.startswith('http'):
-                built.append(QQMessageSegment.image(url))
-            elif file.startswith('http'):
-                built.append(QQMessageSegment.image(file))
+            if not qq:
+                continue
+            if qq == 'all':
+                prefix = '@全体成员 '
+            elif has_at and not has_media:
+                prefix = await _qq_at_tag(qq) or f'@{qq} '
             else:
+                prefix = f'@{qq} '
+            built.append(QQMessageSegment.text(prefix))
+            markdown_parts.append(prefix)
+        elif seg.type == 'image':
+            segment = await _qq_image_segment(seg)
+            if segment is None:
                 return None
+            built.append(segment)
         elif seg.type == 'reply':
             # 主动推送没有可引用的消息，忽略引用段
             continue
         else:
             return None
+
+    if has_at and not has_media:
+        content = ''.join(markdown_parts)
+        return QQMessage([QQMessageSegment.markdown(content)]) if content else None
     return QQMessage(built) if built else None
 
 
@@ -324,7 +368,7 @@ async def push_group(
     openid = get_openid_by_onebot_group_id(str(group_id))
     if not openid:
         return ActionResult(False, 'invalid_target')
-    payload = _to_qq_message(message)
+    payload = await _to_qq_message(message)
     if payload is None:
         return ActionResult(False, 'unsupported')
     try:
@@ -369,7 +413,7 @@ async def push_private(
     openid = user.qqbotOpenid
     if not openid:
         return ActionResult(False, 'invalid_target')
-    payload = _to_qq_message(message)
+    payload = await _to_qq_message(message)
     if payload is None:
         return ActionResult(False, 'unsupported')
     try:
