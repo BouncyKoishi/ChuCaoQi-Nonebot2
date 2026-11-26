@@ -491,12 +491,12 @@ async def handle_rob(ctx: Ctx):
         return
     
     if not rob_dict:
-        await send_finish(rob_cmd, await ctx.at(user_id, '当前没有可围殴对象^ ^'))
+        await ctx.finish_quoted(rob_cmd, '当前没有可围殴对象^ ^')
         return
     
     unified_user = await getUnifiedUser(user_id)
     if unified_user and unified_user.isRobot:
-        await send_finish(rob_cmd, await ctx.at(user_id, '机械臂不能围殴^ ^'))
+        await ctx.finish_quoted(rob_cmd, '机械臂不能围殴^ ^')
         return
     
     self_rob_flag, has_robbed_flag, rob_records, stop_robbing_ids = False, False, [], []
@@ -523,20 +523,20 @@ async def handle_rob(ctx: Ctx):
         await base_db.changeKusaAndAdvKusa(user_id, kusa_robbed, adv_bonus)
         if adv_bonus:
             record += '额外获得了1草之精华！'
-        rob_records.append(await ctx.at(user_id, record))
+        rob_records.append(record)
         
         if rob_info.robCount > rob_info.robLimit:
             stop_robbing_ids.append(rob_id)
     
     try:
         if rob_records:
-            for record in rob_records:
-                await send_reply(rob_cmd, record)
+            for idx, record in enumerate(rob_records):
+                await send_reply(rob_cmd, await ctx.build_quoted(record) if idx == 0 else record)
                 await asyncio.sleep(0.3)
         elif has_robbed_flag:
-            await send_reply(rob_cmd, await ctx.at(user_id, '你已经围殴过了^ ^'))
+            await send_reply(rob_cmd, await ctx.build_quoted('你已经围殴过了^ ^'))
         elif self_rob_flag:
-            await send_reply(rob_cmd, await ctx.at(user_id, '不能围殴自己^ ^'))
+            await send_reply(rob_cmd, await ctx.build_quoted('不能围殴自己^ ^'))
     except ActionFailed as e:
         logger.error(f'围殴记录发送失败：{e}')
     finally:

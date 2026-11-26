@@ -610,7 +610,7 @@ async def handle_grab_envelope(ctx: Ctx):
         return
 
     if not kusa_envelope_dict:
-        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '当前没有草包^ ^'))
+        await ctx.finish_quoted(grab_envelope_cmd, '当前没有草包^ ^')
         return
 
     from core.db.user import getUnifiedUser
@@ -646,9 +646,9 @@ async def handle_grab_envelope(ctx: Ctx):
             stop_ids.append(envelope_id)
 
     if output_strs:
-        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '\n'.join(output_strs)))
+        await ctx.finish_quoted(grab_envelope_cmd, '\n'.join(output_strs))
     elif has_got_flag:
-        await send_finish(grab_envelope_cmd, await ctx.at(user_id, '你已经抢过草包了^ ^'))
+        await ctx.finish_quoted(grab_envelope_cmd, '你已经抢过草包了^ ^')
 
     for envelope_id in stop_ids:
         await stop_envelope(envelope_id)
