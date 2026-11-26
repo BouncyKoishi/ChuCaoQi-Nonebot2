@@ -42,14 +42,14 @@ plugins = [
     # ---- 插件依赖 ----
     "plugins.pagination_helper",
     # ---- 业务插件 ----
-    # 生草系统相关插件（draw_item / kusa_*），当前暂停启用，恢复时取消注释
-    # "plugins.draw_item",
-    # "plugins.kusa_statistics",
-    # "plugins.kusa_main",
-    # "plugins.kusa_farm",
-    # "plugins.kusa_item",
-    # "plugins.kusa_G",
-    # "plugins.kusa_industrial",
+    # 生草系统相关插件（draw_item / kusa_*）
+    "plugins.draw_item",
+    "plugins.kusa_statistics",
+    "plugins.kusa_main",
+    "plugins.kusa_farm",
+    "plugins.kusa_item",
+    "plugins.kusa_G",
+    "plugins.kusa_industrial",
     "plugins.identity_bind",
     "plugins.reply_commands",
     "plugins.strange_word",
