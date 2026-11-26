@@ -12,6 +12,8 @@ from typing import Dict
 from datetime import datetime
 
 from reloader import bound_kusa_command as on_command
+from nonebot import logger
+from nonebot.exception import ActionFailed
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 
@@ -526,17 +528,20 @@ async def handle_rob(ctx: Ctx):
         if rob_info.robCount > rob_info.robLimit:
             stop_robbing_ids.append(rob_id)
     
-    if rob_records:
-        for record in rob_records:
-            await send_finish(rob_cmd, record)
-            await asyncio.sleep(0.3)
-    elif has_robbed_flag:
-        await send_finish(rob_cmd, await ctx.at(user_id, '你已经围殴过了^ ^'))
-    elif self_rob_flag:
-        await send_finish(rob_cmd, await ctx.at(user_id, '不能围殴自己^ ^'))
-    
-    for rob_id in stop_robbing_ids:
-        await stop_robbing(rob_id)
+    try:
+        if rob_records:
+            for record in rob_records:
+                await send_reply(rob_cmd, record)
+                await asyncio.sleep(0.3)
+        elif has_robbed_flag:
+            await send_reply(rob_cmd, await ctx.at(user_id, '你已经围殴过了^ ^'))
+        elif self_rob_flag:
+            await send_reply(rob_cmd, await ctx.at(user_id, '不能围殴自己^ ^'))
+    except ActionFailed as e:
+        logger.error(f'围殴记录发送失败：{e}')
+    finally:
+        for rob_id in stop_robbing_ids:
+            await stop_robbing(rob_id)
 
 
 async def stop_robbing(rob_id: str):
