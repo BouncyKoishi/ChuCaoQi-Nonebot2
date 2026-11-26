@@ -17,7 +17,7 @@ from nonebot import on_command, on_message
 from nonebot.adapters import Bot
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
-from .reply_commands import reply_command, ReplyCommandResult, store_result, get_stored_result, get_sent_message_id
+from .reply_commands import reply_command, ReplyCommandResult, store_result, get_stored_result, get_sent_message_id, extract_reply_images
 
 proxy = plugin_config.get('web', {}).get('proxy', None)
 saucenaoApiKey = plugin_config.get('web', {}).get('saucenao', {}).get('key', '')
@@ -132,12 +132,18 @@ async def handle_提取url(ctx: Ctx):
 
 @reply_command('picurl')
 async def picurl_cmd(event, img_url: str, bot: Bot) -> str:
-    return img_url
+    return _reply_image_urls(event, img_url)
 
 
 @reply_command('url')
 async def url_cmd(event, img_url: str, bot: Bot) -> str:
-    return img_url
+    return _reply_image_urls(event, img_url)
+
+
+def _reply_image_urls(event, img_url: str) -> str:
+    """引用内容含多张不同图片时输出全部 URL（每行一个），否则输出首张"""
+    urls = extract_reply_images(event)
+    return '\n'.join(urls) if len(urls) > 1 else img_url
 
 
 @reply_command('搜图')

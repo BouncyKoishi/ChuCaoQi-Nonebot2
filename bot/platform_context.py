@@ -51,6 +51,24 @@ class Quote:
     images: List[str] = field(default_factory=list)
 
 
+def dedupe_images(urls: List[str]) -> List[str]:
+    """按 fileid 去重图片 URL（保序）
+
+    官机把合并转发渲染成文本时，同一张图会以不同 rkey 重复出现，
+    整串 URL 判重无效，只能按 fileid 判重。
+    """
+    seen = set()
+    result: List[str] = []
+    for url in urls:
+        match = re.search(r'[?&]fileid=([^&]+)', url)
+        key = match.group(1) if match else url
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(url)
+    return result
+
+
 @dataclass(frozen=True)
 class PlatformCapabilities:
     """协议层能力声明，供插件在入口处做功能开关
@@ -438,7 +456,13 @@ class PlatformContext:
         images: List[str] = []
         for item in elements:
             images.extend(collect_images(item))
-        return Quote(text=text.strip(), message_id=message_id, images=images)
+        if not images:
+            # 二次引用/合并转发时服务端不下发结构化 attachments，
+            # 只把被引用内容渲染成文本，附件 URL 以 'URL:https://…' 形式内嵌
+            for item in elements:
+                content = item.get('content') if isinstance(item, dict) else getattr(item, 'content', '')
+                images.extend(re.findall(r'URL:(https?://\S+)', content or ''))
+        return Quote(text=text.strip(), message_id=message_id, images=dedupe_images(images))
 
     # ---------- 身份 ----------
 
