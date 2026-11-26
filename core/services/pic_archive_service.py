@@ -61,6 +61,7 @@ ARCHIVE_INFO: Dict[str, Dict[str, str]] = {
     "fumo": {"onlinePath": os.path.join(get_base_pic_path(), 'Fumo Emoji'), "displayName": "Fumo"},
     "ds": {"onlinePath": os.path.join(get_base_pic_path(), 'deepseek'), "displayName": "Deepseek"},
     "bzq": {"onlinePath": os.path.join(get_base_pic_path(), '白泽球'), "displayName": "白泽球"},
+    "gj": {"onlinePath": os.path.join(get_base_pic_path(), '怪鸡'), "displayName": "怪鸡"},
 }
 
 

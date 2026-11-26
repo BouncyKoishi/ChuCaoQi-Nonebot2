@@ -159,6 +159,7 @@ _ROLL_COMMANDS = [
     ('rollfumo',     [],            'fumo'),
     ('rollds',       [],            'ds'),
     ('rollsuku',     ['rollbzq'],   'bzq'),
+    ('rollgj',       ['roll🐔', 'roll🐦'], 'gj'),
 ]
 
 _roll_matchers = {}
