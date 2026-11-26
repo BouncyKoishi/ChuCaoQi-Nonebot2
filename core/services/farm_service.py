@@ -916,7 +916,8 @@ class FarmService:
         由调用方（scheduler 经通知通道推送 / bot 本地命令直接调用）执行。
 
         返回 {'web': <web通知payload>, 'actions': [...]}，action 类型：
-          {'action': 'private', 'userId': int, 'message': str}   私聊消息
+          {'action': 'private', 'userId': int, 'tag': str, 'message': str}   私聊消息
+            tag：capsule（时光胶囊）/ harvest（生草完毕）/ overload（过载）
           {'action': 'group', 'message': str}                    主群消息（群号由 bot 决定）
           {'action': 'robbing', 'targetId': int, 'robLimit': int, 'extraKusaAdv': bool}  围殴激活
         """
@@ -927,7 +928,7 @@ class FarmService:
 
         if time_capsule:
             actions.append({
-                'action': 'private', 'userId': field.user_id,
+                'action': 'private', 'userId': field.user_id, 'tag': 'capsule',
                 'message': '时光胶囊启动！奈奈发动了时光魔法，使本次生草立即完成且不消耗承载力喵(⑅˘̤ ᵕ˘̤)*♡*'
             })
             await itemDB.removeTimeLimitedItem(field.user_id, '时光胶囊标记')
@@ -969,7 +970,10 @@ class FarmService:
         await fieldDB.kusaStopGrowing(field, False)
 
         if await baseDB.getFlagValue(field.user_id, '生草完毕私聊提示'):
-            actions.append({'action': 'private', 'userId': field.user_id, 'message': output_msg})
+            actions.append({
+                'action': 'private', 'userId': field.user_id, 'tag': 'harvest',
+                'message': output_msg
+            })
 
         if time_capsule:
             await fieldDB.kusaSoilRecover(field.user_id)
@@ -1036,7 +1040,7 @@ class FarmService:
         await itemDB.updateTimeLimitedItem(field.user_id, '过载标记', overload_seconds)
 
         actions.append({
-            'action': 'private', 'userId': field.user_id,
+            'action': 'private', 'userId': field.user_id, 'tag': 'overload',
             'message': f'注意：你的草地进入了{overload_hour}小时的过载。你通过过载生草额外获得了{adv_kusa_num}个草之精华！'
         })
 

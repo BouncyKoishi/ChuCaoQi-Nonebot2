@@ -199,6 +199,11 @@ def _get_current_bot() -> Tuple[Optional[str], Optional[Bot]]:
     return None, None
 
 
+def get_current_platform() -> Optional[str]:
+    """当前连接端平台：'onebot' / 'qqbot' / None（事件无关）"""
+    return _get_current_bot()[0]
+
+
 def _to_qq_message(message: Union[str, Message]) -> Optional[Union[str, Any]]:
     """把消息转成官机可发送的形态；无法表达时返回 None
 

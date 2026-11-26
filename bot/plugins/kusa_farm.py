@@ -21,7 +21,7 @@ import core.db.kusa_item as item_db
 from core.db.user import getUnifiedUser
 from kusa_base import plugin_config, send_private_msg, send_group_msg
 from core.services import FarmService
-from multi_platform import send_reply, send_finish
+from multi_platform import send_reply, send_finish, get_current_platform
 from platform_context import Ctx
 
 import aiohttp
@@ -121,12 +121,35 @@ def format_plant_result(data: dict, prefix: str = "开始") -> str:
     return output_str
 
 
+_main_group_members: Dict[int, str] = {}
+
+# 个人提示合并顺序：时光胶囊 → 生草完毕 → 过载
+_PRIVATE_NOTICE_ORDER = {'capsule': 0, 'harvest': 1, 'overload': 2}
+
+
+def _remember_main_group_user(ctx: Ctx, user_id: int):
+    """记录在生草主群发起过操作的用户及其群内 openid
+
+    主群 @ 依赖成员在群内且 openid 属于该群，否则会渲染成空白；bot 重启后缓存失效。
+    """
+    if ctx.platform != 'qqbot':
+        return
+    main_group = plugin_config.get('group', {}).get('main')
+    group_key = ctx.group_key
+    if not main_group or not group_key or str(group_key) != str(main_group):
+        return
+    member_openid = ctx.platform_member_id
+    if member_openid:
+        _main_group_members[user_id] = member_openid
+
+
 plant_kusa_cmd = on_command("生草", priority=5, block=True)
 
 @plant_kusa_cmd.handle()
 async def handle_plant_kusa(ctx: Ctx, args: Message = CommandArg()):
     """处理生草命令"""
     user_id = await ctx.get_user_id(auto_create=True)
+    _remember_main_group_user(ctx, user_id)
     kusa_type = args.extract_plain_text().strip() or None
     
     if kusa_type == '神灵草':
@@ -171,6 +194,7 @@ overload_plant_cmd = on_command("过载生草", priority=5, block=True)
 async def handle_overload_plant(ctx: Ctx, args: Message = CommandArg()):
     """处理过载生草命令"""
     user_id = await ctx.get_user_id(auto_create=True)
+    _remember_main_group_user(ctx, user_id)
     overload_magic = await item_db.getItemAmount(user_id, '奈奈的过载魔法')
     
     if not overload_magic:
@@ -195,6 +219,7 @@ weed_cmd = on_command("除草", priority=5, block=True)
 async def handle_weed(ctx: Ctx):
     """处理除草命令"""
     user_id = await ctx.get_user_id(auto_create=True)
+    _remember_main_group_user(ctx, user_id)
     result = await FarmService.weed(userId=user_id)
 
     if not result['success']:
@@ -555,21 +580,59 @@ async def start_robbing(target_id: int, rob_limit: int, extra_kusa_adv: bool):
     rob_dict[rob_id] = rob_info
 
 
+async def _send_harvest_notice_in_group(group_id, member_openid: str, message: str):
+    """在生草主群 @ 玩家发送单条提示；markdown 发送失败时退化为纯文本"""
+    if not group_id:
+        return
+
+    from nonebot.adapters.qq import MessageSegment as QQMessageSegment
+    # 转义星号，避免 *♡* 这类文案被 markdown 解析成斜体
+    escaped = message.replace('*', r'\*')
+    markdown = QQMessageSegment.markdown(f'<qqbot-at-user id="{member_openid}" /> {escaped}')
+    if not await send_group_msg(group_id, markdown):
+        await send_group_msg(group_id, message)
+
+
 async def execute_harvest_actions(actions):
     """执行生草结算事件动作
 
     动作由 core.services.FarmService.settle_field 生成（结算在 scheduler 完成），
-    bot 只负责 QQ 侧玩法：私聊提示、主群喜报/悲报、围殴激活。
+    bot 只负责 QQ 侧玩法：生草提示、主群喜报/悲报、围殴激活。
+    个人提示按「时光胶囊 → 生草完毕 → 过载」合并为一条，喜报/悲报单独一条。
+    私聊提示按当前连接端分流：OneBot 保持私聊；官机仅当用户在主群活跃时
+    改发主群并 @ 玩家。
     调用方：internal_notify.py（scheduler 经 /internal/notify 推送）、
     hidden.py 的 KUSA_FINISH（本地强制收获）。
     """
     main_group = plugin_config.get('group', {}).get('main')
+    is_qqbot = get_current_platform() == 'qqbot'
+
+    private_user_id = None
+    private_acts = []
+    group_msgs = []
 
     for act in actions:
         kind = act.get('action')
         if kind == 'private':
-            await send_private_msg(act['userId'], act['message'])
+            private_user_id = act['userId']
+            private_acts.append(act)
         elif kind == 'group':
-            await send_group_msg(main_group, act['message'])
+            group_msgs.append(act['message'])
         elif kind == 'robbing':
             await start_robbing(act['targetId'], act['robLimit'], act.get('extraKusaAdv', False))
+
+    private_acts.sort(key=lambda act: _PRIVATE_NOTICE_ORDER.get(act.get('tag'), 1))
+    private_text = '\n'.join(act['message'] for act in private_acts)
+
+    if is_qqbot:
+        if group_msgs:
+            await send_group_msg(main_group, '\n'.join(group_msgs))
+        member_openid = _main_group_members.get(private_user_id) if private_user_id else None
+        if member_openid and private_text:
+            await _send_harvest_notice_in_group(main_group, member_openid, private_text)
+        return
+
+    if private_text:
+        await send_private_msg(private_user_id, private_text)
+    if group_msgs:
+        await send_group_msg(main_group, '\n'.join(group_msgs))
