@@ -37,6 +37,7 @@ logger = logging.getLogger("scheduler")
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
+from tortoise import Tortoise
 
 import core.db.db as base_db
 from scheduler.jobs import register_jobs
@@ -90,6 +91,8 @@ async def main():
         pass
     finally:
         scheduler.shutdown(wait=False)
+        # 关闭 aiosqlite 连接，否则其非守护线程会阻止进程退出（systemd 停机超时）
+        await Tortoise.close_connections()
         logger.info("--- Scheduler stopped ---")
 
 
